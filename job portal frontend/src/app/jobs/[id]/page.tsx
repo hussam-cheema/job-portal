@@ -1,0 +1,244 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { fetchJob } from "@/lib/api";
+import {
+  formatDate,
+  formatSalary,
+  labelSource,
+  sourceBadgeClass,
+  stripHtml,
+  tagColorClass,
+} from "@/lib/format";
+import { toSeoSlug } from "@/lib/slug";
+
+type Props = {
+  params: Promise<{ id: string }>;
+};
+
+export async function generateMetadata({ params }: Props) {
+  const { id } = await params;
+  const job = await fetchJob(id);
+  if (!job) return { title: "Job — PakJobs" };
+  return {
+    title: `${job.title} — PakJobs`,
+    description:
+      stripHtml(job.description).slice(0, 160) ||
+      `${job.title} at ${job.company || job.source || "—"}`,
+  };
+}
+
+export default async function JobDetailPage({ params }: Props) {
+  const { id } = await params;
+  const job = await fetchJob(id);
+  if (!job) notFound();
+
+  const salary =
+    job.salary_range ||
+    formatSalary(job.salary_min, job.salary_max, job.currency, job.salary_range);
+  const tags = job.tags?.length
+    ? job.tags
+    : ([
+        labelSource(job.source_type || job.job_type || "private"),
+        job.category,
+        job.city,
+        ...(job.skills || []),
+      ].filter(Boolean) as string[]);
+
+  const attachments = (job.attachments || []).filter((a) => !a.is_inline_image);
+
+  return (
+    <div className="site-wrap py-10">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--navy-200)] mb-8 transition-colors"
+      >
+        ← All jobs
+      </Link>
+
+      <article className="card-panel">
+        <header className="px-5 sm:px-8 py-7 border-b border-[var(--border)]">
+          <div className="flex flex-wrap gap-2 mb-4 relative z-10">
+            <span className={`tag ${sourceBadgeClass(job.source_type || job.job_type || "")}`}>
+              {labelSource(job.source_type || job.job_type || "private")}
+            </span>
+            {job.category && (
+              <Link
+                href={`/categories/${toSeoSlug(job.category)}`}
+                className={`tag job-tag-link ${tagColorClass(job.category)}`}
+              >
+                {job.category}
+              </Link>
+            )}
+            {tags
+              .filter(
+                (t) =>
+                  t.toLowerCase() !==
+                    labelSource(job.source_type || job.job_type || "").toLowerCase() &&
+                  t.toLowerCase() !== (job.category || "").toLowerCase()
+              )
+              .map((t) => (
+                <Link
+                  key={t}
+                  href={`/tags/${toSeoSlug(t)}`}
+                  className={`tag job-tag-link ${tagColorClass(t)}`}
+                >
+                  {t}
+                </Link>
+              ))}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--navy-100)] leading-snug">
+            {job.title}
+          </h1>
+          <p className="mt-3 text-[var(--navy-300)] text-lg">
+            {job.company || job.source || "Unknown company"}
+            {job.location ? (
+              <span className="text-[var(--muted)]"> · {job.location}</span>
+            ) : null}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--muted)]">
+            <Meta label="Published" value={formatDate(job.published_date || job.created_at)} />
+            <Meta
+              label="Deadline"
+              value={formatDate(job.deadline_date || job.application_deadline)}
+            />
+            {salary && <Meta label="Salary" value={salary} />}
+            {(job.source_name || job.source) && (
+              <Meta label="Source" value={job.source_name || job.source || ""} />
+            )}
+            {(job.reference_url || job.source_url) && (
+              <a
+                href={job.reference_url || job.source_url || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Reference URL
+              </a>
+            )}
+            {job.application_url && (
+              <a
+                href={job.application_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Apply URL
+              </a>
+            )}
+          </div>
+        </header>
+
+        <div className="px-5 sm:px-8 py-7">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--navy-400)] mb-3">
+            Description
+          </h2>
+          <div
+            className="prose-job text-[0.95rem]"
+            dangerouslySetInnerHTML={{
+              __html: job.description || "<p>No description provided.</p>",
+            }}
+          />
+
+          {attachments.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--navy-400)] mb-3">
+                Attachments
+              </h2>
+              <ul className="space-y-2">
+                {attachments.map((a) => (
+                  <li key={a.id}>
+                    <a
+                      href={a.public_url || "#"}
+                      download={a.original_name || true}
+                      className="text-sm text-[var(--accent)] hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {a.original_name || a.s3_path} ({Math.round((a.file_size || 0) / 1024)} KB)
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(job.experience_required || job.education_required) && (
+            <div className="mt-8 grid sm:grid-cols-2 gap-4">
+              {job.experience_required && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-4">
+                  <div className="text-xs uppercase tracking-wider text-[var(--muted)]">
+                    Experience
+                  </div>
+                  <div className="mt-1 text-[var(--navy-100)]">{job.experience_required}</div>
+                </div>
+              )}
+              {job.education_required && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-4">
+                  <div className="text-xs uppercase tracking-wider text-[var(--muted)]">
+                    Education
+                  </div>
+                  <div className="mt-1 text-[var(--navy-100)]">{job.education_required}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {job.skills?.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--navy-400)] mb-3">
+                Skills
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {job.skills.map((s) => (
+                  <span key={s} className="badge badge-muted normal-case tracking-normal">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {job.qna?.length > 0 && (
+            <section className="mt-10 border-t border-[var(--border)] pt-8">
+              <h2 className="text-xl font-semibold text-[var(--navy-100)]">
+                Commonly asked Questions and Answers
+              </h2>
+              <div className="mt-5 space-y-4">
+                {job.qna.map((item) => (
+                  <article
+                    key={item.id}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--navy-850)] p-4"
+                  >
+                    <h3 className="font-medium text-[var(--navy-100)]">{item.question}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--navy-200)]">
+                      {item.answer}
+                    </p>
+                    {item.youtube_url && (
+                      <a
+                        href={item.youtube_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 block break-all text-xs text-[var(--accent)] hover:underline"
+                      >
+                        YouTube reference: {item.youtube_url}
+                      </a>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="text-[var(--navy-500)]">{label}: </span>
+      <span className="text-[var(--navy-200)]">{value}</span>
+    </div>
+  );
+}

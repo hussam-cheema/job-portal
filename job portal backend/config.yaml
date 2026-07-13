@@ -1,0 +1,110 @@
+# Job Portal Configuration (manual admin posting)
+
+site:
+  name: "PakJobs"
+  url: "https://pakjobs.example.com"  # used for SEO + image watermark text
+  description: "Modern job portal for Pakistan — government and private openings"
+
+database:
+  echo: false
+  pool_size: 5
+
+# Cloudflare R2 for job description images and attachments.
+# Credentials and the public custom domain are configured through R2_* environment variables.
+# Layout: {prefix}/{job_uuid}/images|attachments/{file}
+r2:
+  enabled: true
+  bucket: ""  # R2_BUCKET_NAME in .env
+  public_base_url: ""  # R2_PUBLIC_BASE_URL in .env
+  prefix: "job-portal"
+  max_attachment_count: 3
+  max_attachment_mb: 15
+  max_image_mb: 8
+
+watermark:
+  text: "https://pakjobs.example.com"
+  color: "#FF0000"
+  opacity: 0.10
+  position: "center"
+  font_scale: 0.05
+
+branding:
+  max_logo_mb: 2
+
+analytics:
+  trust_proxy_headers: true
+  geolocation_enabled: true
+  geolocation_url: "https://ipwho.is/{ip}"
+  geolocation_timeout_seconds: 4
+
+llm:
+  temperature: 0.1
+  max_tokens: 4096
+  tasks:
+    qna_extraction:
+      provider: deepseek
+      model: deepseek-v4-pro
+      fallback: [openai, grok, ollama, glm, meta, claude]
+  providers:
+    grok:
+      enabled: false
+      model: "grok-3-mini"
+    openai:
+      enabled: false
+      model: "gpt-4o-mini"
+    deepseek:
+      enabled: true
+      model: "deepseek-v4-pro"
+    meta:
+      enabled: false
+      model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    glm:
+      enabled: false
+      model: "glm-5.2"
+    ollama:
+      enabled: false
+      model: "llama3.2"
+    claude:
+      enabled: false
+      model: "claude-3-5-haiku-latest"
+
+youtube_qna:
+  enabled: true
+  max_qna: 20
+  max_youtube_videos: 5
+  max_comments: 50
+  extract_transcripts: true
+  extract_comments: true
+  timeout_seconds: 60
+  min_title_similarity: 0.95
+  # YOUTUBE_API_KEY in .env
+
+# Large semantic embeddings used to compare job titles with YouTube titles.
+embeddings:
+  provider: openai
+  model: "text-embedding-3-large"
+  dimensions: 1536
+  timeout_seconds: 30
+
+# Auth credentials: ADMIN_USERNAME / ADMIN_PASSWORD / JWT_SECRET in .env only
+auth:
+  jwt_expire_hours: 72
+
+contact:
+  max_name_len: 50
+  max_subject_len: 50
+  max_email_len: 100
+  max_message_len: 300
+  max_messages_per_day: 50
+  max_per_ip_per_hour: 5
+  max_per_email_per_day: 3
+
+seo:
+  default_robots: "index,follow"
+  auto_generate: true
+  twitter_card: "summary_large_image"
+  organization_name: "PakJobs"
+  organization_logo: ""
+
+logging:
+  level: "INFO"

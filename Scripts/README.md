@@ -1,0 +1,16 @@
+# Project Diagnostic Scripts
+
+Each script loads `job portal backend/config.yaml` and `job portal backend/.env`, can be run independently, and exits with status `0` on success or nonzero on failure.
+
+Run from the repository root with the backend virtual environment:
+
+```bash
+"job portal backend/.venv/bin/python" Scripts/test_deepseek_api.py
+"job portal backend/.venv/bin/python" Scripts/test_youtube_api.py
+"job portal backend/.venv/bin/python" Scripts/test_watermark.py
+"job portal backend/.venv/bin/python" Scripts/test_r2_upload.py
+"job portal backend/.venv/bin/python" Scripts/test_contact_form.py
+"job portal backend/.venv/bin/python" Scripts/test_seo.py
+```
+
+The API-based scripts default to `http://localhost:8000`; set `API_BASE_URL` in `.env` to use another backend. The R2 script uses the first listed job when no job ID or `TEST_JOB_POST_ID` is supplied, and deletes its test object unless `--keep` is passed. The contact script deletes its test message when the configured admin credentials can authenticate. The SEO script creates a temporary backlink and removes it directly through the configured PostgreSQL connection.

@@ -1,0 +1,57 @@
+# Job Portal stack — backend + frontend
+# Uses existing Postgres container: postgres-db (must be on network jobportal-net)
+
+services:
+  backend:
+    build:
+      context: "./job portal backend"
+      dockerfile: Dockerfile
+    container_name: jobportal-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - "./job portal backend/.env"
+    environment:
+      # Postgres on shared Docker network (overrides host localhost from .env)
+      DATABASE_URL: ""
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: "5432"
+      LOG_LEVEL: INFO
+      SEED_ON_STARTUP: "true"
+      SITE_URL: http://localhost:3000
+      # R2_ENABLED and credentials come from the backend env_file so local
+      # development can explicitly disable remote uploads.
+    networks:
+      - jobportal-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 25s
+
+  frontend:
+    build:
+      context: "./job portal frontend"
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    container_name: jobportal-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      INTERNAL_API_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - jobportal-net
+
+networks:
+  jobportal-net:
+    name: jobportal-net
+    external: true
