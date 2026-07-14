@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -207,6 +208,144 @@ def test_admin_password_change(client: TestClient):
     assert client.post(
         "/api/auth/login", json={"username": "admin", "password": "new-admin-password"}
     ).status_code == 200
+
+
+def test_account_locks_after_four_failed_attempts_and_resets_credentials(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import auth_recovery
+
+    delivered: dict[str, str] = {}
+
+    def capture_email(*, reset_url: str, reason: str) -> None:
+        delivered["url"] = reset_url
+        delivered["reason"] = reason
+
+    monkeypatch.setattr(auth_recovery, "_send_password_reset_email", capture_email)
+
+    for _ in range(3):
+        response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong-password"},
+        )
+        assert response.status_code == 401
+
+    locked = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "wrong-password"},
+    )
+    assert locked.status_code == 423
+    assert "account locked" in locked.json()["detail"].lower()
+    assert "repeated failed" in delivered["reason"]
+
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin-password"},
+    ).status_code == 423
+
+    token = parse_qs(urlparse(delivered["url"]).query)["token"][0]
+    reset = client.post(
+        "/api/auth/reset-credentials",
+        json={
+            "token": token,
+            "username": "new-admin",
+            "new_password": "replacement-password",
+        },
+    )
+    assert reset.status_code == 200
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "new-admin", "password": "replacement-password"},
+    ).status_code == 200
+    assert client.post(
+        "/api/auth/reset-credentials",
+        json={
+            "token": token,
+            "username": "another-admin",
+            "new_password": "another-replacement-password",
+        },
+    ).status_code == 400
+
+
+def test_forgot_password_email_resets_username_and_revokes_existing_token(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import auth_recovery
+
+    delivered: dict[str, str] = {}
+
+    def capture_email(*, reset_url: str, reason: str) -> None:
+        delivered["url"] = reset_url
+        delivered["reason"] = reason
+
+    monkeypatch.setattr(auth_recovery, "_send_password_reset_email", capture_email)
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    old_token = login.json()["access_token"]
+
+    requested = client.post("/api/auth/forgot-password")
+    assert requested.status_code == 200
+    assert "forgot password" in delivered["reason"]
+
+    token = parse_qs(urlparse(delivered["url"]).query)["token"][0]
+    reset = client.post(
+        "/api/auth/reset-credentials",
+        json={
+            "token": token,
+            "username": "recovered-admin",
+            "new_password": "recovered-password",
+        },
+    )
+    assert reset.status_code == 200
+    assert client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+    ).status_code == 401
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "recovered-admin", "password": "recovered-password"},
+    ).status_code == 200
+
+
+def test_recovery_email_uses_fixed_admin_recipient(monkeypatch: pytest.MonkeyPatch):
+    from app.services import auth_recovery
+
+    sent: dict[str, object] = {}
+
+    class FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int):
+            sent["connection"] = (host, port, timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self, *, context):
+            sent["starttls"] = context
+
+        def send_message(self, message):
+            sent["message"] = message
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "no-reply@example.test")
+    monkeypatch.delenv("SMTP_USERNAME", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.delenv("ADMIN_RECOVERY_EMAIL", raising=False)
+    monkeypatch.setattr(auth_recovery.smtplib, "SMTP", FakeSMTP)
+
+    auth_recovery._send_password_reset_email(
+        reset_url="https://example.test/reset-password?token=secret",
+        reason="test",
+    )
+
+    message = sent["message"]
+    assert message["To"] == "hussam.cheema7102@gmail.com"
+    assert "token=secret" in message.get_body(preferencelist=("plain",)).get_content()
 
 
 def test_existing_hashed_admin_does_not_revalidate_bootstrap_password(

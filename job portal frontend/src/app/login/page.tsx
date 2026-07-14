@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminLogin } from "@/lib/api";
+import { adminLogin, requestAdminPasswordReset } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 
 export default function LoginPage() {
@@ -11,10 +11,26 @@ export default function LoginPage() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   if (ready && token) {
     router.replace("/admin");
+  }
+
+  async function requestRecovery() {
+    setRecoveryLoading(true);
+    setError(null);
+    setRecoveryMessage(null);
+    try {
+      const response = await requestAdminPasswordReset();
+      setRecoveryMessage(response.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send recovery email");
+    } finally {
+      setRecoveryLoading(false);
+    }
   }
 
   async function onSubmit(e: FormEvent) {
@@ -59,8 +75,19 @@ export default function LoginPage() {
             autoComplete="current-password"
             required
           />
+          <div className="mt-2 text-right">
+            <button
+              type="button"
+              className="text-sm text-[var(--accent)] underline underline-offset-4 disabled:opacity-60"
+              onClick={requestRecovery}
+              disabled={recoveryLoading}
+            >
+              {recoveryLoading ? "Sending recovery email…" : "Forgot your password?"}
+            </button>
+          </div>
         </div>
         {error && <p className="field-error">{error}</p>}
+        {recoveryMessage && <p className="text-sm text-emerald-700">{recoveryMessage}</p>}
         <button type="submit" className="btn btn-primary w-full" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
         </button>

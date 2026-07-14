@@ -22,6 +22,22 @@ class PasswordChangeIn(BaseModel):
     new_password: str = Field(..., min_length=12, max_length=72)
 
 
+class CredentialsResetIn(BaseModel):
+    token: str = Field(..., min_length=20, max_length=512)
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+    )
+    new_password: str = Field(..., min_length=12, max_length=72)
+
+
+class PasswordResetRequestOut(BaseModel):
+    ok: bool = True
+    message: str
+
+
 class AnalyticsVisitIn(BaseModel):
     visitor_id: str = Field(..., min_length=8, max_length=100)
     path: str = Field(default="/", min_length=1, max_length=500)

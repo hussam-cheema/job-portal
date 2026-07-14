@@ -164,6 +164,35 @@ export async function adminLogin(username: string, password: string) {
   return res.json() as Promise<{ access_token: string; username: string }>;
 }
 
+export async function requestAdminPasswordReset() {
+  const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.detail || "Unable to send the recovery email");
+  }
+  return body as { ok: boolean; message: string };
+}
+
+export async function resetAdminCredentials(
+  token: string,
+  username: string,
+  newPassword: string
+) {
+  const res = await fetch(`${API_BASE}/api/auth/reset-credentials`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, username, new_password: newPassword }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.detail || "Unable to reset credentials");
+  }
+  return body as { ok: boolean; message: string };
+}
+
 export async function adminChangePassword(
   token: string,
   currentPassword: string,

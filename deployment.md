@@ -168,6 +168,7 @@ Add the following secrets under the Container App's secret settings:
 | `database-url` | Azure PostgreSQL SQLAlchemy URL |
 | `jwt-secret` | Random value with at least 32 characters |
 | `admin-password` | Strong password with 12-72 characters |
+| `smtp-password` | SMTP/App Password for the recovery email account |
 | `r2-access-key-id` | R2 Access Key ID |
 | `r2-secret-access-key` | R2 Secret Access Key |
 
@@ -190,6 +191,18 @@ DB_POOL_RECYCLE=300
 JWT_SECRET=secretref:jwt-secret
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=secretref:admin-password
+MAX_FAILED_LOGIN_ATTEMPTS=3
+ADMIN_RECOVERY_EMAIL=hussam.cheema7102@gmail.com
+PASSWORD_RESET_TOKEN_TTL_MINUTES=30
+PASSWORD_RESET_COOLDOWN_SECONDS=60
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=hussam.cheema7102@gmail.com
+SMTP_PASSWORD=secretref:smtp-password
+SMTP_FROM_EMAIL=hussam.cheema7102@gmail.com
+SMTP_STARTTLS=true
+SMTP_USE_SSL=false
 
 SITE_URL=https://www.example.com
 SITE_NAME=PakJobs
@@ -210,6 +223,8 @@ LOG_LEVEL=INFO
 Add any YouTube or LLM API keys as Container App secrets only when those features are enabled. The local backend `.env` is not copied into the production container.
 
 The first successful admin login creates the configured admin account if it does not already exist, so production does not require startup seed data.
+
+The admin account locks after the fourth consecutive failed password attempt. Both lockout recovery and the login page's forgot-password action send a single-use reset link to `ADMIN_RECOVERY_EMAIL`. The link expires after `PASSWORD_RESET_TOKEN_TTL_MINUTES` and permits choosing a new username and password without the old password. When Gmail is used for SMTP, store a Google App Password in the `smtp-password` Container App secret; never store it in GitHub or a committed `.env` file.
 
 ## 7. Create Azure Static Web Apps
 

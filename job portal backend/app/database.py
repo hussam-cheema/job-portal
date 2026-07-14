@@ -168,6 +168,12 @@ def _reset_app_tables() -> None:
 def _ensure_new_columns() -> None:
     """Add columns/tables introduced after initial deploy (Postgres-safe)."""
     alters = [
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP NULL',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64) NULL',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP NULL',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_requested_at TIMESTAMP NULL',
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS focus_keyword VARCHAR(200)',
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS seo_score DOUBLE PRECISION',
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS readability_score DOUBLE PRECISION',
@@ -177,6 +183,12 @@ def _ensure_new_columns() -> None:
     if DATABASE_URL.startswith("sqlite"):
         # SQLite lacks IF NOT EXISTS for columns — ignore errors
         alters = [
+            "ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN locked_at DATETIME",
+            "ALTER TABLE users ADD COLUMN password_reset_token_hash VARCHAR(64)",
+            "ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME",
+            "ALTER TABLE users ADD COLUMN password_reset_requested_at DATETIME",
             "ALTER TABLE seo_meta ADD COLUMN focus_keyword VARCHAR(200)",
             "ALTER TABLE seo_meta ADD COLUMN seo_score FLOAT",
             "ALTER TABLE seo_meta ADD COLUMN readability_score FLOAT",

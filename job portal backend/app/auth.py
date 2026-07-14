@@ -33,18 +33,21 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(username: str) -> str:
+def create_access_token(username: str, auth_version: int) -> str:
     hours = int(cfg("auth", "jwt_expire_hours", default=72) or 72)
     expire = datetime.utcnow() + timedelta(hours=hours)
-    payload = {"sub": username, "exp": expire}
+    payload = {"sub": username, "ver": auth_version, "exp": expire}
     return jwt.encode(payload, jwt_secret(), algorithm=ALGORITHM)
 
 
-def decode_token(token: str) -> Optional[str]:
+def decode_token(token: str) -> Optional[tuple[str, int]]:
     try:
         payload = jwt.decode(token, jwt_secret(), algorithms=[ALGORITHM])
         sub = payload.get("sub")
-        return str(sub) if sub else None
+        version = payload.get("ver")
+        if not sub or not isinstance(version, int):
+            return None
+        return str(sub), version
     except JWTError:
         return None
     except Exception:
@@ -58,11 +61,17 @@ def get_current_admin(
 ) -> User:
     if not credentials or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    username = decode_token(credentials.credentials)
-    if not username:
+    token_identity = decode_token(credentials.credentials)
+    if not token_identity:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    username, auth_version = token_identity
     try:
-        user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+        user = db.execute(
+            select(User).where(
+                User.username == username,
+                User.auth_version == auth_version,
+            )
+        ).scalar_one_or_none()
     except Exception:
         logger.exception("admin lookup failed")
         raise HTTPException(status_code=503, detail="Database unavailable") from None
@@ -75,7 +84,12 @@ def ensure_admin_user(db: Session) -> None:
     """Create the bootstrap admin and migrate any legacy plaintext password."""
     try:
         username = env("ADMIN_USERNAME") or "admin"
-        existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+        existing = db.execute(
+            select(User)
+            .where(User.is_admin.is_(True))
+            .order_by(User.created_at.asc())
+            .limit(1)
+        ).scalar_one_or_none()
         if existing:
             if not pwd_context.identify(existing.password_hash):
                 existing.password_hash = hash_password(existing.password_hash)
