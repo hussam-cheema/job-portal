@@ -49,6 +49,7 @@ export default function JobFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [qna, setQna] = useState<JobQnA[]>([]);
   const [qnaError, setQnaError] = useState<string | null>(null);
+  const [qnaMessage, setQnaMessage] = useState<string | null>(null);
   const [qnaLoading, setQnaLoading] = useState(false);
   const [timer, setTimer] = useState(0);
   const [savedId, setSavedId] = useState<string | null>(jobId);
@@ -133,7 +134,7 @@ export default function JobFormPage() {
   useEffect(() => {
     if (!qnaLoading) return;
     setTimer(0);
-    const id = setInterval(() => setTimer((t) => t + 1), 1000);
+    const id = setInterval(() => setTimer((t) => Math.min(60, t + 1)), 1000);
     return () => clearInterval(id);
   }, [qnaLoading]);
 
@@ -199,6 +200,7 @@ export default function JobFormPage() {
     }
     setQnaLoading(true);
     setQnaError(null);
+    setQnaMessage(null);
     try {
       if (!savedId) {
         setQnaError("Save the job before fetching YouTube Q&A.");
@@ -206,7 +208,15 @@ export default function JobFormPage() {
       }
       const result = await adminFetchQnA(token, savedId);
       setQna(result.items || []);
-      if (result.error) setQnaError(result.error);
+      if (result.error) {
+        setQnaError(result.error);
+      } else if (result.count > 0) {
+        setQnaMessage(
+          `Stored ${result.count} Q&A ${result.count === 1 ? "pair" : "pairs"} from ${result.videos_scanned} relevant ${result.videos_scanned === 1 ? "video" : "videos"}.`
+        );
+      } else {
+        setQnaError("No relevant question-and-answer pairs were found on YouTube.");
+      }
     } catch (err) {
       setQnaError(err instanceof Error ? err.message : "QnA fetch failed");
     } finally {
@@ -405,7 +415,29 @@ export default function JobFormPage() {
             </select>
           </div>
           <div>
-            <label className="field-label">City / Cities</label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="field-label mb-0">City / Cities</label>
+              {cityOptions.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[var(--accent)] underline underline-offset-4"
+                    onClick={() => setField("cities", cityOptions)}
+                  >
+                    Select all cities
+                  </button>
+                  {form.cities.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-[var(--muted)] underline underline-offset-4"
+                      onClick={() => setField("cities", [])}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <TagInput
               values={form.cities}
               onChange={(v) => setField("cities", v)}
@@ -484,6 +516,7 @@ export default function JobFormPage() {
             )}
           </div>
           {qnaError && <p className="field-error mt-2">{qnaError}</p>}
+          {qnaMessage && <p className="mt-2 text-sm font-medium text-[var(--success)]">{qnaMessage}</p>}
           {qna.length > 0 && (
             <ol className="mt-4 space-y-3 list-decimal list-inside">
               {qna.map((item, idx) => (

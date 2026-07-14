@@ -5,6 +5,8 @@ import re
 import subprocess
 from typing import Any
 
+import httpx
+
 from app.config import cfg, env
 from app.logging_config import get_logger
 
@@ -23,7 +25,12 @@ def _has_api_key() -> bool:
     return not any(p in low for p in ("your-", "changeme", "xxx", "todo", "replace"))
 
 
-def search_youtube(query: str, max_results: int | None = None) -> list[dict[str, Any]]:
+def search_youtube(
+    query: str,
+    max_results: int | None = None,
+    *,
+    timeout_seconds: float = 10,
+) -> list[dict[str, Any]]:
     conf = _yt_cfg()
     if not conf.get("enabled", True):
         return []
@@ -31,7 +38,7 @@ def search_youtube(query: str, max_results: int | None = None) -> list[dict[str,
 
     if _has_api_key():
         try:
-            videos = _search_api(query, max_results)
+            videos = _search_api(query, max_results, timeout_seconds)
             if videos:
                 logger.info("youtube_search_api query=%s count=%s", query, len(videos))
                 return videos
@@ -39,7 +46,7 @@ def search_youtube(query: str, max_results: int | None = None) -> list[dict[str,
             logger.exception("youtube_api_search_failed — fallback yt-dlp")
 
     try:
-        return _search_ytdlp(query, max_results)
+        return _search_ytdlp(query, max_results, timeout_seconds)
     except FileNotFoundError:
         logger.warning("yt_dlp_not_installed")
         return []
@@ -48,17 +55,23 @@ def search_youtube(query: str, max_results: int | None = None) -> list[dict[str,
         return []
 
 
-def _search_api(query: str, max_results: int) -> list[dict[str, Any]]:
-    from googleapiclient.discovery import build
-
-    youtube = build("youtube", "v3", developerKey=env("YOUTUBE_API_KEY"))
-    response = (
-        youtube.search()
-        .list(q=query, part="snippet", type="video", maxResults=max_results, relevanceLanguage="en")
-        .execute()
+def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
+    response = httpx.get(
+        "https://www.googleapis.com/youtube/v3/search",
+        params={
+            "q": query,
+            "part": "snippet",
+            "type": "video",
+            "maxResults": max_results,
+            "relevanceLanguage": "en",
+            "key": env("YOUTUBE_API_KEY"),
+        },
+        timeout=max(1.0, timeout_seconds),
     )
+    response.raise_for_status()
+    payload = response.json()
     videos: list[dict[str, Any]] = []
-    for item in response.get("items", []):
+    for item in payload.get("items", []):
         video_id = (item.get("id") or {}).get("videoId")
         if not video_id:
             continue
@@ -75,7 +88,7 @@ def _search_api(query: str, max_results: int) -> list[dict[str, Any]]:
     return videos
 
 
-def _search_ytdlp(query: str, max_results: int) -> list[dict[str, Any]]:
+def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
     cmd = [
         "yt-dlp",
         f"ytsearch{max_results}:{query}",
@@ -85,7 +98,13 @@ def _search_ytdlp(query: str, max_results: int) -> list[dict[str, Any]]:
         "--quiet",
         "--no-warnings",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90, check=False)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=max(1.0, timeout_seconds),
+        check=False,
+    )
     if proc.returncode != 0 and not proc.stdout.strip():
         logger.warning("yt_dlp_search_failed stderr=%s", (proc.stderr or "")[:300])
         return []
@@ -143,7 +162,12 @@ def get_transcript(video_id: str) -> str | None:
         return None
 
 
-def get_top_comments(video_id: str, max_comments: int | None = None) -> list[str]:
+def get_top_comments(
+    video_id: str,
+    max_comments: int | None = None,
+    *,
+    timeout_seconds: float = 10,
+) -> list[str]:
     conf = _yt_cfg()
     if not conf.get("extract_comments", True):
         return []
@@ -151,14 +175,14 @@ def get_top_comments(video_id: str, max_comments: int | None = None) -> list[str
 
     if _has_api_key():
         try:
-            comments = _comments_api(video_id, max_comments)
+            comments = _comments_api(video_id, max_comments, timeout_seconds)
             if comments:
                 return comments
         except Exception:
             logger.exception("youtube_api_comments_failed — fallback yt-dlp")
 
     try:
-        return _comments_ytdlp(video_id, max_comments)
+        return _comments_ytdlp(video_id, max_comments, timeout_seconds)
     except FileNotFoundError:
         return []
     except Exception as exc:
@@ -166,23 +190,23 @@ def get_top_comments(video_id: str, max_comments: int | None = None) -> list[str
         return []
 
 
-def _comments_api(video_id: str, max_comments: int) -> list[str]:
-    from googleapiclient.discovery import build
-
-    youtube = build("youtube", "v3", developerKey=env("YOUTUBE_API_KEY"))
-    response = (
-        youtube.commentThreads()
-        .list(
-            part="snippet",
-            videoId=video_id,
-            maxResults=min(max_comments, 100),
-            textFormat="plainText",
-            order="relevance",
-        )
-        .execute()
+def _comments_api(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
+    response = httpx.get(
+        "https://www.googleapis.com/youtube/v3/commentThreads",
+        params={
+            "part": "snippet",
+            "videoId": video_id,
+            "maxResults": min(max_comments, 100),
+            "textFormat": "plainText",
+            "order": "relevance",
+            "key": env("YOUTUBE_API_KEY"),
+        },
+        timeout=max(1.0, timeout_seconds),
     )
+    response.raise_for_status()
+    payload = response.json()
     comments: list[str] = []
-    for item in response.get("items", []):
+    for item in payload.get("items", []):
         top = item.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
         text = (top.get("textDisplay") or "").strip()
         if text:
@@ -190,7 +214,7 @@ def _comments_api(video_id: str, max_comments: int) -> list[str]:
     return comments
 
 
-def _comments_ytdlp(video_id: str, max_comments: int) -> list[str]:
+def _comments_ytdlp(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
     cmd = [
         "yt-dlp",
         f"https://www.youtube.com/watch?v={video_id}",
@@ -199,7 +223,13 @@ def _comments_ytdlp(video_id: str, max_comments: int) -> list[str]:
         "--no-warnings",
         "-J",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=max(1.0, timeout_seconds),
+        check=False,
+    )
     if not proc.stdout.strip():
         return []
     data = json.loads(proc.stdout)

@@ -43,7 +43,7 @@ llm:
   tasks:
     qna_extraction:
       provider: deepseek
-      model: deepseek-v4-pro
+      model: deepseek-chat
       fallback: [openai, grok, ollama, glm, meta, claude]
   providers:
     grok:
@@ -54,7 +54,7 @@ llm:
       model: "gpt-4o-mini"
     deepseek:
       enabled: true
-      model: "deepseek-v4-pro"
+      model: "deepseek-chat"
     meta:
       enabled: false
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -71,12 +71,12 @@ llm:
 youtube_qna:
   enabled: true
   max_qna: 20
-  max_youtube_videos: 5
+  max_youtube_videos: 3
   max_comments: 50
   extract_transcripts: true
   extract_comments: true
-  timeout_seconds: 60
-  min_title_similarity: 0.95
+  timeout_seconds: 55
+  min_title_similarity: 0.35
   # YOUTUBE_API_KEY in .env
 
 # Large semantic embeddings used to compare job titles with YouTube titles.

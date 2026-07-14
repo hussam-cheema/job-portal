@@ -26,6 +26,14 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class PasswordResetAttempt(Base):
+    __tablename__ = "password_reset_attempts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    requester_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class AnalyticsVisit(Base):
     __tablename__ = "analytics_visits"
 

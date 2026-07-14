@@ -23,6 +23,7 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
         return JSONResponse(
             status_code=status,
             content={"detail": detail, "path": str(request.url.path)},
+            headers=getattr(exc, "headers", None),
         )
     return await unhandled_exception_handler(request, exc)
 

@@ -225,3 +225,16 @@ export type AnalyticsDashboard = {
     page_views: number;
   }>;
 };
+
+export type AnalyticsRealtime = {
+  window_minutes: number;
+  active_visitors: number;
+  page_views: number;
+  generated_at: string;
+  pages: Array<{
+    path: string;
+    visitors: number;
+    page_views: number;
+    last_seen: string;
+  }>;
+};

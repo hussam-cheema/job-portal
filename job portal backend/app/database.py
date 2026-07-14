@@ -149,6 +149,7 @@ def _reset_app_tables() -> None:
         "pages",
         "jobs",
         "users",
+        "password_reset_attempts",
         "analytics_visits",
         "agent_runs",
         "job_resources",

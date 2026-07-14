@@ -19,7 +19,7 @@ from app.auth import get_current_admin
 from app.config import cfg, jwt_secret
 from app.database import get_db
 from app.models import AnalyticsVisit, User
-from app.schemas import AnalyticsDashboard, AnalyticsVisitIn
+from app.schemas import AnalyticsDashboard, AnalyticsRealtime, AnalyticsVisitIn
 
 router = APIRouter()
 BOT_PATTERN = re.compile(r"bot|crawler|spider|slurp|preview|headless", re.I)
@@ -114,13 +114,17 @@ def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depe
     path = "/" + payload.path.lstrip("/").split("?", 1)[0][:499]
     cutoff = datetime.utcnow() - timedelta(minutes=30)
     duplicate = db.execute(
-        select(AnalyticsVisit.id).where(
+        select(AnalyticsVisit).where(
             AnalyticsVisit.visitor_hash == visitor_hash,
             AnalyticsVisit.path == path,
             AnalyticsVisit.visited_at >= cutoff,
         )
     ).scalar_one_or_none()
-    if not duplicate:
+    if duplicate:
+        # Heartbeats refresh presence without increasing monthly page-view totals.
+        duplicate.visited_at = datetime.utcnow()
+        db.commit()
+    else:
         country, region, location_verified = _location(request)
         db.add(
             AnalyticsVisit(
@@ -135,6 +139,51 @@ def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depe
         )
         db.commit()
     return {"ok": True}
+
+
+@router.get("/admin/analytics/realtime", response_model=AnalyticsRealtime)
+def realtime_analytics(
+    window_minutes: int = Query(5, ge=1, le=60),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=window_minutes)
+    rows = db.execute(
+        select(AnalyticsVisit)
+        .where(AnalyticsVisit.visited_at >= cutoff)
+        .order_by(AnalyticsVisit.visited_at.desc())
+    ).scalars().all()
+
+    active_visitors = {row.visitor_hash for row in rows}
+    pages: dict[str, dict[str, object]] = {}
+    for row in rows:
+        page = pages.setdefault(
+            row.path,
+            {"visitors": set(), "page_views": 0, "last_seen": row.visited_at},
+        )
+        page["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
+        page["page_views"] = int(page["page_views"]) + 1
+        if row.visited_at > page["last_seen"]:  # type: ignore[operator]
+            page["last_seen"] = row.visited_at
+
+    page_rows = [
+        {
+            "path": path,
+            "visitors": len(data["visitors"]),
+            "page_views": data["page_views"],
+            "last_seen": data["last_seen"],
+        }
+        for path, data in pages.items()
+    ]
+    page_rows.sort(key=lambda item: item["last_seen"], reverse=True)
+    return AnalyticsRealtime(
+        window_minutes=window_minutes,
+        active_visitors=len(active_visitors),
+        page_views=len(rows),
+        pages=page_rows,
+        generated_at=now,
+    )
 
 
 def _month_bounds(value: str | None) -> tuple[str, datetime, datetime]:

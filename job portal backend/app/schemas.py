@@ -36,6 +36,7 @@ class CredentialsResetIn(BaseModel):
 class PasswordResetRequestOut(BaseModel):
     ok: bool = True
     message: str
+    retry_after_seconds: int = 60
 
 
 class AnalyticsVisitIn(BaseModel):
@@ -54,6 +55,21 @@ class AnalyticsLocation(BaseModel):
     region: Optional[str] = None
     visitors: int
     page_views: int
+
+
+class AnalyticsRealtimePage(BaseModel):
+    path: str
+    visitors: int
+    page_views: int
+    last_seen: datetime
+
+
+class AnalyticsRealtime(BaseModel):
+    window_minutes: int
+    active_visitors: int
+    page_views: int
+    pages: list[AnalyticsRealtimePage] = Field(default_factory=list)
+    generated_at: datetime
 
 
 class AnalyticsDashboard(BaseModel):

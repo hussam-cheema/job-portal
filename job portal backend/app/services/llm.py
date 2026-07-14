@@ -95,7 +95,12 @@ def resolve_task_llm(task: str = "qna_extraction") -> dict[str, Any]:
     }
 
 
-def chat_completion(messages: list[dict[str, str]], *, temperature: float | None = None) -> str:
+def chat_completion(
+    messages: list[dict[str, str]],
+    *,
+    temperature: float | None = None,
+    timeout_seconds: float = 30,
+) -> str:
     """OpenAI-compatible chat completion across providers."""
     resolved = resolve_task_llm("qna_extraction")
     provider = resolved["provider"]
@@ -103,7 +108,7 @@ def chat_completion(messages: list[dict[str, str]], *, temperature: float | None
 
     try:
         if provider == "claude":
-            return _claude_chat(messages, resolved, temp)
+            return _claude_chat(messages, resolved, temp, timeout_seconds)
 
         import httpx
 
@@ -118,7 +123,7 @@ def chat_completion(messages: list[dict[str, str]], *, temperature: float | None
             "temperature": temp,
             "max_tokens": resolved["max_tokens"],
         }
-        with httpx.Client(timeout=90.0) as client:
+        with httpx.Client(timeout=max(1.0, timeout_seconds)) as client:
             resp = client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -129,7 +134,12 @@ def chat_completion(messages: list[dict[str, str]], *, temperature: float | None
         raise
 
 
-def _claude_chat(messages: list[dict[str, str]], resolved: dict[str, Any], temp: float) -> str:
+def _claude_chat(
+    messages: list[dict[str, str]],
+    resolved: dict[str, Any],
+    temp: float,
+    timeout_seconds: float,
+) -> str:
     import httpx
 
     system = ""
@@ -153,7 +163,7 @@ def _claude_chat(messages: list[dict[str, str]], resolved: dict[str, Any], temp:
         "system": system,
         "messages": chat_msgs or [{"role": "user", "content": ""}],
     }
-    with httpx.Client(timeout=90.0) as client:
+    with httpx.Client(timeout=max(1.0, timeout_seconds)) as client:
         resp = client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         data = resp.json()

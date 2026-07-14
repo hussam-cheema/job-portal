@@ -8,6 +8,9 @@ const API = (
   "http://localhost:8000"
 ).replace(/\/$/, "");
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [
     { url: `${SITE}/`, changeFrequency: "daily", priority: 1 },
@@ -17,44 +20,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const res = await fetch(`${API}/api/jobs?page_size=100`, {
-      next: { revalidate: 60 },
-    });
+    const res = await fetch(`${API}/api/sitemap-data`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      for (const job of data.items || []) {
+      for (const item of data.urls || []) {
+        if (entries.some((entry) => entry.url === item.loc)) continue;
         entries.push({
-          url: `${SITE}/jobs/${job.slug || job.id}`,
-          lastModified: job.published_date || job.created_at || undefined,
-          changeFrequency: "weekly",
-          priority: 0.8,
+          url: item.loc,
+          lastModified: item.lastmod || undefined,
+          changeFrequency: item.changefreq || "weekly",
+          priority: Number(item.priority ?? 0.5),
         });
       }
     }
   } catch {
-    /* keep static entries */
+    /* keep static entries if the API is unavailable */
   }
 
   try {
-    const res = await fetch(`${API}/api/pages`, { next: { revalidate: 60 } });
-    if (res.ok) {
-      const pages = await res.json();
-      for (const p of pages || []) {
-        if (["about", "contact", "privacy"].includes(p.slug)) continue;
-        entries.push({
-          url: `${SITE}/p/${p.slug}`,
-          lastModified: p.updated_at || undefined,
-          changeFrequency: "monthly",
-          priority: 0.5,
-        });
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    const res = await fetch(`${API}/api/filters`, { next: { revalidate: 60 } });
+    const res = await fetch(`${API}/api/filters`, { cache: "no-store" });
     if (res.ok) {
       const filters = await res.json();
       for (const tag of filters.tags || []) {

@@ -15,7 +15,12 @@ export function VisitTracker() {
       visitorId = crypto.randomUUID();
       localStorage.setItem(VISITOR_KEY, visitorId);
     }
-    void trackVisit(visitorId, pathname || "/");
+    const path = pathname || "/";
+    void trackVisit(visitorId, path);
+    const heartbeat = window.setInterval(() => {
+      void trackVisit(visitorId, path);
+    }, 60_000);
+    return () => window.clearInterval(heartbeat);
   }, [pathname]);
 
   return null;

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import { useAdminAuth } from "@/lib/adminAuth";
-import { adminAnalytics } from "@/lib/api";
-import type { AnalyticsDashboard } from "@/lib/types";
+import { adminAnalytics, adminRealtimeAnalytics } from "@/lib/api";
+import type { AnalyticsDashboard, AnalyticsRealtime } from "@/lib/types";
 
 function currentMonth() {
   const now = new Date();
@@ -17,6 +17,8 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [realtime, setRealtime] = useState<AnalyticsRealtime | null>(null);
+  const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -34,6 +36,30 @@ export default function AnalyticsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const loadRealtime = async () => {
+      try {
+        const result = await adminRealtimeAnalytics(token, 5);
+        if (!cancelled) {
+          setRealtime(result);
+          setRealtimeError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRealtimeError(err instanceof Error ? err.message : "Live analytics unavailable");
+        }
+      }
+    };
+    void loadRealtime();
+    const interval = window.setInterval(() => void loadRealtime(), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [token]);
 
   const chart = useMemo(() => {
     if (!data) return [];
@@ -64,7 +90,17 @@ export default function AnalyticsPage() {
         <div className="card-panel p-8 text-sm text-[var(--muted)]">Loading analytics…</div>
       ) : data ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="card-panel p-5">
+              <p className="flex items-center gap-2 text-xs uppercase text-[var(--muted)]">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+                Active now
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--navy-100)]">
+                {(realtime?.active_visitors || 0).toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Last {realtime?.window_minutes || 5} minutes</p>
+            </div>
             <div className="card-panel p-5">
               <p className="text-xs uppercase text-[var(--muted)]">Unique visitors</p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--navy-100)]">{data.unique_visitors.toLocaleString()}</p>
@@ -74,6 +110,38 @@ export default function AnalyticsPage() {
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--navy-100)]">{data.page_views.toLocaleString()}</p>
             </div>
           </div>
+
+          {realtimeError && <p className="field-error mt-4">{realtimeError}</p>}
+          <section className="card-panel mt-5 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-4">
+              <h3 className="font-semibold text-[var(--navy-100)]">Realtime pages</h3>
+              <span className="text-xs text-[var(--muted)]">Refreshes every 10 seconds</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="bg-[var(--navy-850)]">
+                  <tr>
+                    <th className="px-5 py-3">Page</th>
+                    <th className="px-5 py-3">Visitors</th>
+                    <th className="px-5 py-3">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {realtime?.pages.length ? realtime.pages.map((page) => (
+                    <tr key={page.path} className="border-t border-[var(--border)]">
+                      <td className="px-5 py-3 font-mono text-xs">{page.path}</td>
+                      <td className="px-5 py-3 tabular-nums">{page.visitors}</td>
+                      <td className="px-5 py-3 text-[var(--muted)]">
+                        {new Date(page.last_seen).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={3} className="px-5 py-6 text-center text-[var(--muted)]">No active visitors in the last five minutes.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section className="card-panel mt-5 p-5">
             <div className="flex items-center justify-between gap-3">
@@ -95,25 +163,27 @@ export default function AnalyticsPage() {
             </div>
           </section>
 
-          <section className="card-panel mt-5 overflow-x-auto">
+          <section className="card-panel mt-5 overflow-hidden">
             <div className="border-b border-[var(--border)] px-5 py-4">
               <h3 className="font-semibold text-[var(--navy-100)]">Visitors by location</h3>
             </div>
-            <table className="w-full text-left text-sm">
-              <thead><tr><th>Country</th><th>Region</th><th>Visitors</th><th>Page views</th></tr></thead>
-              <tbody>
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="bg-[var(--navy-850)]"><tr><th className="px-5 py-3">Country</th><th className="px-5 py-3">Region</th><th className="px-5 py-3">Visitors</th><th className="px-5 py-3">Page views</th></tr></thead>
+              <tbody className="divide-y divide-[var(--border)]">
                 {data.locations.length ? data.locations.map((location) => (
                   <tr key={`${location.country}-${location.region || ""}`}>
-                    <td>{location.country}</td>
-                    <td>{location.region || "—"}</td>
-                    <td>{location.visitors.toLocaleString()}</td>
-                    <td>{location.page_views.toLocaleString()}</td>
+                    <td className="px-5 py-3">{location.country}</td>
+                    <td className="px-5 py-3">{location.region || "—"}</td>
+                    <td className="px-5 py-3 tabular-nums">{location.visitors.toLocaleString()}</td>
+                    <td className="px-5 py-3 tabular-nums">{location.page_views.toLocaleString()}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={4} className="text-center text-[var(--muted)]">No visits recorded for this month.</td></tr>
+                  <tr><td colSpan={4} className="px-5 py-6 text-center text-[var(--muted)]">No visits recorded for this month.</td></tr>
                 )}
               </tbody>
             </table>
+            </div>
           </section>
         </>
       ) : null}

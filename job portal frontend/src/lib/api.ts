@@ -173,7 +173,7 @@ export async function requestAdminPasswordReset() {
   if (!res.ok) {
     throw new Error(body.detail || "Unable to send the recovery email");
   }
-  return body as { ok: boolean; message: string };
+  return body as { ok: boolean; message: string; retry_after_seconds: number };
 }
 
 export async function resetAdminCredentials(
@@ -243,6 +243,17 @@ export async function adminAnalytics(
   return res.json();
 }
 
+export async function adminRealtimeAnalytics(token: string, windowMinutes = 5) {
+  const res = await fetch(
+    `${API_BASE}/api/admin/analytics/realtime?window_minutes=${windowMinutes}`,
+    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+  );
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => ({}))).detail || "Live analytics failed");
+  }
+  return res.json() as Promise<import("./types").AnalyticsRealtime>;
+}
+
 export async function adminCreateJob(token: string, data: JobFormData) {
   const res = await fetch(`${API_BASE}/api/admin/jobs`, {
     method: "POST",
@@ -273,10 +284,19 @@ export async function adminDeleteJob(token: string, id: string) {
 }
 
 export async function adminFetchQnA(token: string, jobId: string): Promise<QnAFetchResult> {
-  const res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}/fetch-qna`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}/fetch-qna`, {
+      method: "POST",
+      headers: authHeaders(token),
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name)) {
+      throw new Error("YouTube Q&A processing reached the 60-second limit.");
+    }
+    throw error;
+  }
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "QnA fetch failed");
   return res.json();
 }

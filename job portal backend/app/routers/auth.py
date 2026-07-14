@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+import hashlib
+import hmac
+from datetime import datetime, timedelta
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -11,12 +14,13 @@ from app.auth import (
     ensure_admin_user,
     get_current_admin,
     hash_password,
+    jwt_secret,
     verify_password,
 )
 from app.database import get_db
 from app.config import env
 from app.logging_config import get_logger
-from app.models import User
+from app.models import PasswordResetAttempt, User
 from app.schemas import (
     CredentialsResetIn,
     LoginIn,
@@ -28,6 +32,51 @@ from app.services.auth_recovery import issue_password_reset, user_for_reset_toke
 
 router = APIRouter()
 logger = get_logger("jobportal.auth_router")
+
+
+def _requester_hash(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    address = request.headers.get("cf-connecting-ip") or forwarded
+    if not address and request.client:
+        address = request.client.host
+    identity = address or "unknown"
+    return hmac.new(jwt_secret().encode(), identity.encode(), hashlib.sha256).hexdigest()
+
+
+def _record_recovery_attempt(request: Request, db: Session) -> None:
+    now = datetime.utcnow()
+    hourly_limit = int(env("PASSWORD_RESET_MAX_REQUESTS_PER_IP_HOUR", "5") or "5")
+    global_hourly_limit = int(env("PASSWORD_RESET_MAX_REQUESTS_PER_HOUR", "10") or "10")
+    requester_hash = _requester_hash(request)
+    cutoff = now.replace(microsecond=0) - timedelta(hours=1)
+    cleanup_cutoff = now.replace(microsecond=0) - timedelta(days=1)
+    db.execute(delete(PasswordResetAttempt).where(PasswordResetAttempt.attempted_at < cleanup_cutoff))
+    attempts = db.execute(
+        select(func.count(PasswordResetAttempt.id)).where(
+            PasswordResetAttempt.requester_hash == requester_hash,
+            PasswordResetAttempt.attempted_at >= cutoff,
+        )
+    ).scalar_one()
+    total_attempts = db.execute(
+        select(func.count(PasswordResetAttempt.id)).where(
+            PasswordResetAttempt.attempted_at >= cutoff,
+        )
+    ).scalar_one()
+    if attempts >= hourly_limit or total_attempts >= global_hourly_limit:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many recovery requests. Try again later.",
+            headers={"Retry-After": "3600"},
+        )
+    db.add(
+        PasswordResetAttempt(
+            id=str(uuid4()),
+            requester_hash=requester_hash,
+            attempted_at=now,
+        )
+    )
+    db.commit()
 
 
 def _clear_recovery_state(user: User) -> None:
@@ -106,19 +155,25 @@ def me(admin: User = Depends(get_current_admin)):
 
 
 @router.post("/auth/forgot-password", response_model=PasswordResetRequestOut)
-def forgot_password(db: Session = Depends(get_db)):
+def forgot_password(request: Request, db: Session = Depends(get_db)):
     try:
+        _record_recovery_attempt(request, db)
         user = ensure_admin_user(db)
         delivered = issue_password_reset(db, user, reason="forgot password request")
+        cooldown = int(env("PASSWORD_RESET_COOLDOWN_SECONDS", "60") or "60")
         if not delivered:
             return PasswordResetRequestOut(
                 message=(
                     "A reset email was requested recently. Wait briefly before requesting another."
-                )
+                ),
+                retry_after_seconds=cooldown,
             )
         return PasswordResetRequestOut(
-            message="A reset link has been sent to the administrator email."
+            message="A reset link has been sent to the administrator email.",
+            retry_after_seconds=cooldown,
         )
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("forgot password email failed")
         raise HTTPException(

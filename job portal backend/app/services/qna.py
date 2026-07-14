@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any
 from uuid import uuid4
 
@@ -68,6 +69,7 @@ def extract_qna_from_video(
     job_title: str,
     transcript: str | None,
     comments: list[str],
+    timeout_seconds: float = 20,
 ) -> list[dict[str, str]]:
     if not (transcript or comments):
         return []
@@ -78,34 +80,43 @@ def extract_qna_from_video(
         f"COMMENTS (may contain Q in one comment and A in another):\n"
         + "\n---\n".join(comments[:50])
     )
-    try:
-        content = chat_completion(
-            [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": payload},
-            ],
-            temperature=0.1,
+    content = chat_completion(
+        [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": payload},
+        ],
+        temperature=0.1,
+        timeout_seconds=timeout_seconds,
+    )
+    data = _safe_json(content)
+    items: list[dict[str, str]] = []
+    for row in data.get("qna") or []:
+        q = (row.get("question") or "").strip()
+        a = (row.get("answer") or "").strip()
+        if not q or not a:
+            continue
+        if not answer_matches_question(q, a):
+            continue
+        items.append(
+            {
+                "question": q,
+                "answer": a,
+                "source": (row.get("source") or "mixed"),
+            }
         )
-        data = _safe_json(content)
-        items: list[dict[str, str]] = []
-        for row in data.get("qna") or []:
-            q = (row.get("question") or "").strip()
-            a = (row.get("answer") or "").strip()
-            if not q or not a:
-                continue
-            if not answer_matches_question(q, a):
-                continue
-            items.append(
-                {
-                    "question": q,
-                    "answer": a,
-                    "source": (row.get("source") or "mixed"),
-                }
-            )
-        return items
-    except Exception:
-        logger.exception("qna_llm_failed")
-        return []
+    return items
+
+
+def _call_with_timeout(function, timeout_seconds: float):
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qna-external")
+    future = executor.submit(function)
+    try:
+        return future.result(timeout=max(1.0, timeout_seconds))
+    except FutureTimeoutError as exc:
+        future.cancel()
+        raise TimeoutError("external Q&A source timed out") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def fetch_qna_for_job_title(
@@ -124,7 +135,8 @@ def fetch_qna_for_job_title(
     max_videos = int(conf.get("max_youtube_videos") or 5)
     timeout = float(conf.get("timeout_seconds") or 60)
     min_sim = float(conf.get("min_title_similarity") or 0.95)
-    started = time.time()
+    started = time.monotonic()
+    deadline = started + timeout
     error: str | None = None
     search_succeeded = False
     collected: list[dict[str, Any]] = []
@@ -134,7 +146,11 @@ def fetch_qna_for_job_title(
     try:
         query = f"{job_title} interview questions answers Pakistan".strip()
         # Fetch more than max_videos then rank by embedding similarity
-        raw_videos = search_youtube(query, max_results=max(max_videos * 2, max_videos))
+        raw_videos = search_youtube(
+            query,
+            max_results=max(max_videos * 2, max_videos),
+            timeout_seconds=min(10.0, max(1.0, deadline - time.monotonic())),
+        )
         ranked = rank_by_similarity(
             job_title,
             raw_videos,
@@ -156,8 +172,9 @@ def fetch_qna_for_job_title(
         )
 
         for video in videos:
-            if time.time() - started >= timeout:
-                logger.info("qna_timeout job_id=%s after %.1fs", job_id, time.time() - started)
+            if time.monotonic() >= deadline:
+                error = f"YouTube Q&A processing reached the {int(timeout)}-second limit."
+                logger.info("qna_timeout job_id=%s after %.1fs", job_id, time.monotonic() - started)
                 break
             if len(collected) >= max_qna:
                 break
@@ -166,16 +183,31 @@ def fetch_qna_for_job_title(
                 continue
             videos_scanned += 1
             try:
-                transcript = get_transcript(video_id)
-                comments = get_top_comments(video_id)
+                remaining = deadline - time.monotonic()
+                transcript = _call_with_timeout(
+                    lambda: get_transcript(video_id),
+                    min(10.0, remaining),
+                )
+                remaining = deadline - time.monotonic()
+                if remaining <= 1:
+                    raise TimeoutError("Q&A processing deadline reached")
+                comments = get_top_comments(
+                    video_id,
+                    timeout_seconds=min(10.0, remaining),
+                )
+                remaining = deadline - time.monotonic()
+                if remaining <= 1:
+                    raise TimeoutError("Q&A processing deadline reached")
                 pairs = extract_qna_from_video(
                     title=video.get("title") or job_title,
                     job_title=job_title,
                     transcript=transcript,
                     comments=comments,
+                    timeout_seconds=min(20.0, remaining),
                 )
                 for p in pairs:
-                    if time.time() - started >= timeout:
+                    if time.monotonic() >= deadline:
+                        error = f"YouTube Q&A processing reached the {int(timeout)}-second limit."
                         break
                     qkey = p["question"].strip().lower()
                     if qkey in seen_q:
@@ -197,7 +229,10 @@ def fetch_qna_for_job_title(
                         break
             except Exception as exc:
                 logger.exception("qna video failed video_id=%s", video_id)
-                error = str(exc)
+                if isinstance(exc, TimeoutError):
+                    error = f"YouTube Q&A processing reached the {int(timeout)}-second limit."
+                    break
+                error = f"A YouTube or AI processing error occurred: {str(exc)[:300]}"
     except Exception as exc:
         logger.exception("fetch_qna_for_job_title failed job_id=%s", job_id)
         error = str(exc)
@@ -207,6 +242,27 @@ def fetch_qna_for_job_title(
     try:
         if not search_succeeded:
             raise RuntimeError(error or "YouTube search did not complete")
+        if not collected:
+            existing = (
+                db.query(JobQnA)
+                .filter(JobQnA.job_id == job_id)
+                .order_by(JobQnA.created_at.asc())
+                .all()
+            )
+            if not error:
+                error = (
+                    "No relevant question-and-answer pairs were found in matching "
+                    "YouTube transcripts or comments."
+                    if videos
+                    else "No sufficiently relevant YouTube videos were found for this job title."
+                )
+            return {
+                "items": existing,
+                "count": 0,
+                "elapsed_seconds": round(time.monotonic() - started, 2),
+                "error": error,
+                "videos_scanned": videos_scanned,
+            }
         if replace_existing:
             db.query(JobQnA).filter(JobQnA.job_id == job_id).delete(synchronize_session=False)
         for item in collected:
@@ -231,7 +287,7 @@ def fetch_qna_for_job_title(
         error = str(exc)
         saved = []
 
-    elapsed = time.time() - started
+    elapsed = time.monotonic() - started
     return {
         "items": saved,
         "count": len(saved),

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminLogin, requestAdminPasswordReset } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -14,18 +14,30 @@ export default function LoginPage() {
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryCooldown, setRecoveryCooldown] = useState(0);
+
+  useEffect(() => {
+    if (recoveryCooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setRecoveryCooldown((seconds) => Math.max(0, seconds - 1)),
+      1000
+    );
+    return () => window.clearInterval(timer);
+  }, [recoveryCooldown]);
 
   if (ready && token) {
     router.replace("/admin");
   }
 
   async function requestRecovery() {
+    if (recoveryCooldown > 0) return;
     setRecoveryLoading(true);
     setError(null);
     setRecoveryMessage(null);
     try {
       const response = await requestAdminPasswordReset();
       setRecoveryMessage(response.message);
+      setRecoveryCooldown(response.retry_after_seconds || 60);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send recovery email");
     } finally {
@@ -80,9 +92,13 @@ export default function LoginPage() {
               type="button"
               className="text-sm text-[var(--accent)] underline underline-offset-4 disabled:opacity-60"
               onClick={requestRecovery}
-              disabled={recoveryLoading}
+              disabled={recoveryLoading || recoveryCooldown > 0}
             >
-              {recoveryLoading ? "Sending recovery email…" : "Forgot your password?"}
+              {recoveryLoading
+                ? "Sending recovery email…"
+                : recoveryCooldown > 0
+                  ? `Try again in ${recoveryCooldown}s`
+                  : "Forgot your password?"}
             </button>
           </div>
         </div>

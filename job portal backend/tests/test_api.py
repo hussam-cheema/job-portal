@@ -334,6 +334,21 @@ def test_forgot_password_reports_cooldown_without_claiming_new_delivery(
     assert sent == 1
 
 
+def test_forgot_password_rate_limits_repeated_ip_requests(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import auth_recovery
+
+    monkeypatch.setattr(auth_recovery, "_send_password_reset_email", lambda **_kwargs: None)
+    for _ in range(5):
+        assert client.post("/api/auth/forgot-password").status_code == 200
+
+    blocked = client.post("/api/auth/forgot-password")
+    assert blocked.status_code == 429
+    assert blocked.headers["retry-after"] == "3600"
+
+
 def test_recovery_email_uses_fixed_admin_recipient(monkeypatch: pytest.MonkeyPatch):
     from app.services import auth_recovery
 
@@ -469,6 +484,25 @@ def test_monthly_analytics(client: TestClient):
     assert data["locations"][0]["country"] == "PK"
 
 
+def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: TestClient):
+    headers = {"user-agent": "Mozilla/5.0", "cf-ipcountry": "PK"}
+    payload = {"visitor_id": "realtime-visitor", "path": "/jobs/live-role"}
+    assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
+    assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    live = client.get("/api/admin/analytics/realtime?window_minutes=5", headers=auth)
+    assert live.status_code == 200
+    assert live.json()["active_visitors"] == 1
+    assert live.json()["pages"][0]["path"] == "/jobs/live-role"
+
+    monthly = client.get("/api/admin/analytics", headers=auth)
+    assert monthly.json()["page_views"] == 1
+
+
 def test_analytics_ignores_browser_location_hints(client: TestClient):
     response = client.post(
         "/api/analytics/visit",
@@ -522,11 +556,11 @@ def test_qna_refresh_replaces_only_after_strict_title_match(monkeypatch: pytest.
         "rank_by_similarity",
         lambda *args, **kwargs: [
             {**videos[0], "title_similarity": 0.97},
-            {**videos[1], "title_similarity": 0.94},
+            {**videos[1], "title_similarity": 0.2},
         ],
     )
     monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "transcript")
-    monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id: [])
+    monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **_kwargs: [])
     monkeypatch.setattr(
         qna_service,
         "extract_qna_from_video",
@@ -542,3 +576,57 @@ def test_qna_refresh_replaces_only_after_strict_title_match(monkeypatch: pytest.
     assert rows[0].id != "old-qna"
     assert rows[0].youtube_url == "https://youtu.be/match"
     db.close()
+
+
+def test_qna_no_match_keeps_existing_rows_and_returns_visible_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.models import JobQnA
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    db.add(
+        JobQnA(
+            id="existing-qna",
+            job_id="job-no-match",
+            question="Existing question?",
+            answer="Existing answer remains available.",
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(qna_service, "search_youtube", lambda *args, **kwargs: [])
+
+    result = qna_service.fetch_qna_for_job_title(
+        db, job_id="job-no-match", job_title="Uncommon Specialist"
+    )
+
+    assert result["count"] == 0
+    assert "No sufficiently relevant" in result["error"]
+    assert [row.id for row in result["items"]] == ["existing-qna"]
+    assert db.query(JobQnA).filter(JobQnA.job_id == "job-no-match").count() == 1
+    db.close()
+
+
+def test_sitemap_data_includes_newly_created_job(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    created = client.post(
+        "/api/admin/jobs",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        json={
+            "title": "Fresh Sitemap Role",
+            "description": "A newly published role for sitemap verification.",
+            "published_date": "2026-07-14T00:00:00",
+            "job_type": "private",
+            "cities": ["Karachi"],
+        },
+    )
+    assert created.status_code == 200
+    slug = created.json()["slug"]
+    sitemap = client.get("/api/sitemap-data")
+    assert sitemap.status_code == 200
+    assert any(url["loc"].endswith(f"/jobs/{slug}") for url in sitemap.json()["urls"])
