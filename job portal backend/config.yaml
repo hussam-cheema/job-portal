@@ -43,7 +43,7 @@ llm:
   tasks:
     qna_extraction:
       provider: deepseek
-      model: deepseek-chat
+      model: deepseek-v4-pro
       fallback: [openai, grok, ollama, glm, meta, claude]
   providers:
     grok:
@@ -54,7 +54,7 @@ llm:
       model: "gpt-4o-mini"
     deepseek:
       enabled: true
-      model: "deepseek-chat"
+      model: "deepseek-v4-pro"
     meta:
       enabled: false
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -71,11 +71,13 @@ llm:
 youtube_qna:
   enabled: true
   max_qna: 20
-  max_youtube_videos: 3
+  max_youtube_videos: 5
   max_comments: 50
   extract_transcripts: true
   extract_comments: true
   timeout_seconds: 55
+  # Lower values allow related role variants; the hybrid matcher separately
+  # requires organisation acronyms (FIA, NAB, PPSC, etc.) when present.
   min_title_similarity: 0.35
   # YOUTUBE_API_KEY in .env
 

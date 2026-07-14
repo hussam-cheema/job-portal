@@ -187,11 +187,25 @@ def test_stats_open_for_apply(client: TestClient):
 
 
 def test_embeddings_similarity():
-    from app.services.embeddings import text_similarity, answer_matches_question
+    from app.services.embeddings import answer_matches_question, rank_by_similarity, text_similarity
 
     assert text_similarity("software engineer backend python", "python backend engineer") > 0.2
     assert answer_matches_question("What is REST?", "REST is an architectural style for APIs using HTTP.")
     assert not answer_matches_question("What is REST?", "See video")
+
+    ranked = rank_by_similarity(
+        "FIA Inspector jobs in government",
+        [
+            {"title": "Interviews for Government Jobs in Pakistan"},
+            {"title": "FIA Sub Inspector Interview Experience and Questions"},
+            {"title": "FIA written paper result and interview questions"},
+        ],
+        score_key="score",
+    )
+    assert ranked[0]["title"].startswith("FIA Sub Inspector")
+    assert ranked[0]["score"] >= 0.6
+    generic = next(row for row in ranked if row["title"].startswith("Interviews for"))
+    assert generic["score"] < 0.35
 
 
 def test_admin_password_change(client: TestClient):

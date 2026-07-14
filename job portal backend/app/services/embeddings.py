@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from difflib import SequenceMatcher
 from typing import Any
 
 import httpx
@@ -19,18 +20,41 @@ _TITLE_NOISE = {
     "answers",
     "complete",
     "guide",
+    "govt",
+    "government",
+    "hiring",
+    "in",
     "interview",
     "interviews",
+    "job",
+    "jobs",
     "latest",
+    "of",
+    "opening",
+    "openings",
     "pakistan",
+    "preparation",
+    "preparations",
     "questions",
+    "recruitment",
+    "related",
+    "the",
     "tips",
+    "vacancies",
+    "vacancy",
     "video",
+    "with",
 }
 
 
 def _tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", (text or "").lower())
+    # Keep dotted acronyms such as F.I.A equivalent to FIA before tokenizing.
+    normalized = re.sub(
+        r"\b(?:[A-Za-z]\.){2,}[A-Za-z]?\.?",
+        lambda match: re.sub(r"[^A-Za-z]", "", match.group(0)),
+        text or "",
+    )
+    return re.findall(r"[a-z0-9]+", normalized.lower())
 
 
 def _title_tokens(text: str) -> list[str]:
@@ -112,13 +136,38 @@ def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
         vectors = [embed_text(text) for text in normalized]
 
     query_tokens = set(_title_tokens(query))
+    query_acronyms = {
+        token.lower()
+        for token in re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", query or "")
+    }
     scores: list[float] = []
     for title, vector in zip(titles, vectors[1:]):
-        score = cosine_similarity(vectors[0], vector)
+        semantic_score = cosine_similarity(vectors[0], vector)
         title_tokens = set(_title_tokens(title))
-        # Exact role-title containment remains a strong match despite generic video suffixes.
+        common = query_tokens & title_tokens
+        coverage = len(common) / len(query_tokens) if query_tokens else 0.0
+        precision = len(common) / len(title_tokens) if title_tokens else 0.0
+        token_f1 = (
+            2 * coverage * precision / (coverage + precision)
+            if coverage and precision
+            else 0.0
+        )
+        query_normalized = " ".join(_title_tokens(query))
+        title_normalized = " ".join(_title_tokens(title))
+        sequence_score = SequenceMatcher(None, query_normalized, title_normalized).ratio()
+        lexical_score = 0.7 * coverage + 0.2 * token_f1 + 0.1 * sequence_score
+
+        # Exact core-role containment is a strong match despite words such as
+        # "Sub" or generic interview/preparation suffixes in a YouTube title.
         if query_tokens and query_tokens.issubset(title_tokens):
-            score = max(score, 0.97)
+            lexical_score = max(lexical_score, 0.97)
+
+        score = max(semantic_score, lexical_score)
+        # Acronyms identify organisations (FIA, NAB, PPSC, FPSC, etc.). A
+        # semantic model must not rank a generic government-job video above a
+        # title that actually contains the requested organisation.
+        if query_acronyms and not query_acronyms.issubset(title_tokens):
+            score = min(score, 0.24)
         scores.append(max(0.0, min(1.0, score)))
     return scores
 
