@@ -80,7 +80,7 @@ def get_current_admin(
     return user
 
 
-def ensure_admin_user(db: Session) -> None:
+def ensure_admin_user(db: Session) -> User:
     """Create the bootstrap admin and migrate any legacy plaintext password."""
     try:
         username = env("ADMIN_USERNAME") or "admin"
@@ -95,7 +95,7 @@ def ensure_admin_user(db: Session) -> None:
                 existing.password_hash = hash_password(existing.password_hash)
                 db.commit()
                 logger.warning("legacy admin password migrated to a one-way hash")
-            return
+            return existing
         _, password = admin_credentials()
         from uuid import uuid4
 
@@ -109,6 +109,8 @@ def ensure_admin_user(db: Session) -> None:
         db.add(user)
         db.commit()
         logger.info("admin user created username=%s", username)
+        return user
     except Exception:
         db.rollback()
         logger.exception("ensure_admin_user failed")
+        raise

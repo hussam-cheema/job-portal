@@ -6,6 +6,7 @@ import smtplib
 import ssl
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from urllib.parse import urlencode
 
 from sqlalchemy import select
@@ -41,6 +42,10 @@ def _send_password_reset_email(*, reset_url: str, reason: str) -> None:
     smtp_host = env("SMTP_HOST")
     smtp_username = env("SMTP_USERNAME")
     smtp_password = env("SMTP_PASSWORD")
+    if smtp_password and smtp_host.lower() == "smtp.gmail.com":
+        # Google displays 16-character App Passwords grouped with spaces. Those
+        # spaces are presentation-only and must not be sent to SMTP AUTH.
+        smtp_password = "".join(smtp_password.split())
     from_email = env("SMTP_FROM_EMAIL") or smtp_username
     if not smtp_host or not from_email:
         raise RuntimeError("SMTP_HOST and SMTP_FROM_EMAIL (or SMTP_USERNAME) must be configured")
@@ -49,11 +54,14 @@ def _send_password_reset_email(*, reset_url: str, reason: str) -> None:
     timeout = int(env("SMTP_TIMEOUT_SECONDS", "15") or "15")
     use_ssl = _bool_env("SMTP_USE_SSL", port == 465)
     starttls = _bool_env("SMTP_STARTTLS", not use_ssl)
+    authenticate = _bool_env("SMTP_AUTH", bool(smtp_username))
 
     message = EmailMessage()
     message["Subject"] = "Reset your Job Portal admin credentials"
     message["From"] = from_email
     message["To"] = recipient
+    message["Date"] = formatdate(localtime=False)
+    message["Message-ID"] = make_msgid(domain=from_email.rpartition("@")[2] or None)
     message.set_content(
         "A Job Portal administrator credential reset was requested "
         f"({reason}).\n\nOpen this single-use link to choose a new username and password:\n"
@@ -70,21 +78,31 @@ def _send_password_reset_email(*, reset_url: str, reason: str) -> None:
     context = ssl.create_default_context()
     if use_ssl:
         with smtplib.SMTP_SSL(smtp_host, port, timeout=timeout, context=context) as smtp:
-            if smtp_username:
+            if authenticate:
+                if not smtp_username:
+                    raise RuntimeError("SMTP_USERNAME must be configured when SMTP_AUTH is enabled")
                 if not smtp_password:
                     raise RuntimeError("SMTP_PASSWORD must be configured when SMTP_USERNAME is set")
                 smtp.login(smtp_username, smtp_password)
-            smtp.send_message(message)
+            refused = smtp.send_message(message)
+            if refused:
+                raise smtplib.SMTPRecipientsRefused(refused)
         return
 
     with smtplib.SMTP(smtp_host, port, timeout=timeout) as smtp:
+        smtp.ehlo()
         if starttls:
             smtp.starttls(context=context)
-        if smtp_username:
+            smtp.ehlo()
+        if authenticate:
+            if not smtp_username:
+                raise RuntimeError("SMTP_USERNAME must be configured when SMTP_AUTH is enabled")
             if not smtp_password:
                 raise RuntimeError("SMTP_PASSWORD must be configured when SMTP_USERNAME is set")
             smtp.login(smtp_username, smtp_password)
-        smtp.send_message(message)
+        refused = smtp.send_message(message)
+        if refused:
+            raise smtplib.SMTPRecipientsRefused(refused)
 
 
 def issue_password_reset(

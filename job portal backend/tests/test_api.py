@@ -310,6 +310,30 @@ def test_forgot_password_email_resets_username_and_revokes_existing_token(
     ).status_code == 200
 
 
+def test_forgot_password_reports_cooldown_without_claiming_new_delivery(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import auth_recovery
+
+    sent = 0
+
+    def capture_email(*, reset_url: str, reason: str) -> None:
+        nonlocal sent
+        sent += 1
+
+    monkeypatch.setattr(auth_recovery, "_send_password_reset_email", capture_email)
+
+    first = client.post("/api/auth/forgot-password")
+    second = client.post("/api/auth/forgot-password")
+
+    assert first.status_code == 200
+    assert "has been sent" in first.json()["message"]
+    assert second.status_code == 200
+    assert "requested recently" in second.json()["message"]
+    assert sent == 1
+
+
 def test_recovery_email_uses_fixed_admin_recipient(monkeypatch: pytest.MonkeyPatch):
     from app.services import auth_recovery
 
@@ -328,8 +352,12 @@ def test_recovery_email_uses_fixed_admin_recipient(monkeypatch: pytest.MonkeyPat
         def starttls(self, *, context):
             sent["starttls"] = context
 
+        def ehlo(self):
+            sent["ehlo_count"] = int(sent.get("ehlo_count", 0)) + 1
+
         def send_message(self, message):
             sent["message"] = message
+            return {}
 
     monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("SMTP_FROM_EMAIL", "no-reply@example.test")
@@ -348,6 +376,49 @@ def test_recovery_email_uses_fixed_admin_recipient(monkeypatch: pytest.MonkeyPat
     assert "token=secret" in message.get_body(preferencelist=("plain",)).get_content()
 
 
+def test_gmail_app_password_spaces_are_removed(monkeypatch: pytest.MonkeyPatch):
+    from app.services import auth_recovery
+
+    sent: dict[str, object] = {}
+
+    class FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def ehlo(self):
+            return None
+
+        def starttls(self, *, context):
+            return None
+
+        def login(self, username: str, password: str):
+            sent["login"] = (username, password)
+
+        def send_message(self, message):
+            return {}
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USERNAME", "admin@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "abcd efgh ijkl mnop")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "admin@example.test")
+    monkeypatch.setenv("SMTP_AUTH", "true")
+    monkeypatch.setattr(auth_recovery.smtplib, "SMTP", FakeSMTP)
+
+    auth_recovery._send_password_reset_email(
+        reset_url="https://example.test/reset-password?token=secret",
+        reason="test",
+    )
+
+    assert sent["login"] == ("admin@example.test", "abcdefghijklmnop")
+
+
 def test_existing_hashed_admin_does_not_revalidate_bootstrap_password(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -358,6 +429,17 @@ def test_existing_hashed_admin_does_not_revalidate_bootstrap_password(
     ensure_admin_user(db)
     monkeypatch.setenv("ADMIN_PASSWORD", "short")
     ensure_admin_user(db)
+    db.close()
+
+
+def test_admin_bootstrap_rejects_short_password(monkeypatch: pytest.MonkeyPatch):
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    monkeypatch.setenv("ADMIN_PASSWORD", "short")
+    with pytest.raises(RuntimeError, match="12 to 72"):
+        ensure_admin_user(db)
     db.close()
 
 

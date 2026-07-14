@@ -2,6 +2,16 @@
 # Uses existing Postgres container: postgres-db (must be on network jobportal-net)
 
 services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: jobportal-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - jobportal-net
+
   backend:
     build:
       context: "./job portal backend"
@@ -20,10 +30,19 @@ services:
       LOG_LEVEL: INFO
       SEED_ON_STARTUP: "true"
       SITE_URL: http://localhost:3000
+      # Local recovery messages are captured at http://localhost:8025.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_AUTH: "false"
+      SMTP_STARTTLS: "false"
+      SMTP_USE_SSL: "false"
       # R2_ENABLED and credentials come from the backend env_file so local
       # development can explicitly disable remote uploads.
     networks:
       - jobportal-net
+    depends_on:
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 15s

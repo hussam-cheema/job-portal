@@ -30,15 +30,6 @@ router = APIRouter()
 logger = get_logger("jobportal.auth_router")
 
 
-def _admin_user(db: Session) -> User | None:
-    return db.execute(
-        select(User)
-        .where(User.is_admin.is_(True))
-        .order_by(User.created_at.asc())
-        .limit(1)
-    ).scalar_one_or_none()
-
-
 def _clear_recovery_state(user: User) -> None:
     user.failed_login_attempts = 0
     user.locked_at = None
@@ -117,12 +108,16 @@ def me(admin: User = Depends(get_current_admin)):
 @router.post("/auth/forgot-password", response_model=PasswordResetRequestOut)
 def forgot_password(db: Session = Depends(get_db)):
     try:
-        ensure_admin_user(db)
-        user = _admin_user(db)
-        if user:
-            issue_password_reset(db, user, reason="forgot password request")
+        user = ensure_admin_user(db)
+        delivered = issue_password_reset(db, user, reason="forgot password request")
+        if not delivered:
+            return PasswordResetRequestOut(
+                message=(
+                    "A reset email was requested recently. Wait briefly before requesting another."
+                )
+            )
         return PasswordResetRequestOut(
-            message="If recovery is available, a reset link has been sent to the administrator email."
+            message="A reset link has been sent to the administrator email."
         )
     except Exception:
         logger.exception("forgot password email failed")

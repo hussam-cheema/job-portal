@@ -201,6 +201,7 @@ SMTP_PORT=587
 SMTP_USERNAME=hussam.cheema7102@gmail.com
 SMTP_PASSWORD=secretref:smtp-password
 SMTP_FROM_EMAIL=hussam.cheema7102@gmail.com
+SMTP_AUTH=true
 SMTP_STARTTLS=true
 SMTP_USE_SSL=false
 
@@ -225,6 +226,8 @@ Add any YouTube or LLM API keys as Container App secrets only when those feature
 The first successful admin login creates the configured admin account if it does not already exist, so production does not require startup seed data.
 
 The admin account locks after the fourth consecutive failed password attempt. Both lockout recovery and the login page's forgot-password action send a single-use reset link to `ADMIN_RECOVERY_EMAIL`. The link expires after `PASSWORD_RESET_TOKEN_TTL_MINUTES` and permits choosing a new username and password without the old password. When Gmail is used for SMTP, store a Google App Password in the `smtp-password` Container App secret; never store it in GitHub or a committed `.env` file.
+
+For local development, `docker compose up -d mailpit` starts a test SMTP inbox. The backend container sends recovery messages to Mailpit on port `1025`; open `http://localhost:8025` to inspect them. This avoids sending real recovery messages while testing locally.
 
 ## 7. Create Azure Static Web Apps
 

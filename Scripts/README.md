@@ -6,6 +6,7 @@ Run from the repository root with the backend virtual environment:
 
 ```bash
 "job portal backend/.venv/bin/python" Scripts/test_deepseek_api.py
+"job portal backend/.venv/bin/python" Scripts/test_database_connection.py
 "job portal backend/.venv/bin/python" Scripts/test_youtube_api.py
 "job portal backend/.venv/bin/python" Scripts/test_watermark.py
 "job portal backend/.venv/bin/python" Scripts/test_r2_upload.py
@@ -13,4 +14,4 @@ Run from the repository root with the backend virtual environment:
 "job portal backend/.venv/bin/python" Scripts/test_seo.py
 ```
 
-The API-based scripts default to `http://localhost:8000`; set `API_BASE_URL` in `.env` to use another backend. The R2 script uses the first listed job when no job ID or `TEST_JOB_POST_ID` is supplied, and deletes its test object unless `--keep` is passed. The contact script deletes its test message when the configured admin credentials can authenticate. The SEO script creates a temporary backlink and removes it directly through the configured PostgreSQL connection.
+The database script performs read-only queries using the same PostgreSQL configuration as the backend and prints a password-redacted target. The API-based scripts default to `http://localhost:8000`; set `API_BASE_URL` in `.env` to use another backend. The R2 script uses the first listed job when no job ID or `TEST_JOB_POST_ID` is supplied, and deletes its test object unless `--keep` is passed. The contact script deletes its test message when the configured admin credentials can authenticate. The SEO script creates a temporary backlink and removes it directly through the configured PostgreSQL connection.
