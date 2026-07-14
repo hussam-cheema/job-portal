@@ -128,13 +128,15 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Stage frontend in a space-free build path
+        run: cp -R "job portal frontend" frontend
       - name: Build and deploy hybrid Next.js frontend
         uses: azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
-          app_location: job portal frontend
+          app_location: frontend
           api_location: ""
           output_location: ""
         env:
