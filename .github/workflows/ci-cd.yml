@@ -98,7 +98,14 @@ jobs:
           az containerapp update \
             --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "${{ steps.image.outputs.tags }}"
+            --image "${{ steps.image.outputs.tags }}" \
+            --cpu 0.5 \
+            --memory 1.0Gi
+
+          az containerapp ingress update \
+            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --target-port 8000
 
       - name: Verify backend readiness
         run: |
