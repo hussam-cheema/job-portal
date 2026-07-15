@@ -113,6 +113,11 @@ def chat_completion(
     resolved = resolve_task_llm("qna_extraction")
     provider = resolved["provider"]
     temp = resolved["temperature"] if temperature is None else temperature
+    logger.info(
+        "chat_completion_request task=qna_extraction provider=%s model=%s",
+        provider,
+        resolved["model"],
+    )
 
     try:
         if provider == "claude":

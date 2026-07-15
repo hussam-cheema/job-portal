@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -831,6 +832,13 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
               "answer_evidence": "The salary is PKR 100,000.",
               "topic": "salary",
               "video_index": 1
+            },
+            {
+              "question": "When is the closing date?",
+              "answer": "Does anyone know the closing date?",
+              "answer_evidence": "Does anyone know the closing date?",
+              "topic": "deadline",
+              "video_index": 1
             }
           ]
         }"""
@@ -845,7 +853,8 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
                 "transcript": (
                     "Applicants must be between 18 and 30 years old. "
                     "A five-year age relaxation applies. "
-                    "The required qualification is a bachelor's degree."
+                    "The required qualification is a bachelor's degree. "
+                    "Does anyone know the closing date?"
                 ),
                 "comments": [],
             }
@@ -855,6 +864,8 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
     )
 
     assert "Never answer from memory" in captured["system"]
+    assert "FEW-SHOT EXAMPLES" in captured["system"]
+    assert "unanswered questions produce no Q&A" in captured["system"]
     assert [row["topic"] for row in rows] == [
         "age_eligibility",
         "education_eligibility",
@@ -862,6 +873,128 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
     assert rows[0]["answer"] == "Applicants must be between 18 and 30 years old."
     assert rows[1]["answer"] == "The required qualification is a bachelor's degree."
     assert all("100,000" not in row["answer"] for row in rows)
+    assert all("closing date?" not in row["answer"].lower() for row in rows)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("What is the salary?", True),
+        ("Does anyone know the salary", True),
+        ("Please tell me the last date", True),
+        ("Applicants must be between 18 and 30 years old.", False),
+        ("The application must be submitted online.", False),
+    ],
+)
+def test_qna_detects_question_like_answers(value: str, expected: bool):
+    from app.services.qna import _answer_is_question_like
+
+    assert _answer_is_question_like(value) is expected
+
+
+def test_qna_chunks_all_source_content_and_keeps_grounded_late_result(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    prompts: list[str] = []
+    late_evidence = "Applications must be submitted through the official online portal."
+
+    def completion(messages, **_kwargs):
+        prompt = messages[-1]["content"]
+        prompts.append(prompt)
+        if late_evidence not in prompt:
+            return '{"qna":[]}'
+        return json.dumps(
+            {
+                "qna": [
+                    {
+                        "question": "How should candidates apply?",
+                        "answer": late_evidence,
+                        "answer_evidence": late_evidence,
+                        "topic": "application_process",
+                        "video_index": 1,
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(qna_service, "chat_completion", completion)
+    rows = qna_service.extract_qna_from_sources(
+        job_title="FIA Inspector",
+        sources=[
+            {
+                "video_index": 1,
+                "title": "FIA Inspector guide",
+                "title_similarity": 0.8,
+                "transcript": ("Background information. " * 900) + late_evidence,
+                "comments": [],
+            }
+        ],
+        max_qna=20,
+        # This legacy parameter controls chunk size only; it must not truncate.
+        max_source_chars_per_video=4000,
+        timeout_seconds=10,
+    )
+
+    assert len(prompts) > 1
+    assert any(late_evidence in prompt for prompt in prompts)
+    assert rows[0]["answer"] == late_evidence
+
+
+def test_qna_global_chunk_selection_prefers_higher_ranked_video(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    def completion(_messages, **_kwargs):
+        return json.dumps(
+            {
+                "qna": [
+                    {
+                        "question": "What is the age limit in the first source?",
+                        "answer": "Applicants may apply up to 28 years of age.",
+                        "answer_evidence": "Applicants may apply up to 28 years of age.",
+                        "topic": "age_eligibility",
+                        "video_index": 1,
+                    },
+                    {
+                        "question": "What is the official age limit?",
+                        "answer": "The official age limit is 30 years.",
+                        "answer_evidence": "The official age limit is 30 years.",
+                        "topic": "age_eligibility",
+                        "video_index": 2,
+                    },
+                ]
+            }
+        )
+
+    monkeypatch.setattr(qna_service, "chat_completion", completion)
+    rows = qna_service.extract_qna_from_sources(
+        job_title="FIA Inspector",
+        sources=[
+            {
+                "video_index": 1,
+                "title": "General guide",
+                "title_similarity": 0.71,
+                "transcript": "Applicants may apply up to 28 years of age.",
+                "comments": [],
+            },
+            {
+                "video_index": 2,
+                "title": "Official FIA Inspector eligibility",
+                "title_similarity": 0.92,
+                "transcript": "The official age limit is 30 years.",
+                "comments": [],
+            },
+        ],
+        max_qna=20,
+        timeout_seconds=10,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["video_index"] == 2
+    assert rows[0]["answer"] == "The official age limit is 30 years."
 
 
 def test_deepseek_qna_disables_thinking_and_retries_empty_json(

@@ -66,6 +66,44 @@ GROUNDING RULES:
 11. Set topic to a short snake_case category describing the question's intent, such as
     age_eligibility, education_eligibility, duties, application_process, required_documents,
     fees, deadline, test_syllabus, interview, salary, vacancies, or posting_location.
+12. An answer must be an actual declarative answer that logically resolves its paired question.
+    Never use another question, a request for information, speculation, or an unanswered comment
+    as an answer. A sentence ending in "?" or phrases such as "does anyone know", "please tell
+    me", "what is", "how can", and "can someone explain" are questions, not answers.
+13. Before returning each pair, perform this check: (a) read the question, (b) read only the
+    proposed answer_evidence, and (c) confirm that the evidence directly answers the question
+    without needing outside knowledge. If it does not, omit the pair. Do not pair nearby source
+    lines merely because they discuss the same topic.
+
+FEW-SHOT EXAMPLES:
+
+Example 1 — correctly distinguish nearby questions from their answers:
+SOURCE:
+"What is the required qualification? Does anyone know the age limit? The required qualification
+is a bachelor's degree. Applicants must be between 18 and 30 years old."
+CORRECT OUTPUT:
+{"qna":[
+  {"question":"What is the required educational qualification?","answer":"The required qualification is a bachelor's degree.","answer_evidence":"The required qualification is a bachelor's degree.","topic":"education_eligibility","source":"transcript","video_index":1},
+  {"question":"What is the age limit?","answer":"Applicants must be between 18 and 30 years old.","answer_evidence":"Applicants must be between 18 and 30 years old.","topic":"age_eligibility","source":"transcript","video_index":1}
+]}
+WRONG: using "Does anyone know the age limit?" as the answer to either question.
+
+Example 2 — unanswered questions produce no Q&A:
+SOURCE:
+"What is the salary? Can someone tell me the last date? Please explain the test pattern."
+CORRECT OUTPUT:
+{"qna":[]}
+REASON: the source contains questions but no answers. Never manufacture the missing answers.
+
+Example 3 — select the evidence that directly resolves the question:
+SOURCE:
+"How can I apply? Applications must be submitted through the official online portal before the
+closing date. Is there an application fee?"
+CORRECT OUTPUT:
+{"qna":[
+  {"question":"How can candidates apply?","answer":"Applications must be submitted through the official online portal before the closing date.","answer_evidence":"Applications must be submitted through the official online portal before the closing date.","topic":"application_process","source":"comment","video_index":1}
+]}
+WRONG: using "Is there an application fee?" as the answer. It is a separate unanswered question.
 """
 
 
@@ -119,26 +157,88 @@ def _safe_json(text: str) -> dict[str, Any]:
         return {"qna": []}
 
 
-def _source_payload(source: dict[str, Any], max_chars: int) -> str:
+_DEFAULT_SOURCE_CHUNK_CHARS = 24000
+_SOURCE_CHUNK_OVERLAP_CHARS = 1200
+
+
+def _source_payload(source: dict[str, Any]) -> str:
     transcript = str(source.get("transcript") or "").strip()
     comments = [str(value).strip() for value in source.get("comments") or [] if str(value).strip()]
-    transcript_budget = int(max_chars * 0.7)
-    transcript = transcript[:transcript_budget]
-    remaining = max(0, max_chars - len(transcript))
-    comment_lines: list[str] = []
-    used = 0
-    for index, comment in enumerate(comments, start=1):
-        line = f"[{index}] {comment[:600]}"
-        if used + len(line) + 1 > remaining:
-            break
-        comment_lines.append(line)
-        used += len(line) + 1
+    comment_lines = [f"[{index}] {comment}" for index, comment in enumerate(comments, start=1)]
     return (
         f"VIDEO INDEX: {source['video_index']}\n"
         f"VIDEO TITLE: {source.get('title') or ''}\n"
         f"TRANSCRIPT:\n{transcript or '[unavailable]'}\n"
         f"COMMENTS:\n{chr(10).join(comment_lines) or '[unavailable]'}"
     )
+
+
+def _split_complete_text(
+    value: str,
+    *,
+    chunk_chars: int,
+    overlap_chars: int = _SOURCE_CHUNK_OVERLAP_CHARS,
+) -> list[str]:
+    """Split text without discarding content, retaining overlap across boundaries."""
+    text = str(value or "").strip()
+    if not text:
+        return []
+    if len(text) <= chunk_chars:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        hard_end = min(len(text), start + chunk_chars)
+        end = hard_end
+        if hard_end < len(text):
+            boundary = max(
+                text.rfind(". ", start + chunk_chars // 2, hard_end),
+                text.rfind("\n", start + chunk_chars // 2, hard_end),
+                text.rfind(" ", start + chunk_chars // 2, hard_end),
+            )
+            if boundary > start:
+                end = boundary + 1
+        chunks.append(text[start:end].strip())
+        if end >= len(text):
+            break
+        start = max(start + 1, end - min(overlap_chars, end - start - 1))
+    return [chunk for chunk in chunks if chunk]
+
+
+def _source_chunks(
+    sources: list[dict[str, Any]],
+    *,
+    chunk_chars: int = _DEFAULT_SOURCE_CHUNK_CHARS,
+) -> list[list[dict[str, Any]]]:
+    """Put every transcript/comment byte into bounded LLM batches; nothing is truncated."""
+    fragments: list[dict[str, Any]] = []
+    content_budget = max(4000, chunk_chars - 500)
+    for source in sources:
+        base = {key: value for key, value in source.items() if key not in {"transcript", "comments"}}
+        for transcript in _split_complete_text(
+            str(source.get("transcript") or ""), chunk_chars=content_budget
+        ):
+            fragments.append({**base, "transcript": transcript, "comments": []})
+        for comment in source.get("comments") or []:
+            for comment_chunk in _split_complete_text(
+                str(comment), chunk_chars=content_budget, overlap_chars=300
+            ):
+                fragments.append({**base, "transcript": None, "comments": [comment_chunk]})
+
+    batches: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_chars = 0
+    for fragment in fragments:
+        fragment_chars = len(_source_payload(fragment))
+        if current and current_chars + fragment_chars > chunk_chars:
+            batches.append(current)
+            current = []
+            current_chars = 0
+        current.append(fragment)
+        current_chars += fragment_chars
+    if current:
+        batches.append(current)
+    return batches
 
 
 def _normalized_text(value: str) -> str:
@@ -212,6 +312,29 @@ def _locate_answer_evidence(
     return None
 
 
+_QUESTION_OPENINGS = re.compile(
+    r"^(?:what|when|where|which|who|whom|whose|why|how|is|are|am|was|were|do|does|did|"
+    r"can|could|will|would|should|may|has|have|had)\b",
+    flags=re.I,
+)
+_QUESTION_REQUESTS = re.compile(
+    r"\b(?:does anyone know|anyone know|can (?:anyone|someone|you)|could (?:anyone|someone|you)|"
+    r"please (?:tell|explain|confirm|guide)|kindly (?:tell|explain|confirm|guide))\b",
+    flags=re.I,
+)
+
+
+def _answer_is_question_like(value: str) -> bool:
+    """Reject interrogative source text accidentally selected as answer evidence."""
+    clean = re.sub(r"^\s*(?:\[\d+\]\s*)?[\"'“”‘’]+|[\"'“”‘’]+\s*$", "", value or "").strip()
+    if not clean:
+        return True
+    if "?" in clean:
+        return True
+    normalized = _normalized_text(clean)
+    return bool(_QUESTION_OPENINGS.search(normalized) or _QUESTION_REQUESTS.search(normalized))
+
+
 def _diverse_qna(items: list[dict[str, Any]], max_qna: int) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     selected_topics: set[str] = set()
@@ -228,22 +351,21 @@ def _diverse_qna(items: list[dict[str, Any]], max_qna: int) -> list[dict[str, An
     return selected
 
 
-def extract_qna_from_sources(
+def _extract_qna_batch(
     *,
     job_title: str,
     sources: list[dict[str, Any]],
     max_qna: int,
-    max_source_chars_per_video: int,
-    timeout_seconds: float = 60,
+    timeout_seconds: float,
+    chunk_number: int,
+    chunk_count: int,
 ) -> list[dict[str, Any]]:
-    usable = [source for source in sources if source.get("transcript") or source.get("comments")]
-    if not usable:
-        return []
     payload = (
         f"Job post title: {job_title}\n"
         f"Maximum Q&A pairs: {max_qna}\n\n"
+        f"Content chunk: {chunk_number} of {chunk_count}. Evaluate this chunk independently.\n\n"
         + "\n\n===== NEXT VIDEO =====\n\n".join(
-            _source_payload(source, max_source_chars_per_video) for source in usable
+            _source_payload(source) for source in sources
         )
     )
     content = chat_completion(
@@ -255,8 +377,8 @@ def extract_qna_from_sources(
         timeout_seconds=timeout_seconds,
     )
     data = _safe_json(content)
-    valid_indexes = {int(source["video_index"]) for source in usable}
-    default_index = int(usable[0]["video_index"])
+    valid_indexes = {int(source["video_index"]) for source in sources}
+    default_index = int(sources[0]["video_index"])
     items: list[dict[str, Any]] = []
     for row in data.get("qna") or []:
         if not isinstance(row, dict):
@@ -266,6 +388,9 @@ def extract_qna_from_sources(
         answer_evidence = str(row.get("answer_evidence") or "").strip()
         if len(question) < 5 or len(proposed_answer) < 8 or not answer_evidence:
             continue
+        if _answer_is_question_like(proposed_answer) or _answer_is_question_like(answer_evidence):
+            logger.warning("qna_rejected_question_as_answer question=%s", question[:120])
+            continue
         if proposed_answer.lower() in {"see video", "see video.", "n/a", "none", "unknown"}:
             continue
         try:
@@ -274,7 +399,7 @@ def extract_qna_from_sources(
             video_index = default_index
         if video_index not in valid_indexes:
             video_index = default_index
-        located = _locate_answer_evidence(answer_evidence, usable, video_index)
+        located = _locate_answer_evidence(answer_evidence, sources, video_index)
         if not located:
             logger.warning("qna_rejected_unsupported_answer question=%s", question[:120])
             continue
@@ -293,9 +418,112 @@ def extract_qna_from_sources(
                     grounded_answer,
                     str(row.get("topic") or ""),
                 ),
+                "chunk_number": chunk_number,
             }
         )
-    return _diverse_qna(items, max_qna)
+    # Keep all grounded candidates here. Cross-chunk ranking and diversity are
+    # applied only after every completed chunk has contributed its candidates.
+    return items[:max_qna]
+
+
+def extract_qna_from_sources(
+    *,
+    job_title: str,
+    sources: list[dict[str, Any]],
+    max_qna: int,
+    max_source_chars_per_video: int | None = None,
+    timeout_seconds: float = 60,
+) -> list[dict[str, Any]]:
+    """Extract from every byte of source content using bounded, overlapping LLM chunks."""
+    usable = [source for source in sources if source.get("transcript") or source.get("comments")]
+    if not usable:
+        return []
+
+    # The legacy argument now controls only per-request chunk size. It never caps
+    # a video's content: every subsequent chunk is processed as well.
+    chunk_chars = max(
+        4000,
+        int(max_source_chars_per_video or _DEFAULT_SOURCE_CHUNK_CHARS),
+    )
+    batches = _source_chunks(usable, chunk_chars=chunk_chars)
+    if not batches:
+        return []
+
+    batch_results: list[tuple[int, list[dict[str, Any]]]] = []
+    if len(batches) == 1:
+        batch_results.append(
+            (
+                1,
+                _extract_qna_batch(
+                    job_title=job_title,
+                    sources=batches[0],
+                    max_qna=max_qna,
+                    timeout_seconds=timeout_seconds,
+                    chunk_number=1,
+                    chunk_count=1,
+                ),
+            )
+        )
+    else:
+        executor = ThreadPoolExecutor(
+            max_workers=min(4, len(batches)),
+            thread_name_prefix="qna-chunk",
+        )
+        future_map = {
+            executor.submit(
+                _extract_qna_batch,
+                job_title=job_title,
+                sources=batch,
+                max_qna=max_qna,
+                timeout_seconds=timeout_seconds,
+                chunk_number=index,
+                chunk_count=len(batches),
+            ): index
+            for index, batch in enumerate(batches, start=1)
+        }
+        done, pending = wait(future_map, timeout=max(1.0, timeout_seconds))
+        for future in pending:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        for future in done:
+            index = future_map[future]
+            try:
+                batch_results.append((index, future.result()))
+            except Exception as exc:
+                # A failed/timed-out chunk must not discard useful pairs already
+                # extracted from the other complete-content chunks.
+                logger.warning("qna_chunk_failed chunk=%s error=%s", index, str(exc)[:200])
+
+    source_scores = {
+        int(source["video_index"]): float(source.get("title_similarity") or 0.0)
+        for source in usable
+    }
+    candidates: list[dict[str, Any]] = []
+    for _, rows in sorted(batch_results, key=lambda result: result[0]):
+        for row in rows:
+            candidate = dict(row)
+            candidate["rank_score"] = source_scores.get(int(row["video_index"]), 0.0)
+            candidates.append(candidate)
+
+    # Prefer grounded pairs from the YouTube titles with the highest embedding
+    # score (which have already passed min_title_similarity), then globally
+    # enforce topic diversity and near-duplicate removal across every chunk.
+    candidates.sort(
+        key=lambda row: float(row.get("rank_score") or 0.0),
+        reverse=True,
+    )
+    selected = _diverse_qna(candidates, max_qna)
+    for row in selected:
+        row.pop("rank_score", None)
+        row.pop("chunk_number", None)
+    logger.info(
+        "qna_chunk_extraction chunks=%s completed=%s candidates=%s selected=%s",
+        len(batches),
+        len(batch_results),
+        len(candidates),
+        len(selected),
+    )
+    return selected
 
 
 def extract_qna_from_video(
@@ -318,7 +546,6 @@ def extract_qna_from_video(
             }
         ],
         max_qna=20,
-        max_source_chars_per_video=16000,
         timeout_seconds=timeout_seconds,
     )
     return [
@@ -404,7 +631,6 @@ def fetch_qna_for_job_title(
     source_timeout = float(conf.get("source_timeout_seconds") or 15)
     source_collection_timeout = float(conf.get("source_collection_timeout_seconds") or 45)
     source_workers = max(1, int(conf.get("source_workers") or 5))
-    max_source_chars = max(1000, int(conf.get("max_source_chars_per_video") or 16000))
     configured_min_similarity = conf.get("min_title_similarity")
     min_sim = float(
         0.95 if configured_min_similarity is None else configured_min_similarity
@@ -496,7 +722,6 @@ def fetch_qna_for_job_title(
                         job_title=job_title,
                         sources=usable_sources,
                         max_qna=max_qna,
-                        max_source_chars_per_video=max_source_chars,
                         timeout_seconds=min(ai_timeout, max(1.0, remaining - 2)),
                     )
                     sources_by_index = {
