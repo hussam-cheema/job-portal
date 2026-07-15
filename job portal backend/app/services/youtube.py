@@ -34,7 +34,7 @@ def search_youtube(
     conf = _yt_cfg()
     if not conf.get("enabled", True):
         return []
-    max_results = max_results or int(conf.get("max_youtube_videos") or 5)
+    max_results = max_results or int(conf.get("max_youtube_search_results") or 50)
 
     if _has_api_key():
         try:
@@ -56,6 +56,8 @@ def search_youtube(
 
 
 def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
+    # The YouTube Search API accepts at most 50 results in one request.
+    max_results = max(1, min(int(max_results), 50))
     response = httpx.get(
         "https://www.googleapis.com/youtube/v3/search",
         params={

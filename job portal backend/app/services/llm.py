@@ -82,6 +82,11 @@ def resolve_task_llm(task: str = "qna_extraction") -> dict[str, Any]:
             "base_url": creds["base_url"],
             "temperature": float(llm.get("temperature", 0.1)),
             "max_tokens": int(llm.get("max_tokens", 4096)),
+            "thinking": bool(task_cfg.get("thinking", False)),
+            "response_format": task_cfg.get("response_format"),
+            "empty_response_retries": max(
+                0, int(task_cfg.get("empty_response_retries") or 0)
+            ),
         }
 
     # last resort: ollama local
@@ -92,6 +97,9 @@ def resolve_task_llm(task: str = "qna_extraction") -> dict[str, Any]:
         "base_url": env("OLLAMA_BASE_URL") or "http://localhost:11434/v1",
         "temperature": 0.1,
         "max_tokens": 4096,
+        "thinking": False,
+        "response_format": None,
+        "empty_response_retries": 0,
     }
 
 
@@ -117,18 +125,52 @@ def chat_completion(
             "Authorization": f"Bearer {resolved['api_key'] or 'not-needed'}",
             "Content-Type": "application/json",
         }
-        payload = {
+        payload: dict[str, Any] = {
             "model": resolved["model"],
             "messages": messages,
             "temperature": temp,
             "max_tokens": resolved["max_tokens"],
         }
+        if provider == "deepseek":
+            payload["thinking"] = {
+                "type": "enabled" if resolved.get("thinking") else "disabled"
+            }
+        if resolved.get("response_format") == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+
+        retries = int(resolved.get("empty_response_retries") or 0)
         with httpx.Client(timeout=max(1.0, timeout_seconds)) as client:
-            resp = client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        return content if isinstance(content, str) else str(content)
+            for attempt in range(retries + 1):
+                resp = client.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                choice = (data.get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                content = message.get("content")
+                if content is not None and str(content).strip():
+                    return content if isinstance(content, str) else str(content)
+                logger.warning(
+                    "empty_chat_completion provider=%s model=%s finish_reason=%s attempt=%s",
+                    provider,
+                    resolved["model"],
+                    choice.get("finish_reason"),
+                    attempt + 1,
+                )
+                if attempt < retries:
+                    # DeepSeek documents that JSON mode can occasionally return
+                    # empty content. Retry once without the response-format flag;
+                    # the extraction prompt still explicitly requires JSON.
+                    payload.pop("response_format", None)
+                    payload["messages"] = [
+                        *messages,
+                        {
+                            "role": "user",
+                            "content": "Return the requested non-empty JSON object now.",
+                        },
+                    ]
+        raise RuntimeError(
+            f"{provider} returned an empty completion after {retries + 1} attempt(s)"
+        )
     except Exception:
         logger.exception("chat_completion failed provider=%s", provider)
         raise

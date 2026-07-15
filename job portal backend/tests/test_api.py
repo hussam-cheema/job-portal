@@ -612,13 +612,19 @@ def test_qna_refresh_replaces_only_after_strict_title_match(monkeypatch: pytest.
             {**videos[1], "title_similarity": 0.2},
             ],
         )
-    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
     monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "transcript")
     monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **_kwargs: [])
     monkeypatch.setattr(
         qna_service,
-        "extract_qna_from_video",
-        lambda **kwargs: [{"question": "What is Python?", "answer": "Python is a programming language.", "source": "transcript"}],
+        "extract_qna_from_sources",
+        lambda **kwargs: [
+            {
+                "question": "What is Python?",
+                "answer": "Python is a programming language.",
+                "source": "transcript",
+                "video_index": 1,
+            }
+        ],
     )
 
     result = qna_service.fetch_qna_for_job_title(
@@ -664,7 +670,9 @@ def test_qna_no_match_keeps_existing_rows_and_returns_visible_error(
     db.close()
 
 
-def test_qna_returns_immediately_after_first_useful_video(monkeypatch: pytest.MonkeyPatch):
+def test_qna_collects_all_selected_videos_before_combined_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from app.models import JobQnA
     from app.services import qna as qna_service
 
@@ -676,42 +684,55 @@ def test_qna_returns_immediately_after_first_useful_video(monkeypatch: pytest.Mo
         {"video_id": "first", "title": "FIA Inspector interview", "url": "https://youtu.be/first"},
         {"video_id": "second", "title": "FIA Inspector preparation", "url": "https://youtu.be/second"},
     ]
-    calls: list[str] = []
-    monkeypatch.setattr(qna_service, "search_youtube", lambda *args, **kwargs: videos)
+    searched: dict[str, object] = {}
+
+    def search(*args, **kwargs):
+        searched.update(kwargs)
+        return videos
+
+    monkeypatch.setattr(qna_service, "search_youtube", search)
     monkeypatch.setattr(
         qna_service,
         "rank_by_similarity",
         lambda *args, **kwargs: [{**video, "title_similarity": 0.9} for video in videos],
     )
-    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
     monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "useful transcript")
     monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **kwargs: [])
 
+    extracted_titles: list[str] = []
+
     def extract(**kwargs):
-        calls.append(kwargs["title"])
+        extracted_titles.extend(source["title"] for source in kwargs["sources"])
         return [
             {
                 "question": "What does FIA investigate?",
                 "answer": "FIA investigates federal crimes and related offences.",
                 "source": "transcript",
+                "video_index": 1,
             }
         ]
 
-    monkeypatch.setattr(qna_service, "extract_qna_from_video", extract)
+    monkeypatch.setattr(qna_service, "extract_qna_from_sources", extract)
 
     result = qna_service.fetch_qna_for_job_title(
         db, job_id="job-first-match", job_title="FIA Inspector jobs in government"
     )
 
     assert result["count"] == 1
-    assert result["videos_scanned"] == 1
+    assert result["videos_scanned"] == 2
     assert result["error"] is None
-    assert calls == ["FIA Inspector interview"]
+    assert searched["max_results"] == 50
+    assert extracted_titles == [
+        "FIA Inspector interview",
+        "FIA Inspector preparation",
+    ]
     assert db.query(JobQnA).filter(JobQnA.job_id == "job-first-match").count() == 1
     db.close()
 
 
-def test_qna_tries_next_video_after_one_ai_timeout(monkeypatch: pytest.MonkeyPatch):
+def test_qna_keeps_usable_sources_when_one_selected_video_has_no_content(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from app.services import qna as qna_service
 
     engine = create_engine("sqlite://", poolclass=StaticPool)
@@ -722,41 +743,124 @@ def test_qna_tries_next_video_after_one_ai_timeout(monkeypatch: pytest.MonkeyPat
         {"video_id": "slow", "title": "FIA Inspector interview", "url": "https://youtu.be/slow"},
         {"video_id": "useful", "title": "FIA Inspector test guide", "url": "https://youtu.be/useful"},
     ]
-    attempts = 0
     monkeypatch.setattr(qna_service, "search_youtube", lambda *args, **kwargs: videos)
     monkeypatch.setattr(
         qna_service,
         "rank_by_similarity",
         lambda *args, **kwargs: [{**video, "title_similarity": 0.9} for video in videos],
     )
-    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
-    monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "transcript")
+    monkeypatch.setattr(
+        qna_service,
+        "get_transcript",
+        lambda video_id: None if video_id == "slow" else "useful transcript",
+    )
     monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **kwargs: [])
 
     def extract(**kwargs):
-        nonlocal attempts
-        attempts += 1
-        if attempts == 1:
-            raise TimeoutError("The read operation timed out")
+        assert [source["video_id"] for source in kwargs["sources"]] == ["useful"]
         return [
             {
                 "question": "What is the Inspector role?",
                 "answer": "The Inspector role includes investigation and enforcement duties.",
                 "source": "transcript",
+                "video_index": 2,
             }
         ]
 
-    monkeypatch.setattr(qna_service, "extract_qna_from_video", extract)
+    monkeypatch.setattr(qna_service, "extract_qna_from_sources", extract)
 
     result = qna_service.fetch_qna_for_job_title(
         db, job_id="job-timeout-retry", job_title="FIA Inspector jobs in government"
     )
 
-    assert attempts == 2
     assert result["videos_scanned"] == 2
     assert result["count"] == 1
     assert result["error"] is None
     db.close()
+
+
+def test_qna_safe_json_preserves_nested_fenced_response():
+    from app.services.qna import _safe_json
+
+    parsed = _safe_json(
+        """```json
+        {"qna":[{"question":"What is FIA?","answer":"It is a federal agency.","video_index":1}]}
+        ```"""
+    )
+
+    assert parsed["qna"][0]["question"] == "What is FIA?"
+    assert parsed["qna"][0]["answer"] == "It is a federal agency."
+
+
+def test_deepseek_qna_disables_thinking_and_retries_empty_json(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import httpx
+
+    from app.services import llm as llm_service
+
+    payloads: list[dict] = []
+    responses = [
+        {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]},
+        {
+            "choices": [
+                {
+                    "message": {"content": '{"qna":[{"question":"Q?","answer":"Answer."}]}'},
+                    "finish_reason": "stop",
+                }
+            ]
+        },
+    ]
+
+    class FakeResponse:
+        def __init__(self, data: dict):
+            self.data = data
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.data
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, _url, **kwargs):
+            payloads.append(kwargs["json"].copy())
+            return FakeResponse(responses.pop(0))
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr(
+        llm_service,
+        "resolve_task_llm",
+        lambda *_args, **_kwargs: {
+            "provider": "deepseek",
+            "model": "deepseek-v4-pro",
+            "api_key": "test-key",
+            "base_url": "https://api.deepseek.com/v1",
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "thinking": False,
+            "response_format": "json_object",
+            "empty_response_retries": 1,
+        },
+    )
+
+    content = llm_service.chat_completion(
+        [{"role": "user", "content": "Return JSON"}], timeout_seconds=5
+    )
+
+    assert content.startswith('{"qna"')
+    assert payloads[0]["thinking"] == {"type": "disabled"}
+    assert payloads[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in payloads[1]
 
 
 def test_sitemap_data_includes_newly_created_job(client: TestClient):

@@ -44,6 +44,11 @@ llm:
     qna_extraction:
       provider: deepseek
       model: deepseek-v4-pro
+      # Structured extraction is faster and more reliable without spending the
+      # output budget on V4's default thinking trace.
+      thinking: false
+      response_format: json_object
+      empty_response_retries: 1
       fallback: [openai, grok, ollama, glm, meta, claude]
   providers:
     grok:
@@ -71,18 +76,24 @@ llm:
 youtube_qna:
   enabled: true
   max_qna: 20
+  # Search this many YouTube candidates before embedding-based ranking.
+  max_youtube_search_results: 50
+  # Retain at most this many ranked titles at/above min_title_similarity.
   max_youtube_videos: 5
   max_comments: 50
   extract_transcripts: true
   extract_comments: true
   timeout_seconds: 120
-  # Return as soon as one relevant video yields valid Q&A instead of waiting
-  # for every candidate video to finish processing.
-  return_after_first_match: true
-  per_video_ai_timeout_seconds: 60
-  # Cosine-similarity cutoff for retaining a YouTube title after embedding
-  # ranking. Lower values allow more loosely related role variants.
-  min_title_similarity: 0.30
+  ai_timeout_seconds: 60
+  source_timeout_seconds: 15
+  source_collection_timeout_seconds: 45
+  source_workers: 5
+  max_source_chars_per_video: 16000
+  # Raw cosine-similarity cutoff for retaining a YouTube title after embedding
+  # ranking. Lower values broaden the match; higher values are stricter. The
+  # EmbeddingGemma retrieval scores for genuinely related role variants commonly
+  # fall around 0.50-0.60, so 0.50 is the tested default.
+  min_title_similarity: 0.50
   # YOUTUBE_API_KEY in .env
 
 # Semantic embeddings used to compare job titles with YouTube titles.
