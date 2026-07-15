@@ -91,7 +91,7 @@ youtube_qna:
   # Calibrated embedding + role-token similarity cutoff for retaining a YouTube
   # title. Lower values broaden the match; higher values are stricter. This remains
   # the single threshold controlling which ranked titles enter source collection.
-  min_title_similarity: 0.70
+  min_title_similarity: 0.35
   # YOUTUBE_API_KEY in .env
 
 # Semantic embeddings used to compare job titles with YouTube titles.
