@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import cast, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.types import String
@@ -346,7 +346,11 @@ def list_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=JobDetail)
-def get_job(job_id: str, db: Session = Depends(get_db)):
+def get_job(job_id: str, response: Response, db: Session = Depends(get_db)):
+    # Q&A refreshes mutate job details independently of the job row. Prevent
+    # browsers/CDNs from serving the previous Q&A set after a successful refresh.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     try:
         job = db.get(Job, job_id)
         if not job:

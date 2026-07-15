@@ -92,6 +92,7 @@ def test_login_and_create_job(client: TestClient):
     r = client.get(f"/api/jobs/{job_id}")
     assert r.status_code == 200
     assert r.json()["title"] == "Python Developer"
+    assert "no-store" in r.headers["cache-control"]
 
     r = client.get("/api/jobs")
     assert r.status_code == 200
@@ -790,6 +791,77 @@ def test_qna_safe_json_preserves_nested_fenced_response():
 
     assert parsed["qna"][0]["question"] == "What is FIA?"
     assert parsed["qna"][0]["answer"] == "It is a federal agency."
+
+
+def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    captured: dict[str, str] = {}
+
+    def completion(messages, **_kwargs):
+        captured["system"] = messages[0]["content"]
+        return """{
+          "qna": [
+            {
+              "question": "What is the permitted age range?",
+              "answer": "Candidates can apply from age 18 through 30.",
+              "answer_evidence": "Applicants must be between 18 and 30 years old.",
+              "topic": "age_eligibility",
+              "video_index": 1
+            },
+            {
+              "question": "Is an age relaxation available?",
+              "answer": "There is a five-year relaxation.",
+              "answer_evidence": "A five-year age relaxation applies.",
+              "topic": "age_eligibility",
+              "video_index": 1
+            },
+            {
+              "question": "Which qualification is required?",
+              "answer": "A bachelor's degree is required.",
+              "answer_evidence": "The required qualification is a bachelor's degree.",
+              "topic": "education_eligibility",
+              "video_index": 1
+            },
+            {
+              "question": "What salary is offered?",
+              "answer": "The salary is PKR 100,000.",
+              "answer_evidence": "The salary is PKR 100,000.",
+              "topic": "salary",
+              "video_index": 1
+            }
+          ]
+        }"""
+
+    monkeypatch.setattr(qna_service, "chat_completion", completion)
+    rows = qna_service.extract_qna_from_sources(
+        job_title="FIA Inspector",
+        sources=[
+            {
+                "video_index": 1,
+                "title": "FIA Inspector eligibility",
+                "transcript": (
+                    "Applicants must be between 18 and 30 years old. "
+                    "A five-year age relaxation applies. "
+                    "The required qualification is a bachelor's degree."
+                ),
+                "comments": [],
+            }
+        ],
+        max_qna=20,
+        max_source_chars_per_video=16000,
+    )
+
+    assert "Never answer from memory" in captured["system"]
+    assert [row["topic"] for row in rows] == [
+        "age_eligibility",
+        "education_eligibility",
+    ]
+    assert rows[0]["answer"] == "Applicants must be between 18 and 30 years old."
+    assert rows[1]["answer"] == "The required qualification is a bachelor's degree."
+    assert all("100,000" not in row["answer"] for row in rows)
 
 
 def test_deepseek_qna_disables_thinking_and_retries_empty_json(

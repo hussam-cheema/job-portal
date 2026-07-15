@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import re
 import time
+import unicodedata
 from concurrent.futures import (
     ThreadPoolExecutor,
     TimeoutError as FutureTimeoutError,
     wait,
 )
+from difflib import SequenceMatcher
 from typing import Any
 from uuid import uuid4
 
@@ -31,6 +33,8 @@ Return ONLY valid JSON:
     {
       "question": "...",
       "answer": "...",
+      "answer_evidence": "...",
+      "topic": "...",
       "source": "transcript|comment|mixed",
       "video_index": 1
     }
@@ -38,11 +42,13 @@ Return ONLY valid JSON:
 }
 
 GROUNDING RULES:
-1. Every answer must be directly supported by at least one supplied transcript or comment.
+1. Never answer from memory, general knowledge, assumptions, or facts that are absent from the
+   supplied content. Every answer must come strictly from a supplied transcript or comment.
 2. A question may be explicit in the source, or you may turn a useful factual statement from
-   the source into a natural question. Never add facts that are absent from the source.
-3. A question and its answer may come from different comments, or from a transcript and a
-   comment. They may also be supported by different supplied videos.
+   the source into a natural question. Do not invent, infer, or complete an answer yourself.
+3. Set answer_evidence to one continuous, verbatim excerpt from the supplied content that fully
+   supports the answer. Do not include source labels or ellipses. If no such excerpt exists,
+   omit the pair. The saved answer is validated against and derived from this exact excerpt.
 4. Prefer concrete job duties, eligibility, test syllabus, application process, preparation,
    interview questions, and factual answers relevant to the job title.
 5. Ignore greetings, promotions, requests for likes/subscriptions, and unrelated discussion.
@@ -51,7 +57,43 @@ GROUNDING RULES:
 8. Return at least one pair whenever the supplied material contains any useful job-relevant
    factual statement. Return {"qna": []} only when no grounded job-relevant fact exists.
 9. Return no more than the requested maximum number of pairs.
+10. Questions must be semantically unique. Group candidates by topic before returning them and
+    return at most one pair for each topic or intent. For example, do not return several
+    differently worded questions about age eligibility or several about educational eligibility.
+    Prefer broad topic coverage (age, education, experience, duties, application, documents,
+    fees, dates, syllabus, test, interview, salary, vacancies, location) before another closely
+    related question.
+11. Set topic to a short snake_case category describing the question's intent, such as
+    age_eligibility, education_eligibility, duties, application_process, required_documents,
+    fees, deadline, test_syllabus, interview, salary, vacancies, or posting_location.
 """
+
+
+_QUESTION_STOPWORDS = {
+    "a", "an", "and", "are", "can", "do", "does", "for", "how", "in", "is",
+    "of", "on", "or", "the", "this", "to", "what", "when", "where", "which",
+    "who", "why", "with", "you", "your",
+}
+
+_TOPIC_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("age_eligibility", ("age", "upper age", "lower age", "age relaxation")),
+    ("education_eligibility", ("education", "qualification", "degree", "matric", "intermediate", "bachelor", "master")),
+    ("experience_eligibility", ("experience", "experienced")),
+    ("physical_eligibility", ("height", "chest", "physical", "running", "fitness", "medical")),
+    ("nationality_domicile", ("domicile", "nationality", "citizen", "province", "quota")),
+    ("required_documents", ("document", "documents", "certificate", "cnic", "photograph", "photo", "challan")),
+    ("fees", ("fee", "payment", "bank deposit")),
+    ("deadline", ("deadline", "last date", "closing date", "apply by")),
+    ("application_process", ("how to apply", "application process", "apply online", "submit application", "registration")),
+    ("test_syllabus", ("syllabus", "test pattern", "paper pattern", "subjects", "mcq", "written test")),
+    ("test_preparation", ("prepare", "preparation", "study", "past paper")),
+    ("interview", ("interview", "viva")),
+    ("duties", ("duty", "duties", "responsibility", "responsibilities", "job role", "work of")),
+    ("salary", ("salary", "pay scale", "benefit", "allowance")),
+    ("vacancies", ("vacancy", "vacancies", "seats", "posts available")),
+    ("posting_location", ("posting", "location", "city", "station")),
+    ("result_merit", ("result", "merit", "selection list", "shortlist")),
+)
 
 
 def _safe_json(text: str) -> dict[str, Any]:
@@ -99,6 +141,93 @@ def _source_payload(source: dict[str, Any], max_chars: int) -> str:
     )
 
 
+def _normalized_text(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value or "").lower()
+    value = value.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    return " ".join(re.findall(r"[\w%+]+", value, flags=re.UNICODE))
+
+
+def _question_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in _normalized_text(value).split()
+        if token not in _QUESTION_STOPWORDS and len(token) > 1
+    }
+
+
+def _questions_are_similar(left: str, right: str) -> bool:
+    left_normalized = _normalized_text(left)
+    right_normalized = _normalized_text(right)
+    if left_normalized == right_normalized:
+        return True
+    if SequenceMatcher(None, left_normalized, right_normalized).ratio() >= 0.82:
+        return True
+    left_tokens = _question_tokens(left)
+    right_tokens = _question_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+    containment = len(left_tokens & right_tokens) / min(len(left_tokens), len(right_tokens))
+    return overlap >= 0.58 or containment >= 0.78
+
+
+def _question_topic(question: str, answer: str, suggested: str = "") -> str:
+    searchable = _normalized_text(f"{question} {answer}")
+    for topic, needles in _TOPIC_PATTERNS:
+        if any(
+            f" {_normalized_text(needle)} " in f" {searchable} "
+            for needle in needles
+        ):
+            return topic
+    clean_suggested = re.sub(r"[^a-z0-9]+", "_", (suggested or "").lower()).strip("_")
+    return clean_suggested or "other"
+
+
+def _locate_answer_evidence(
+    evidence: str,
+    sources: list[dict[str, Any]],
+    preferred_index: int,
+) -> tuple[int, str, str] | None:
+    evidence = re.sub(r"^\s*(?:\[\d+\]\s*)?[\"'“”‘’]+|[\"'“”‘’]+\s*$", "", evidence or "").strip()
+    evidence = evidence.strip(" …")
+    normalized_evidence = _normalized_text(evidence)
+    if len(normalized_evidence) < 8 or len(normalized_evidence.split()) < 2:
+        return None
+
+    ordered_sources = sorted(
+        sources,
+        key=lambda source: int(source["video_index"]) != preferred_index,
+    )
+    for source in ordered_sources:
+        transcript = str(source.get("transcript") or "").strip()
+        segments = [("transcript", transcript)] if transcript else []
+        segments.extend(
+            ("comment", str(comment).strip())
+            for comment in source.get("comments") or []
+            if str(comment).strip()
+        )
+        for source_type, segment in segments:
+            if normalized_evidence in _normalized_text(segment):
+                return int(source["video_index"]), source_type, evidence
+    return None
+
+
+def _diverse_qna(items: list[dict[str, Any]], max_qna: int) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    selected_topics: set[str] = set()
+    for item in items:
+        topic = str(item.get("topic") or "other")
+        if topic != "other" and topic in selected_topics:
+            continue
+        if any(_questions_are_similar(item["question"], prior["question"]) for prior in selected):
+            continue
+        selected.append(item)
+        selected_topics.add(topic)
+        if len(selected) >= max_qna:
+            break
+    return selected
+
+
 def extract_qna_from_sources(
     *,
     job_title: str,
@@ -133,10 +262,11 @@ def extract_qna_from_sources(
         if not isinstance(row, dict):
             continue
         question = str(row.get("question") or "").strip()
-        answer = str(row.get("answer") or "").strip()
-        if len(question) < 5 or len(answer) < 8:
+        proposed_answer = str(row.get("answer") or "").strip()
+        answer_evidence = str(row.get("answer_evidence") or "").strip()
+        if len(question) < 5 or len(proposed_answer) < 8 or not answer_evidence:
             continue
-        if answer.lower() in {"see video", "see video.", "n/a", "none", "unknown"}:
+        if proposed_answer.lower() in {"see video", "see video.", "n/a", "none", "unknown"}:
             continue
         try:
             video_index = int(row.get("video_index") or default_index)
@@ -144,17 +274,28 @@ def extract_qna_from_sources(
             video_index = default_index
         if video_index not in valid_indexes:
             video_index = default_index
+        located = _locate_answer_evidence(answer_evidence, usable, video_index)
+        if not located:
+            logger.warning("qna_rejected_unsupported_answer question=%s", question[:120])
+            continue
+        video_index, source_type, grounded_answer = located
+        if not question.endswith("?"):
+            question = f"{question.rstrip('.')}?"
         items.append(
             {
                 "question": question,
-                "answer": answer,
-                "source": str(row.get("source") or "mixed"),
+                # Persist the verified source excerpt, never an unverified model-generated answer.
+                "answer": grounded_answer,
+                "source": source_type,
                 "video_index": video_index,
+                "topic": _question_topic(
+                    question,
+                    grounded_answer,
+                    str(row.get("topic") or ""),
+                ),
             }
         )
-        if len(items) >= max_qna:
-            break
-    return items
+    return _diverse_qna(items, max_qna)
 
 
 def extract_qna_from_video(
@@ -275,7 +416,7 @@ def fetch_qna_for_job_title(
     collected: list[dict[str, Any]] = []
     videos: list[dict[str, Any]] = []
     videos_scanned = 0
-    seen_q: set[str] = set()
+    seen_topics: set[str] = set()
 
     try:
         query = f"{job_title} interview questions answers Pakistan".strip()
@@ -362,10 +503,19 @@ def fetch_qna_for_job_title(
                         int(source["video_index"]): source for source in usable_sources
                     }
                     for pair in pairs:
-                        qkey = pair["question"].strip().lower()
-                        if qkey in seen_q:
+                        topic = _question_topic(
+                            pair["question"],
+                            pair["answer"],
+                            str(pair.get("topic") or ""),
+                        )
+                        if topic != "other" and topic in seen_topics:
                             continue
-                        seen_q.add(qkey)
+                        if any(
+                            _questions_are_similar(pair["question"], item["question"])
+                            for item in collected
+                        ):
+                            continue
+                        seen_topics.add(topic)
                         source = sources_by_index[int(pair["video_index"])]
                         collected.append(
                             {

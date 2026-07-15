@@ -76,6 +76,30 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+async function getFreshJson<T>(path: string, fallback: T): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) return (await res.json()) as T;
+      if (res.status < 500 || attempt === 1) {
+        console.warn(`API ${res.status} ${path} — using empty fallback`);
+        return fallback;
+      }
+    } catch (err) {
+      lastError = err;
+      if (attempt === 1) break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  console.warn(`API unreachable ${path} — using empty fallback`, lastError);
+  return fallback;
+}
+
 export async function fetchJobs(params: JobQuery = {}): Promise<JobListResponse> {
   const page = params.page ?? 1;
   const page_size = params.page_size ?? 30;
@@ -84,7 +108,9 @@ export async function fetchJobs(params: JobQuery = {}): Promise<JobListResponse>
 }
 
 export async function fetchJob(id: string): Promise<JobDetail | null> {
-  return getJson<JobDetail | null>(`/api/jobs/${id}`, null);
+  // Job details include mutable Q&A rows. Never reuse the previous response after
+  // an admin refresh; also retry once for a briefly cold/revising production API.
+  return getFreshJson<JobDetail | null>(`/api/jobs/${id}`, null);
 }
 
 export function fetchFilters(): Promise<FiltersResponse> {
