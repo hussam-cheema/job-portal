@@ -37,6 +37,36 @@ const empty = {
   keywords: "",
 };
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asStringList(value: unknown): string[] {
+  let candidates: unknown[] = [];
+  if (Array.isArray(value)) {
+    candidates = value;
+  } else if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      candidates = Array.isArray(parsed) ? parsed : value.split(",");
+    } catch {
+      candidates = value.split(",");
+    }
+  }
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const clean = candidate.trim();
+    const key = clean.toLocaleLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+  }
+  return result;
+}
+
 export default function JobFormPage() {
   const params = useParams<{ id?: string }>();
   const isNew = !params?.id || params.id === "new";
@@ -65,7 +95,7 @@ export default function JobFormPage() {
   });
 
   useEffect(() => {
-    fetchFilters().then((f) => setCityOptions(f.cities || []));
+    fetchFilters().then((f) => setCityOptions(asStringList(f.cities)));
   }, []);
 
   useEffect(() => {
@@ -84,28 +114,35 @@ export default function JobFormPage() {
           setFormReady(true);
           return;
         }
-        setSavedId(job.id);
+        const skills = asStringList(job.skills);
+        const cities = asStringList(job.cities);
+        const tags = asStringList(job.tags);
+        setSavedId(asString(job.id));
         setForm({
-          title: job.title || "",
-          description: job.description || "",
+          title: asString(job.title),
+          description: asString(job.description),
           published_date: toDateInputValue(job.published_date) || "",
           deadline_date: toDateInputValue(job.deadline_date || job.application_deadline) || "",
-          salary_range: job.salary_range || "",
-          source: job.source || job.source_name || "",
-          reference_url: job.reference_url || job.source_url || "",
-          application_url: job.application_url || "",
-          experience_required: (job.experience_required || "").replace(/\s*year\(s\)/i, ""),
-          education_required: job.education_required || "",
-          skills: job.skills || [],
-          job_type: job.job_type || (job.source_type === "govt" ? "government" : "private"),
-          cities: job.cities?.length ? job.cities : job.city ? [job.city] : [],
-          tags: (job.tags || []).filter(
+          salary_range: asString(job.salary_range),
+          source: asString(job.source || job.source_name),
+          reference_url: asString(job.reference_url || job.source_url),
+          application_url: asString(job.application_url),
+          experience_required: asString(job.experience_required).replace(/\s*year\(s\)/i, ""),
+          education_required: asString(job.education_required),
+          skills,
+          job_type: asString(job.job_type) || (job.source_type === "govt" ? "government" : "private"),
+          cities: cities.length ? cities : asStringList(job.city),
+          tags: tags.filter(
             (t) => !["government", "private", "govt"].includes(t.toLowerCase())
           ),
-          keywords: job.keywords || "",
+          keywords: asString(job.keywords),
         });
-        setQna(job.qna || []);
-        setAttachmentCount((job.attachments || []).filter((a) => !a.is_inline_image).length);
+        setQna(Array.isArray(job.qna) ? job.qna : []);
+        setAttachmentCount(
+          (Array.isArray(job.attachments) ? job.attachments : []).filter(
+            (attachment) => attachment && !attachment.is_inline_image
+          ).length
+        );
         // Load existing Yoast SEO meta if present
         fetch(`${API_BASE}/api/seo/job/${job.id}`)
           .then((r) => (r.ok ? r.json() : null))
@@ -134,7 +171,7 @@ export default function JobFormPage() {
   useEffect(() => {
     if (!qnaLoading) return;
     setTimer(0);
-    const id = setInterval(() => setTimer((t) => Math.min(60, t + 1)), 1000);
+    const id = setInterval(() => setTimer((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [qnaLoading]);
 
@@ -511,7 +548,7 @@ export default function JobFormPage() {
             </button>
             {qnaLoading && (
               <span className="text-sm text-[var(--muted)] font-mono">
-                Timer: {timer}s {timer >= 60 ? "(stopping at 60s)" : ""}
+                Timer: {timer}s
               </span>
             )}
           </div>

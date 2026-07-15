@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-import re
-from collections import Counter
-from difflib import SequenceMatcher
+import threading
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -13,92 +13,26 @@ from app.logging_config import get_logger
 
 logger = get_logger("jobportal.embeddings")
 
-_TITLE_NOISE = {
-    "2024",
-    "2025",
-    "2026",
-    "answers",
-    "complete",
-    "guide",
-    "govt",
-    "government",
-    "hiring",
-    "in",
-    "interview",
-    "interviews",
-    "job",
-    "jobs",
-    "latest",
-    "of",
-    "opening",
-    "openings",
-    "pakistan",
-    "preparation",
-    "preparations",
-    "questions",
-    "recruitment",
-    "related",
-    "the",
-    "tips",
-    "vacancies",
-    "vacancy",
-    "video",
-    "with",
-}
-
-
-def _tokens(text: str) -> list[str]:
-    # Keep dotted acronyms such as F.I.A equivalent to FIA before tokenizing.
-    normalized = re.sub(
-        r"\b(?:[A-Za-z]\.){2,}[A-Za-z]?\.?",
-        lambda match: re.sub(r"[^A-Za-z]", "", match.group(0)),
-        text or "",
-    )
-    return re.findall(r"[a-z0-9]+", normalized.lower())
-
-
-def _title_tokens(text: str) -> list[str]:
-    tokens = _tokens(text)
-    cleaned = [token for token in tokens if token not in _TITLE_NOISE]
-    return cleaned or tokens
-
-
-def embed_text(text: str) -> Counter:
-    """Deterministic fallback embedding used when the configured provider is unavailable."""
-    toks = _tokens(text)
-    grams = list(toks)
-    grams.extend(f"{a}_{b}" for a, b in zip(toks, toks[1:]))
-    return Counter(grams)
+_LOCAL_ENCODE_LOCK = threading.Lock()
 
 
 def cosine_similarity(a: Any, b: Any) -> float:
-    if isinstance(a, Counter) and isinstance(b, Counter):
-        if not a or not b:
-            return 0.0
-        common = set(a) & set(b)
-        if not common:
-            return 0.0
-        dot = sum(a[t] * b[t] for t in common)
-        na = math.sqrt(sum(v * v for v in a.values()))
-        nb = math.sqrt(sum(v * v for v in b.values()))
-    else:
-        if not a or not b or len(a) != len(b):
-            return 0.0
-        dot = sum(float(x) * float(y) for x, y in zip(a, b))
-        na = math.sqrt(sum(float(x) * float(x) for x in a))
-        nb = math.sqrt(sum(float(y) * float(y) for y in b))
-    if na == 0 or nb == 0:
+    if a is None or b is None or len(a) != len(b) or not len(a):
         return 0.0
-    return float(dot / (na * nb))
+    dot = sum(float(x) * float(y) for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(float(x) * float(x) for x in a))
+    norm_b = math.sqrt(sum(float(y) * float(y) for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return float(dot / (norm_a * norm_b))
 
 
-def text_similarity(a: str, b: str) -> float:
-    """Fast local similarity for validation and provider fallback."""
-    return cosine_similarity(embed_text(a), embed_text(b))
+def _embedding_config() -> dict[str, Any]:
+    return dict(cfg("embeddings") or {})
 
 
 def _openai_embeddings(texts: list[str]) -> list[list[float]]:
-    conf = cfg("embeddings") or {}
+    conf = _embedding_config()
     api_key = env("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
@@ -123,53 +57,101 @@ def _openai_embeddings(texts: list[str]) -> list[list[float]]:
     return [row["embedding"] for row in rows]
 
 
-def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
-    normalized = [" ".join(_title_tokens(value)) for value in [query, *titles]]
-    provider = str((cfg("embeddings") or {}).get("provider") or "openai").lower()
-    vectors: list[Any]
+def _local_model_path() -> Path:
+    configured = env("EMBEDDINGGEMMA_MODEL_PATH") or str(
+        _embedding_config().get("local_model_path")
+        or "/models/embeddinggemma-300M-qat-Q4_0.gguf"
+    )
+    return Path(configured).expanduser()
+
+
+@lru_cache(maxsize=1)
+def _load_local_model():
     try:
-        if provider != "openai":
-            raise RuntimeError(f"Unsupported embedding provider: {provider}")
-        vectors = _openai_embeddings(normalized)
-    except Exception as exc:
-        logger.warning("embedding provider unavailable; using local fallback: %s", exc)
-        vectors = [embed_text(text) for text in normalized]
+        from llama_cpp import Llama
+    except ImportError as exc:
+        raise RuntimeError("EmbeddingGemma requires llama-cpp-python") from exc
 
-    query_tokens = set(_title_tokens(query))
-    query_acronyms = {
-        token.lower()
-        for token in re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", query or "")
-    }
-    scores: list[float] = []
-    for title, vector in zip(titles, vectors[1:]):
-        semantic_score = cosine_similarity(vectors[0], vector)
-        title_tokens = set(_title_tokens(title))
-        common = query_tokens & title_tokens
-        coverage = len(common) / len(query_tokens) if query_tokens else 0.0
-        precision = len(common) / len(title_tokens) if title_tokens else 0.0
-        token_f1 = (
-            2 * coverage * precision / (coverage + precision)
-            if coverage and precision
-            else 0.0
+    model_path = _local_model_path()
+    if not model_path.is_file():
+        raise RuntimeError(
+            f"Quantized EmbeddingGemma model is missing at {model_path}. "
+            "Verify the persistent /models mount and restart the revision."
         )
-        query_normalized = " ".join(_title_tokens(query))
-        title_normalized = " ".join(_title_tokens(title))
-        sequence_score = SequenceMatcher(None, query_normalized, title_normalized).ratio()
-        lexical_score = 0.7 * coverage + 0.2 * token_f1 + 0.1 * sequence_score
 
-        # Exact core-role containment is a strong match despite words such as
-        # "Sub" or generic interview/preparation suffixes in a YouTube title.
-        if query_tokens and query_tokens.issubset(title_tokens):
-            lexical_score = max(lexical_score, 0.97)
+    conf = _embedding_config()
+    threads = max(1, int(env("EMBEDDINGGEMMA_THREADS") or conf.get("local_threads") or 1))
+    logger.info("loading_embeddinggemma model=%s threads=%s", model_path, threads)
+    return Llama(
+        model_path=str(model_path),
+        embedding=True,
+        n_ctx=int(conf.get("local_max_length") or 512),
+        n_batch=int(conf.get("local_batch_tokens") or 128),
+        n_threads=threads,
+        n_threads_batch=threads,
+        use_mmap=True,
+        use_mlock=False,
+        verbose=False,
+    )
 
-        score = max(semantic_score, lexical_score)
-        # Acronyms identify organisations (FIA, NAB, PPSC, FPSC, etc.). A
-        # semantic model must not rank a generic government-job video above a
-        # title that actually contains the requested organisation.
-        if query_acronyms and not query_acronyms.issubset(title_tokens):
-            score = min(score, 0.24)
-        scores.append(max(0.0, min(1.0, score)))
-    return scores
+
+def _embeddinggemma_embeddings(
+    texts: list[str], *, query_first: bool = False
+) -> list[list[float]]:
+    if not texts:
+        return []
+    if query_first:
+        # EmbeddingGemma's documented retrieval prompts: the job title is the
+        # query and YouTube video titles are candidate documents.
+        prompts = [f"task: search result | query: {texts[0]}"]
+        prompts.extend(f"title: none | text: {text}" for text in texts[1:])
+    else:
+        prompts = [f"task: sentence similarity | query: {text}" for text in texts]
+    with _LOCAL_ENCODE_LOCK:
+        response = _load_local_model().create_embedding(prompts)
+    rows = sorted(response.get("data") or [], key=lambda row: row.get("index", 0))
+    if len(rows) != len(texts):
+        raise RuntimeError("EmbeddingGemma returned an incomplete batch")
+    vectors: list[list[float]] = []
+    for row in rows:
+        vector = row.get("embedding")
+        if not isinstance(vector, list) or not vector or isinstance(vector[0], list):
+            raise RuntimeError("EmbeddingGemma did not return sequence-level embeddings")
+        vectors.append([float(value) for value in vector])
+    return vectors
+
+
+def _semantic_embeddings(texts: list[str], *, query_first: bool = False) -> list[list[float]]:
+    provider = str(
+        env("EMBEDDING_PROVIDER") or _embedding_config().get("provider") or "openai"
+    ).lower()
+    if provider == "embeddinggemma":
+        return _embeddinggemma_embeddings(texts, query_first=query_first)
+    if provider != "openai":
+        raise RuntimeError(f"Unsupported embedding provider: {provider}")
+    try:
+        return _openai_embeddings(texts)
+    except Exception as exc:
+        logger.warning("OpenAI embeddings unavailable; using EmbeddingGemma: %s", exc)
+        return _embeddinggemma_embeddings(texts, query_first=query_first)
+
+
+def text_similarity(a: str, b: str) -> float:
+    """Semantic cosine similarity using OpenAI, with EmbeddingGemma fallback."""
+    if not a or not b:
+        return 0.0
+    vectors = _semantic_embeddings([a, b])
+    return cosine_similarity(vectors[0], vectors[1])
+
+
+def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
+    if not titles:
+        return []
+    vectors = _semantic_embeddings([query, *titles], query_first=True)
+    return [
+        max(0.0, min(1.0, cosine_similarity(vectors[0], vector)))
+        for vector in vectors[1:]
+    ]
 
 
 def rank_by_similarity(
@@ -178,10 +160,12 @@ def rank_by_similarity(
     key: str = "title",
     score_key: str | None = None,
 ) -> list[dict]:
-    """Rank candidates with the configured large embedding model in one request."""
+    """Rank candidates by normalized embedding cosine similarity."""
     if not candidates:
         return []
-    scores = _title_similarity_scores(query, [str(c.get(key) or "") for c in candidates])
+    scores = _title_similarity_scores(
+        query, [str(candidate.get(key) or "") for candidate in candidates]
+    )
     scored: list[tuple[float, dict]] = []
     for score, candidate in zip(scores, candidates):
         row = dict(candidate)
@@ -193,7 +177,7 @@ def rank_by_similarity(
 
 
 def answer_matches_question(question: str, answer: str, min_score: float = 0.05) -> bool:
-    """Loose local check that answer text relates to the question."""
+    """Check answer relevance using semantic cosine similarity."""
     if not question or not answer:
         return False
     normalized = answer.strip().lower()

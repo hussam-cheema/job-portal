@@ -31,6 +31,7 @@ Suggested names:
 | Virtual network | `job-portal-prod-vnet` |
 | Container Apps environment | `job-portal-prod-env` |
 | Container App | `job-portal-api` |
+| Model file share | `embedding-models` |
 | PostgreSQL server | `job-portal-prod-pg-<unique>` |
 | PostgreSQL database | `jobportal` |
 | Static Web App | `job-portal-web` |
@@ -139,10 +140,44 @@ In the Azure portal:
 3. Create a Container App named `job-portal-api` with external ingress.
 4. For the initial placeholder, use `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest`.
 5. Set the eventual ingress target port to `8000`.
-6. Start with `0.5` vCPU and `1 GiB` memory, minimum replicas `0`, and maximum replicas `2`.
+6. Keep `0.5` vCPU and `1 GiB` memory, minimum replicas `0`, and maximum replicas `2`. The application uses a 4-bit quantized EmbeddingGemma runtime so the existing allocation remains suitable.
 7. Configure an HTTP liveness probe for `/health` and a readiness probe for `/ready`, both on port `8000`.
 
 Minimum replicas of zero minimizes cost but the first request after an idle period can be slower. Change it to one when consistent latency matters more than the budget.
+
+### Add persistent EmbeddingGemma model storage
+
+When OpenAI embeddings are unavailable, the backend uses `google/embeddinggemma-300m` with cosine similarity. To fit the existing 0.5 vCPU/1 GiB Container App, its QAT-derived Q4 GGUF runtime (about 278 MB) is used instead of the 1.21 GB float32 checkpoint. The model must be stored on an Azure Files volume mounted at `/models`; container-local storage is ephemeral and would download it again whenever a replica is replaced.
+
+Create the storage once before the first deployment:
+
+1. Create or reuse a **StorageV2** Azure Storage account in the same region, using **Standard LRS**.
+2. Create an Azure Files share named `embedding-models` with at least 5 GiB quota.
+3. Open the **Container Apps environment** > **Volume mounts**, and add the share as an SMB Azure Files storage definition:
+   - Storage name: `embeddingmodels`
+   - Access mode: Read/Write
+4. Open `job-portal-api` > **Revisions and replicas** > **Create new revision**.
+5. Under **Volumes**, add an Azure file volume named `embedding-model-volume` using `embeddingmodels`.
+6. Edit the application container and add this volume mount:
+   - Volume: `embedding-model-volume`
+   - Mount path: `/models`
+7. Create the revision and confirm it becomes healthy.
+
+The equivalent environment-storage registration command is:
+
+```bash
+az containerapp env storage set \
+  --name <container-app-environment> \
+  --resource-group <resource-group> \
+  --storage-name embeddingmodels \
+  --storage-type AzureFile \
+  --azure-file-account-name <storage-account> \
+  --azure-file-account-key <storage-account-key> \
+  --azure-file-share-name embedding-models \
+  --access-mode ReadWrite
+```
+
+Keep the storage account key in Azure only; do not add it to GitHub. The workflow verifies that `/models` is mounted before updating the app. During the first successful revision, the backend downloads the model directly into the mounted Azure Files share before starting the API. Subsequent revisions reuse it immediately.
 
 ### Configure GHCR access once
 
@@ -221,6 +256,11 @@ R2_PUBLIC_BASE_URL=https://files.example.com
 SEED_ON_STARTUP=false
 RESET_DB_SCHEMA=false
 LOG_LEVEL=INFO
+
+EMBEDDINGGEMMA_MODEL_PATH=/models/embeddinggemma-300M-qat-Q4_0.gguf
+EMBEDDINGGEMMA_MODEL_MOUNT_PATH=/models
+EMBEDDINGGEMMA_REQUIRE_PERSISTENT_STORAGE=true
+EMBEDDINGGEMMA_THREADS=1
 ```
 
 Add any YouTube or LLM API keys as Container App secrets only when those features are enabled. The local backend `.env` is not copied into the production container.
@@ -313,8 +353,9 @@ The `main` push runs this sequence:
 2. Frontend lint and production build.
 3. Backend image build and push to GHCR with the full commit SHA as its immutable tag.
 4. Azure OIDC login and Container App revision update.
-5. Backend `/ready` verification, including a database query.
-6. Static Web Apps frontend build and deployment.
+5. On the first deployment only, download quantized EmbeddingGemma into the persistent `/models` Azure Files mount.
+6. Backend `/ready` verification, including a database query and successful model-cache preparation.
+7. Static Web Apps frontend build and deployment.
 
 If the repository had to be pushed before the Azure and GitHub settings were complete, finish the configuration and run **CI and production deployment** manually from the GitHub Actions tab.
 
@@ -357,6 +398,7 @@ After the free period:
 
 - Static Web Apps Free should remain the frontend baseline while its limits fit the application.
 - Container Apps consumption with minimum replicas zero should be inexpensive at low traffic and scales horizontally by increasing the maximum replicas or adding HTTP/concurrency rules.
+- The quantized EmbeddingGemma fallback adds roughly 278 MB of Azure Files storage plus file operations. The app remains at 0.5 vCPU/1 GiB while active and minimum replicas can remain zero. Monitor memory during real traffic before enabling a minimum replica or increasing concurrency.
 - R2 has a free usage allowance and no egress charge to the public internet under its normal pricing model, but operations and storage above the allowance are billed.
 - PostgreSQL is likely to be the largest fixed cost. Keep the smallest suitable burstable SKU, 32 GB storage, no HA, and seven-day LRS backups while traffic is small. Re-check the Azure Pricing Calculator before the free offer expires; a continuously running managed database can consume most or all of the USD 25 target in some regions.
 

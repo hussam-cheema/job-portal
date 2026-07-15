@@ -284,19 +284,12 @@ export async function adminDeleteJob(token: string, id: string) {
 }
 
 export async function adminFetchQnA(token: string, jobId: string): Promise<QnAFetchResult> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}/fetch-qna`, {
-      method: "POST",
-      headers: authHeaders(token),
-      signal: AbortSignal.timeout(60000),
-    });
-  } catch (error) {
-    if (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name)) {
-      throw new Error("YouTube Q&A processing reached the 60-second limit.");
-    }
-    throw error;
-  }
+  // The backend owns the configurable processing deadline. A shorter browser
+  // timeout used to abort otherwise healthy 120-second requests at 60 seconds.
+  const res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}/fetch-qna`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "QnA fetch failed");
   return res.json();
 }

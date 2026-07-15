@@ -186,14 +186,32 @@ def test_stats_open_for_apply(client: TestClient):
     assert data["open_for_apply"] >= 1
 
 
-def test_embeddings_similarity():
-    from app.services.embeddings import answer_matches_question, rank_by_similarity, text_similarity
+def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
+    from app.services import embeddings
 
-    assert text_similarity("software engineer backend python", "python backend engineer") > 0.2
-    assert answer_matches_question("What is REST?", "REST is an architectural style for APIs using HTTP.")
-    assert not answer_matches_question("What is REST?", "See video")
+    def fake_semantic_vectors(texts: list[str], *, query_first: bool = False):
+        if query_first:
+            rows = [[1.0, 0.0]]
+            for text in texts[1:]:
+                lowered = text.lower()
+                if "sub inspector" in lowered:
+                    rows.append([0.99, 0.05])
+                elif "fia" in lowered:
+                    rows.append([0.9, 0.2])
+                else:
+                    rows.append([0.1, 0.99])
+            return rows
+        return [[1.0, 0.0] for _ in texts]
 
-    ranked = rank_by_similarity(
+    monkeypatch.setattr(embeddings, "_semantic_embeddings", fake_semantic_vectors)
+
+    assert embeddings.text_similarity("software engineer backend python", "python backend engineer") > 0.2
+    assert embeddings.answer_matches_question(
+        "What is REST?", "REST is an architectural style for APIs using HTTP."
+    )
+    assert not embeddings.answer_matches_question("What is REST?", "See video")
+
+    ranked = embeddings.rank_by_similarity(
         "FIA Inspector jobs in government",
         [
             {"title": "Interviews for Government Jobs in Pakistan"},
@@ -206,6 +224,27 @@ def test_embeddings_similarity():
     assert ranked[0]["score"] >= 0.6
     generic = next(row for row in ranked if row["title"].startswith("Interviews for"))
     assert generic["score"] < 0.35
+
+
+def test_openai_embedding_failure_uses_embeddinggemma(monkeypatch: pytest.MonkeyPatch):
+    from app.services import embeddings
+
+    used = {"embeddinggemma": False}
+
+    def openai_failure(texts: list[str]):
+        raise RuntimeError("OpenAI unavailable")
+
+    def local_vectors(texts: list[str], *, query_first: bool = False):
+        used["embeddinggemma"] = True
+        return [[1.0, 0.0], [0.8, 0.2]]
+
+    monkeypatch.setattr(embeddings, "_openai_embeddings", openai_failure)
+    monkeypatch.setattr(embeddings, "_embeddinggemma_embeddings", local_vectors)
+
+    vectors = embeddings._semantic_embeddings(["query", "candidate"], query_first=True)
+
+    assert used["embeddinggemma"] is True
+    assert vectors == [[1.0, 0.0], [0.8, 0.2]]
 
 
 def test_admin_password_change(client: TestClient):
@@ -571,8 +610,9 @@ def test_qna_refresh_replaces_only_after_strict_title_match(monkeypatch: pytest.
         lambda *args, **kwargs: [
             {**videos[0], "title_similarity": 0.97},
             {**videos[1], "title_similarity": 0.2},
-        ],
-    )
+            ],
+        )
+    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
     monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "transcript")
     monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **_kwargs: [])
     monkeypatch.setattr(
@@ -621,6 +661,101 @@ def test_qna_no_match_keeps_existing_rows_and_returns_visible_error(
     assert "No sufficiently relevant" in result["error"]
     assert [row.id for row in result["items"]] == ["existing-qna"]
     assert db.query(JobQnA).filter(JobQnA.job_id == "job-no-match").count() == 1
+    db.close()
+
+
+def test_qna_returns_immediately_after_first_useful_video(monkeypatch: pytest.MonkeyPatch):
+    from app.models import JobQnA
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    videos = [
+        {"video_id": "first", "title": "FIA Inspector interview", "url": "https://youtu.be/first"},
+        {"video_id": "second", "title": "FIA Inspector preparation", "url": "https://youtu.be/second"},
+    ]
+    calls: list[str] = []
+    monkeypatch.setattr(qna_service, "search_youtube", lambda *args, **kwargs: videos)
+    monkeypatch.setattr(
+        qna_service,
+        "rank_by_similarity",
+        lambda *args, **kwargs: [{**video, "title_similarity": 0.9} for video in videos],
+    )
+    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
+    monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "useful transcript")
+    monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **kwargs: [])
+
+    def extract(**kwargs):
+        calls.append(kwargs["title"])
+        return [
+            {
+                "question": "What does FIA investigate?",
+                "answer": "FIA investigates federal crimes and related offences.",
+                "source": "transcript",
+            }
+        ]
+
+    monkeypatch.setattr(qna_service, "extract_qna_from_video", extract)
+
+    result = qna_service.fetch_qna_for_job_title(
+        db, job_id="job-first-match", job_title="FIA Inspector jobs in government"
+    )
+
+    assert result["count"] == 1
+    assert result["videos_scanned"] == 1
+    assert result["error"] is None
+    assert calls == ["FIA Inspector interview"]
+    assert db.query(JobQnA).filter(JobQnA.job_id == "job-first-match").count() == 1
+    db.close()
+
+
+def test_qna_tries_next_video_after_one_ai_timeout(monkeypatch: pytest.MonkeyPatch):
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    videos = [
+        {"video_id": "slow", "title": "FIA Inspector interview", "url": "https://youtu.be/slow"},
+        {"video_id": "useful", "title": "FIA Inspector test guide", "url": "https://youtu.be/useful"},
+    ]
+    attempts = 0
+    monkeypatch.setattr(qna_service, "search_youtube", lambda *args, **kwargs: videos)
+    monkeypatch.setattr(
+        qna_service,
+        "rank_by_similarity",
+        lambda *args, **kwargs: [{**video, "title_similarity": 0.9} for video in videos],
+    )
+    monkeypatch.setattr(qna_service, "answer_matches_question", lambda *_args: True)
+    monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "transcript")
+    monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **kwargs: [])
+
+    def extract(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TimeoutError("The read operation timed out")
+        return [
+            {
+                "question": "What is the Inspector role?",
+                "answer": "The Inspector role includes investigation and enforcement duties.",
+                "source": "transcript",
+            }
+        ]
+
+    monkeypatch.setattr(qna_service, "extract_qna_from_video", extract)
+
+    result = qna_service.fetch_qna_for_job_title(
+        db, job_id="job-timeout-retry", job_title="FIA Inspector jobs in government"
+    )
+
+    assert attempts == 2
+    assert result["videos_scanned"] == 2
+    assert result["count"] == 1
+    assert result["error"] is None
     db.close()
 
 

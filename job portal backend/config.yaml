@@ -75,18 +75,32 @@ youtube_qna:
   max_comments: 50
   extract_transcripts: true
   extract_comments: true
-  timeout_seconds: 55
-  # Lower values allow related role variants; the hybrid matcher separately
-  # requires organisation acronyms (FIA, NAB, PPSC, etc.) when present.
-  min_title_similarity: 0.35
+  timeout_seconds: 120
+  # Return as soon as one relevant video yields valid Q&A instead of waiting
+  # for every candidate video to finish processing.
+  return_after_first_match: true
+  per_video_ai_timeout_seconds: 60
+  # Cosine-similarity cutoff for retaining a YouTube title after embedding
+  # ranking. Lower values allow more loosely related role variants.
+  min_title_similarity: 0.30
   # YOUTUBE_API_KEY in .env
 
-# Large semantic embeddings used to compare job titles with YouTube titles.
+# Semantic embeddings used to compare job titles with YouTube titles.
 embeddings:
   provider: openai
   model: "text-embedding-3-large"
   dimensions: 1536
   timeout_seconds: 30
+  fallback_provider: embeddinggemma
+  fallback_model: "google/embeddinggemma-300m"
+  # Q4 GGUF runtime derived from Google's QAT EmbeddingGemma checkpoint. The
+  # full float32 checkpoint does not fit in a 1 GiB Container App.
+  local_runtime_repository: "ggml-org/embeddinggemma-300M-qat-q4_0-GGUF"
+  local_model_filename: "embeddinggemma-300M-qat-Q4_0.gguf"
+  local_model_path: "/models/embeddinggemma-300M-qat-Q4_0.gguf"
+  local_max_length: 512
+  local_batch_tokens: 128
+  local_threads: 1
 
 # Auth credentials: ADMIN_USERNAME / ADMIN_PASSWORD / JWT_SECRET in .env only
 auth:

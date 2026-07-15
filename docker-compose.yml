@@ -17,6 +17,9 @@ services:
       context: "./job portal backend"
       dockerfile: Dockerfile
     container_name: jobportal-backend
+    # Match the current Azure Container Apps allocation during local testing.
+    cpus: 0.5
+    mem_limit: 1g
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -36,10 +39,16 @@ services:
       SMTP_AUTH: "false"
       SMTP_STARTTLS: "false"
       SMTP_USE_SSL: "false"
+      EMBEDDINGGEMMA_MODEL_PATH: /models/embeddinggemma-300M-qat-Q4_0.gguf
+      EMBEDDINGGEMMA_MODEL_MOUNT_PATH: /models
+      EMBEDDINGGEMMA_REQUIRE_PERSISTENT_STORAGE: "true"
+      EMBEDDINGGEMMA_THREADS: "1"
       # R2_ENABLED and credentials come from the backend env_file so local
       # development can explicitly disable remote uploads.
     networks:
       - jobportal-net
+    volumes:
+      - "./job portal backend/.model-cache:/models"
     depends_on:
       mailpit:
         condition: service_started

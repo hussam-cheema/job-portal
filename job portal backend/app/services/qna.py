@@ -134,7 +134,12 @@ def fetch_qna_for_job_title(
     max_qna = int(conf.get("max_qna") or 20)
     max_videos = int(conf.get("max_youtube_videos") or 5)
     timeout = float(conf.get("timeout_seconds") or 60)
-    min_sim = float(conf.get("min_title_similarity") or 0.95)
+    ai_timeout = float(conf.get("per_video_ai_timeout_seconds") or 60)
+    return_after_first_match = bool(conf.get("return_after_first_match", True))
+    configured_min_similarity = conf.get("min_title_similarity")
+    min_sim = float(
+        0.95 if configured_min_similarity is None else configured_min_similarity
+    )
     started = time.monotonic()
     deadline = started + timeout
     error: str | None = None
@@ -149,7 +154,7 @@ def fetch_qna_for_job_title(
         raw_videos = search_youtube(
             query,
             max_results=max(max_videos * 2, max_videos),
-            timeout_seconds=min(10.0, max(1.0, deadline - time.monotonic())),
+            timeout_seconds=min(15.0, max(1.0, deadline - time.monotonic())),
         )
         ranked = rank_by_similarity(
             job_title,
@@ -184,26 +189,57 @@ def fetch_qna_for_job_title(
             videos_scanned += 1
             try:
                 remaining = deadline - time.monotonic()
-                transcript = _call_with_timeout(
-                    lambda: get_transcript(video_id),
-                    min(10.0, remaining),
-                )
-                remaining = deadline - time.monotonic()
-                if remaining <= 1:
+                if remaining <= 2:
                     raise TimeoutError("Q&A processing deadline reached")
-                comments = get_top_comments(
-                    video_id,
-                    timeout_seconds=min(10.0, remaining),
-                )
+
+                # Transcript and comments are optional inputs. A slow or blocked
+                # source must not prevent the other source (or the next video)
+                # from producing a useful result.
+                try:
+                    transcript = _call_with_timeout(
+                        lambda: get_transcript(video_id),
+                        min(15.0, remaining - 1),
+                    )
+                except Exception as exc:
+                    transcript = None
+                    logger.warning(
+                        "qna_transcript_unavailable video_id=%s error=%s",
+                        video_id,
+                        str(exc)[:200],
+                    )
+
                 remaining = deadline - time.monotonic()
-                if remaining <= 1:
+                if remaining <= 2:
+                    raise TimeoutError("Q&A processing deadline reached")
+                try:
+                    comments = get_top_comments(
+                        video_id,
+                        timeout_seconds=min(15.0, remaining - 1),
+                    )
+                except Exception as exc:
+                    comments = []
+                    logger.warning(
+                        "qna_comments_unavailable video_id=%s error=%s",
+                        video_id,
+                        str(exc)[:200],
+                    )
+
+                if not transcript and not comments:
+                    logger.info("qna_no_source_text video_id=%s", video_id)
+                    continue
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 2:
                     raise TimeoutError("Q&A processing deadline reached")
                 pairs = extract_qna_from_video(
                     title=video.get("title") or job_title,
                     job_title=job_title,
                     transcript=transcript,
                     comments=comments,
-                    timeout_seconds=min(20.0, remaining),
+                    # The old hard-coded 20-second timeout overrode the configured
+                    # 120-second deadline. Give the AI enough time, while retaining
+                    # a small reserve to persist any result before the deadline.
+                    timeout_seconds=min(ai_timeout, max(1.0, remaining - 2)),
                 )
                 for p in pairs:
                     if time.monotonic() >= deadline:
@@ -227,12 +263,26 @@ def fetch_qna_for_job_title(
                     )
                     if len(collected) >= max_qna:
                         break
+                if collected and return_after_first_match:
+                    logger.info(
+                        "qna_first_match job_id=%s video_id=%s pairs=%s elapsed=%.1fs",
+                        job_id,
+                        video_id,
+                        len(collected),
+                        time.monotonic() - started,
+                    )
+                    break
             except Exception as exc:
                 logger.exception("qna video failed video_id=%s", video_id)
                 if isinstance(exc, TimeoutError):
                     error = f"YouTube Q&A processing reached the {int(timeout)}-second limit."
+                else:
+                    error = f"A YouTube or AI processing error occurred: {str(exc)[:300]}"
+                # A single transcript, comments, or model request may time out
+                # before the overall deadline. Try the next ranked video while
+                # enough time remains instead of discarding the whole operation.
+                if deadline - time.monotonic() <= 2:
                     break
-                error = f"A YouTube or AI processing error occurred: {str(exc)[:300]}"
     except Exception as exc:
         logger.exception("fetch_qna_for_job_title failed job_id=%s", job_id)
         error = str(exc)
@@ -263,6 +313,9 @@ def fetch_qna_for_job_title(
                 "error": error,
                 "videos_scanned": videos_scanned,
             }
+        # A valid partial result is a successful refresh. Do not surface an
+        # earlier candidate-video error after useful Q&A has been collected.
+        error = None
         if replace_existing:
             db.query(JobQnA).filter(JobQnA.job_id == job_id).delete(synchronize_session=False)
         for item in collected:

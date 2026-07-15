@@ -24,3 +24,4 @@
 **/.DS_Store
 *.log
 Scripts/output/
+**/.model-cache/

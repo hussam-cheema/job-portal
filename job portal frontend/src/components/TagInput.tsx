@@ -10,6 +10,9 @@ type Props = {
 
 export function TagInput({ values, onChange, placeholder = "Type and press Enter" }: Props) {
   const [draft, setDraft] = useState("");
+  const safeValues = Array.isArray(values)
+    ? values.filter((value): value is string => typeof value === "string")
+    : [];
 
   function add(raw: string) {
     const parts = raw
@@ -17,7 +20,7 @@ export function TagInput({ values, onChange, placeholder = "Type and press Enter
       .map((s) => s.trim())
       .filter(Boolean);
     if (!parts.length) return;
-    const next = [...values];
+    const next = [...safeValues];
     for (const p of parts) {
       if (!next.some((v) => v.toLowerCase() === p.toLowerCase())) next.push(p);
     }
@@ -29,20 +32,20 @@ export function TagInput({ values, onChange, placeholder = "Type and press Enter
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       add(draft);
-    } else if (e.key === "Backspace" && !draft && values.length) {
-      onChange(values.slice(0, -1));
+    } else if (e.key === "Backspace" && !draft && safeValues.length) {
+      onChange(safeValues.slice(0, -1));
     }
   }
 
   return (
     <div className="tag-input">
-      {values.map((v) => (
+      {safeValues.map((v) => (
         <span key={v} className="tag tag-blue">
           {v}
           <button
             type="button"
             className="ml-1 opacity-70 hover:opacity-100"
-            onClick={() => onChange(values.filter((x) => x !== v))}
+            onClick={() => onChange(safeValues.filter((x) => x !== v))}
             aria-label={`Remove ${v}`}
           >
             ×
@@ -54,7 +57,7 @@ export function TagInput({ values, onChange, placeholder = "Type and press Enter
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={() => draft && add(draft)}
-        placeholder={values.length ? "" : placeholder}
+        placeholder={safeValues.length ? "" : placeholder}
       />
     </div>
   );
