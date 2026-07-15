@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AdminShell } from "@/components/AdminShell";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { TagInput } from "@/components/TagInput";
@@ -69,6 +69,7 @@ function asStringList(value: unknown): string[] {
 
 export default function JobFormPage() {
   const params = useParams<{ id?: string }>();
+  const router = useRouter();
   const isNew = !params?.id || params.id === "new";
   const jobId: string | null = isNew ? null : String(params.id);
   const { token } = useAdminAuth();
@@ -219,7 +220,7 @@ export default function JobFormPage() {
         : await adminCreateJob(token, payload);
       setSavedId(job.id);
       setSuccess(savedId ? "Job post updated successfully." : "Job post saved successfully.");
-      if (!savedId) window.location.assign(`/admin/jobs/${job.id}`);
+      if (!savedId) router.replace(`/admin/jobs/${job.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Job post could not be saved.");
       setSuccess(null);

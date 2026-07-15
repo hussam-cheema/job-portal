@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AdminDashboardLink } from "@/components/AdminDashboardLink";
 import { SocialFooterIcons } from "@/components/SocialFooterIcons";
 import { VisitTracker } from "@/components/VisitTracker";
+import { ClientChunkRecovery } from "@/components/ClientChunkRecovery";
 import { fetchBranding } from "@/lib/api";
 import "./globals.css";
 
@@ -49,6 +50,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="antialiased font-sans">
+        <ClientChunkRecovery />
         <div className="min-h-screen flex flex-col">
           <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
             <div className="site-wrap min-h-14 py-2 flex items-center justify-between gap-2">

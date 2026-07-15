@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AdminShell } from "@/components/AdminShell";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -22,6 +22,7 @@ function slugify(text: string) {
 
 export default function AdminPageForm() {
   const params = useParams<{ id?: string }>();
+  const router = useRouter();
   const isNew = !params?.id || params.id === "new";
   const pageId = isNew ? null : String(params.id);
   const { token } = useAdminAuth();
@@ -124,7 +125,7 @@ export default function AdminPageForm() {
       });
       setSuccess(pageId ? "Page updated successfully." : "Page saved successfully.");
       if (!pageId && saved?.id) {
-        window.location.assign(`/admin/pages/${saved.id}`);
+        router.replace(`/admin/pages/${saved.id}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Page could not be saved.");
