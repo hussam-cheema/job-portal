@@ -1,0 +1,22 @@
+{
+  "routes": [
+    {
+      "route": "/admin/*",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
+      }
+    },
+    {
+      "route": "/login",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
+      }
+    },
+    {
+      "route": "/reset-password",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
+      }
+    }
+  ]
+}

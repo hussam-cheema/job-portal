@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAdminAuth } from "@/lib/adminAuth";
+import { AdminRouteLink } from "@/components/AdminRouteLink";
 
 const LINKS = [
   { href: "/admin", label: "Dashboard" },
@@ -28,12 +28,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     setNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (ready && !token && pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [pathname, ready, router, token]);
+
   if (!ready) {
     return <div className="site-wrap py-10 text-[var(--muted)]">Loading…</div>;
   }
 
   if (!token && pathname !== "/login") {
-    if (typeof window !== "undefined") router.replace("/login");
     return <div className="site-wrap py-10 text-[var(--muted)]">Redirecting to login…</div>;
   }
 
@@ -70,9 +75,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/" className="btn btn-ghost">
+          <AdminRouteLink href="/" className="btn btn-ghost">
             View site
-          </Link>
+          </AdminRouteLink>
           <button
             type="button"
             className="btn btn-ghost"
@@ -92,14 +97,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           className={`admin-nav${navOpen ? " admin-nav-open" : ""}`}
         >
           {LINKS.map((l) => (
-            <Link
+            <AdminRouteLink
               key={l.href}
               href={l.href}
               className={isActive(l.href) ? "active" : ""}
               onClick={() => setNavOpen(false)}
             >
               {l.label}
-            </Link>
+            </AdminRouteLink>
           ))}
         </aside>
         <div className="admin-content min-w-0">{children}</div>

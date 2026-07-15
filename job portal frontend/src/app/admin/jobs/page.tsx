@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { AdminShell } from "@/components/AdminShell";
 import { adminDeleteJob, adminListJobs } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -47,9 +48,9 @@ export default function AdminJobsPage() {
       <div className="card-panel">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="font-semibold text-[var(--navy-100)]">Job posts</h2>
-          <Link href="/admin/jobs/new" className="btn btn-primary">
+          <AdminRouteLink href="/admin/jobs/new" className="btn btn-primary">
             New job
-          </Link>
+          </AdminRouteLink>
         </div>
         {loading && <p className="p-5 text-sm text-[var(--muted)]">Loading…</p>}
         {error && <p className="p-5 field-error">{error}</p>}
@@ -70,9 +71,9 @@ export default function AdminJobsPage() {
                 <Link href={`/jobs/${job.slug || job.id}`} className="btn btn-ghost">
                   View
                 </Link>
-                <Link href={`/admin/jobs/${job.id}`} className="btn btn-ghost">
+                <AdminRouteLink href={`/admin/jobs/${job.id}`} className="btn btn-ghost">
                   Edit
-                </Link>
+                </AdminRouteLink>
                 <button type="button" className="btn btn-ghost" onClick={() => onDelete(job.id)}>
                   Delete
                 </button>

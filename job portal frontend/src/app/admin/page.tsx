@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { AdminShell } from "@/components/AdminShell";
+import { AdminRouteLink } from "@/components/AdminRouteLink";
 
 export default function AdminHome() {
   return (
@@ -13,24 +13,24 @@ export default function AdminHome() {
           review contact messages.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link href="/admin/jobs/new" className="btn btn-primary">
+          <AdminRouteLink href="/admin/jobs/new" className="btn btn-primary">
             Create job post
-          </Link>
-          <Link href="/admin/pages/new" className="btn btn-primary">
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/pages/new" className="btn btn-primary">
             Create page
-          </Link>
-          <Link href="/admin/jobs" className="btn btn-ghost">
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/jobs" className="btn btn-ghost">
             Manage jobs
-          </Link>
-          <Link href="/admin/pages" className="btn btn-ghost">
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/pages" className="btn btn-ghost">
             Manage pages
-          </Link>
-          <Link href="/admin/messages" className="btn btn-ghost">
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/messages" className="btn btn-ghost">
             Contact messages
-          </Link>
-          <Link href="/admin/seo" className="btn btn-ghost">
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/seo" className="btn btn-ghost">
             SEO monitor
-          </Link>
+          </AdminRouteLink>
         </div>
       </div>
     </AdminShell>

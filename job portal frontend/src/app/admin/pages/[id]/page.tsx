@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { AdminShell } from "@/components/AdminShell";
+import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
 import { adminListPages, adminSavePage, API_BASE } from "@/lib/api";
@@ -25,7 +25,6 @@ export default function AdminPageForm() {
   const isNew = !params?.id || params.id === "new";
   const pageId = isNew ? null : String(params.id);
   const { token } = useAdminAuth();
-  const router = useRouter();
 
   const [form, setForm] = useState({
     slug: "",
@@ -125,7 +124,7 @@ export default function AdminPageForm() {
       });
       setSuccess(pageId ? "Page updated successfully." : "Page saved successfully.");
       if (!pageId && saved?.id) {
-        router.push(`/admin/pages/${saved.id}`);
+        window.location.assign(`/admin/pages/${saved.id}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Page could not be saved.");
@@ -155,9 +154,9 @@ export default function AdminPageForm() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/admin/pages" className="btn btn-ghost">
+            <AdminRouteLink href="/admin/pages" className="btn btn-ghost">
               ← All pages
-            </Link>
+            </AdminRouteLink>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? "Saving…" : "Save page"}
             </button>
@@ -226,9 +225,9 @@ export default function AdminPageForm() {
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? "Saving…" : "Save page"}
           </button>
-          <Link href="/admin/pages" className="btn btn-ghost">
+          <AdminRouteLink href="/admin/pages" className="btn btn-ghost">
             Cancel
-          </Link>
+          </AdminRouteLink>
         </div>
       </form>
     </AdminShell>

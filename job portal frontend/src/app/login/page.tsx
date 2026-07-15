@@ -25,9 +25,9 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [recoveryCooldown]);
 
-  if (ready && token) {
-    router.replace("/admin");
-  }
+  useEffect(() => {
+    if (ready && token) router.replace("/admin");
+  }, [ready, router, token]);
 
   async function requestRecovery() {
     if (recoveryCooldown > 0) return;

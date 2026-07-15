@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { AdminShell } from "@/components/AdminShell";
 import { adminDeletePage, adminListPages } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -54,9 +55,9 @@ export default function AdminPagesListPage() {
               CMS pages · create and edit in a full form
             </p>
           </div>
-          <Link href="/admin/pages/new" className="btn btn-primary w-full sm:w-auto">
+          <AdminRouteLink href="/admin/pages/new" className="btn btn-primary w-full sm:w-auto">
             New page
-          </Link>
+          </AdminRouteLink>
         </div>
 
         {loading && <p className="p-5 text-sm text-[var(--muted)]">Loading…</p>}
@@ -97,9 +98,9 @@ export default function AdminPagesListPage() {
                 >
                   View
                 </Link>
-                <Link href={`/admin/pages/${p.id}`} className="btn btn-ghost">
+                <AdminRouteLink href={`/admin/pages/${p.id}`} className="btn btn-ghost">
                   Edit
-                </Link>
+                </AdminRouteLink>
                 <button type="button" className="btn btn-ghost" onClick={() => onDelete(p.id)}>
                   Delete
                 </button>
