@@ -25,7 +25,11 @@ export default defineConfig({
         },
         {
           command:
-            "INTERNAL_API_URL=http://127.0.0.1:4010 NEXT_PUBLIC_API_URL=http://127.0.0.1:4010 npm run start -- -p 3100",
+            // Start a fresh test build so NEXT_PUBLIC_API_URL is compiled with
+            // the mock endpoint. Reusing a prior production/local `next build`
+            // can bake in :8000 and turn an expected mock request into an
+            // unhandled browser-level `Failed to fetch` navigation error.
+            "INTERNAL_API_URL=http://127.0.0.1:4010 NEXT_PUBLIC_API_URL=http://127.0.0.1:4010 npm run dev -- -p 3100",
           url: baseURL,
           reuseExistingServer: !process.env.CI,
         },

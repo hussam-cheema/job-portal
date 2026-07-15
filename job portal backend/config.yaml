@@ -88,10 +88,9 @@ youtube_qna:
   source_timeout_seconds: 60
   source_collection_timeout_seconds: 60
   source_workers: 5
-  # Raw cosine-similarity cutoff for retaining a YouTube title after embedding
-  # ranking. Lower values broaden the match; higher values are stricter. The
-  # EmbeddingGemma retrieval scores for genuinely related role variants commonly
-  # fall around 0.50-0.60, so 0.50 is the tested default.
+  # Calibrated embedding + role-token similarity cutoff for retaining a YouTube
+  # title. Lower values broaden the match; higher values are stricter. This remains
+  # the single threshold controlling which ranked titles enter source collection.
   min_title_similarity: 0.70
   # YOUTUBE_API_KEY in .env
 

@@ -46,9 +46,10 @@ GROUNDING RULES:
    supplied content. Every answer must come strictly from a supplied transcript or comment.
 2. A question may be explicit in the source, or you may turn a useful factual statement from
    the source into a natural question. Do not invent, infer, or complete an answer yourself.
-3. Set answer_evidence to one continuous, verbatim excerpt from the supplied content that fully
-   supports the answer. Do not include source labels or ellipses. If no such excerpt exists,
-   omit the pair. The saved answer is validated against and derived from this exact excerpt.
+3. Set answer_evidence to the shortest continuous, verbatim excerpt from the supplied content
+   that fully supports the answer (normally one sentence and never more than 400 characters).
+   Do not include source labels or ellipses. If no such excerpt exists, omit the pair. The saved
+   answer is validated against and derived from this exact excerpt.
 4. Prefer concrete job duties, eligibility, test syllabus, application process, preparation,
    interview questions, and factual answers relevant to the job title.
 5. Ignore greetings, promotions, requests for likes/subscriptions, and unrelated discussion.
@@ -74,6 +75,9 @@ GROUNDING RULES:
     proposed answer_evidence, and (c) confirm that the evidence directly answers the question
     without needing outside knowledge. If it does not, omit the pair. Do not pair nearby source
     lines merely because they discuss the same topic.
+14. Viewer comments written in Roman Urdu are still questions when they ask "kya/kia", request
+    "bata dein/bta den", or ask the uploader to tell, guide, confirm, or reply. Do not treat such
+    a request as an answer merely because it has no question mark.
 
 FEW-SHOT EXAMPLES:
 
@@ -104,6 +108,21 @@ CORRECT OUTPUT:
   {"question":"How can candidates apply?","answer":"Applications must be submitted through the official online portal before the closing date.","answer_evidence":"Applications must be submitted through the official online portal before the closing date.","topic":"application_process","source":"comment","video_index":1}
 ]}
 WRONG: using "Is there an application fee?" as the answer. It is a separate unanswered question.
+
+Example 4 — Roman Urdu request without a question mark is not an answer:
+SOURCE:
+"Sir BA private kiya ho ya ADP private kiya ho to kya hum eligible hain, please bata dein."
+CORRECT OUTPUT:
+{"qna":[]}
+REASON: this is a viewer asking whether they are eligible; it supplies no eligibility answer.
+
+Example 5 — Roman Urdu factual statement can be a grounded answer:
+SOURCE:
+"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai."
+CORRECT OUTPUT:
+{"qna":[
+  {"question":"What are the age limits for AD FIA and Inspector FIA?","answer":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","answer_evidence":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","topic":"age_eligibility","source":"comment","video_index":1}
+]}
 """
 
 
@@ -159,6 +178,18 @@ def _safe_json(text: str) -> dict[str, Any]:
 
 _DEFAULT_SOURCE_CHUNK_CHARS = 24000
 _SOURCE_CHUNK_OVERLAP_CHARS = 1200
+
+
+def _canonical_job_title(value: str) -> str:
+    """Remove search boilerplate while preserving the actual role name."""
+    cleaned = re.sub(
+        r"\b(?:latest|new|government|private|jobs?|vacancies|vacancy|recruitment|careers?|pakistan|in)\b",
+        " ",
+        str(value or ""),
+        flags=re.I,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -|,:;")
+    return cleaned if len(cleaned) >= 3 else str(value or "").strip()
 
 
 def _source_payload(source: dict[str, Any]) -> str:
@@ -322,6 +353,15 @@ _QUESTION_REQUESTS = re.compile(
     r"please (?:tell|explain|confirm|guide)|kindly (?:tell|explain|confirm|guide))\b",
     flags=re.I,
 )
+_ROMAN_URDU_QUESTION_REQUESTS = re.compile(
+    r"(?:\b(?:kya|kia)\b.{0,120}\b(?:eligible|apply|qualification|degree|age|limit|"
+    r"job|jobs|vacanc(?:y|ies)|hai|hy|hain|hn|hoga|hogi|hoti|hota|mil(?:e|ay|egi|ega))\b|"
+    r"\b(?:please|plz|pls|kindly|sir|mam|madam)\b.{0,160}\b(?:bta|bata|batain|"
+    r"bataye|btaye|tell|guide|confirm|reply|jawab|answer)\w*\b|"
+    r"\b(?:bta|bata|batain|bataye|btaye)\s+(?:dein|den|do|dy|dain)\b|"
+    r"\b(?:ke|ya)\s+(?:permanent|temporary|regular|contract)\s*$)",
+    flags=re.I,
+)
 
 
 def _answer_is_question_like(value: str) -> bool:
@@ -332,7 +372,22 @@ def _answer_is_question_like(value: str) -> bool:
     if "?" in clean:
         return True
     normalized = _normalized_text(clean)
-    return bool(_QUESTION_OPENINGS.search(normalized) or _QUESTION_REQUESTS.search(normalized))
+    return bool(
+        _QUESTION_OPENINGS.search(normalized)
+        or _QUESTION_REQUESTS.search(normalized)
+        or _ROMAN_URDU_QUESTION_REQUESTS.search(normalized)
+    )
+
+
+def is_acceptable_qna_answer(question: str, answer: str) -> bool:
+    """Conservatively hide legacy rows that contain a question instead of an answer."""
+    normalized_question = _normalized_text(question)
+    normalized_answer = _normalized_text(answer)
+    if not normalized_question or len(normalized_answer.split()) < 2:
+        return False
+    if normalized_question == normalized_answer:
+        return False
+    return not _answer_is_question_like(answer)
 
 
 def _diverse_qna(items: list[dict[str, Any]], max_qna: int) -> list[dict[str, Any]]:
@@ -386,7 +441,12 @@ def _extract_qna_batch(
         question = str(row.get("question") or "").strip()
         proposed_answer = str(row.get("answer") or "").strip()
         answer_evidence = str(row.get("answer_evidence") or "").strip()
-        if len(question) < 5 or len(proposed_answer) < 8 or not answer_evidence:
+        if (
+            len(question) < 5
+            or len(proposed_answer) < 8
+            or not answer_evidence
+            or len(answer_evidence) > 600
+        ):
             continue
         if _answer_is_question_like(proposed_answer) or _answer_is_question_like(answer_evidence):
             logger.warning("qna_rejected_question_as_answer question=%s", question[:120])
@@ -446,6 +506,15 @@ def extract_qna_from_sources(
         int(max_source_chars_per_video or _DEFAULT_SOURCE_CHUNK_CHARS),
     )
     batches = _source_chunks(usable, chunk_chars=chunk_chars)
+    # Divide the global output budget across chunks. Requesting the full global
+    # maximum from every chunk can make a valid JSON response exceed the model's
+    # output-token limit (especially when auto-caption evidence is verbose),
+    # leaving an incomplete document that parses as zero candidates.
+    per_chunk_max = (
+        max_qna
+        if len(batches) <= 1
+        else max(2, (max_qna + len(batches) - 1) // len(batches))
+    )
     if not batches:
         return []
 
@@ -457,7 +526,7 @@ def extract_qna_from_sources(
                 _extract_qna_batch(
                     job_title=job_title,
                     sources=batches[0],
-                    max_qna=max_qna,
+                    max_qna=per_chunk_max,
                     timeout_seconds=timeout_seconds,
                     chunk_number=1,
                     chunk_count=1,
@@ -474,7 +543,7 @@ def extract_qna_from_sources(
                 _extract_qna_batch,
                 job_title=job_title,
                 sources=batch,
-                max_qna=max_qna,
+                max_qna=per_chunk_max,
                 timeout_seconds=timeout_seconds,
                 chunk_number=index,
                 chunk_count=len(batches),
@@ -502,7 +571,15 @@ def extract_qna_from_sources(
     for _, rows in sorted(batch_results, key=lambda result: result[0]):
         for row in rows:
             candidate = dict(row)
-            candidate["rank_score"] = source_scores.get(int(row["video_index"]), 0.0)
+            title_score = source_scores.get(int(row["video_index"]), 0.0)
+            # Every candidate has already passed exact source-evidence validation.
+            # Rank primarily by the source video's configured title similarity;
+            # do not reward verbosity, which can incorrectly push a longer answer
+            # ahead of a more useful concise answer from the same source.
+            candidate["rank_score"] = round(
+                (0.95 * title_score) + 0.05,
+                4,
+            )
             candidates.append(candidate)
 
     # Prefer grounded pairs from the YouTube titles with the highest embedding
@@ -643,9 +720,9 @@ def fetch_qna_for_job_title(
     videos: list[dict[str, Any]] = []
     videos_scanned = 0
     seen_topics: set[str] = set()
-
+    role_title = _canonical_job_title(job_title)
     try:
-        query = f"{job_title} interview questions answers Pakistan".strip()
+        query = f"{role_title} jobs interview eligibility test preparation Pakistan".strip()
         # Fetch more than max_videos then rank by embedding similarity
         raw_videos = search_youtube(
             query,
@@ -772,6 +849,11 @@ def fetch_qna_for_job_title(
                 .order_by(JobQnA.created_at.asc())
                 .all()
             )
+            existing = [
+                row
+                for row in existing
+                if is_acceptable_qna_answer(row.question, row.answer)
+            ]
             if not error:
                 error = (
                     "No relevant question-and-answer pairs were found in matching "

@@ -26,7 +26,7 @@ from app.schemas import (
     JobUpdate,
     QnAFetchResult,
 )
-from app.services.qna import fetch_qna_for_job_title
+from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
 from app.services.seo import delete_seo, upsert_job_seo
 from app.utils import as_list, experience_label, normalize_job_type, slugify, strip_html
 
@@ -119,6 +119,11 @@ def _to_detail(job: Job, db: Session) -> JobDetail:
             .scalars()
             .all()
         )
+        qna = [
+            row
+            for row in qna
+            if is_acceptable_qna_answer(row.question, row.answer)
+        ]
     except Exception:
         logger.exception("qna load failed job_id=%s", job.id)
         qna = []

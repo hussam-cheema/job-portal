@@ -866,6 +866,7 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
     assert "Never answer from memory" in captured["system"]
     assert "FEW-SHOT EXAMPLES" in captured["system"]
     assert "unanswered questions produce no Q&A" in captured["system"]
+    assert "Roman Urdu request" in captured["system"]
     assert [row["topic"] for row in rows] == [
         "age_eligibility",
         "education_eligibility",
@@ -882,8 +883,13 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
         ("What is the salary?", True),
         ("Does anyone know the salary", True),
         ("Please tell me the last date", True),
+        ("Sir BA private kiya ho to kya hm eligible hn plz sir bta den", True),
+        ("Sir Inspector investigation ki jobs temporary hoti ha ke permanent", True),
+        ("Kya age limit 35 years hai", True),
         ("Applicants must be between 18 and 30 years old.", False),
         ("The application must be submitted online.", False),
+        ("AD FIA age limit 22 to 35 years hai.", False),
+        ("Sir sab say pahlay MCQs test pir Descriptive test hai", False),
     ],
 )
 def test_qna_detects_question_like_answers(value: str, expected: bool):

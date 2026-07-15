@@ -15,6 +15,25 @@ logger = get_logger("jobportal.embeddings")
 
 _LOCAL_ENCODE_LOCK = threading.Lock()
 
+_ROLE_STOPWORDS = {
+    "and",
+    "career",
+    "careers",
+    "government",
+    "in",
+    "job",
+    "jobs",
+    "latest",
+    "new",
+    "of",
+    "pakistan",
+    "private",
+    "recruitment",
+    "the",
+    "vacancies",
+    "vacancy",
+}
+
 
 def cosine_similarity(a: Any, b: Any) -> float:
     if a is None or b is None or len(a) != len(b) or not len(a):
@@ -148,9 +167,47 @@ def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
     if not titles:
         return []
     vectors = _semantic_embeddings([query, *titles], query_first=True)
+    query_tokens = {
+        token
+        for token in _normalized_tokens(query)
+        if token not in _ROLE_STOPWORDS
+    }
+    scores: list[float] = []
+    for title, vector in zip(titles, vectors[1:]):
+        raw_cosine = max(0.0, min(1.0, cosine_similarity(vectors[0], vector)))
+        title_tokens = set(_normalized_tokens(title))
+        lexical_coverage = (
+            len(query_tokens & title_tokens) / len(query_tokens)
+            if query_tokens
+            else 0.0
+        )
+        # A role is often followed by a recruiting body, location, seniority,
+        # or other context word (for example "Inspector FPSC").  Requiring
+        # every query token to occur in a video title unfairly penalizes a title
+        # that still contains two strong role-identifying words.  Treat two
+        # matching role tokens as complete lexical support; the configured
+        # min_title_similarity is still applied to the resulting cosine score.
+        if len(query_tokens & title_tokens) >= min(2, len(query_tokens)):
+            lexical_coverage = 1.0
+        # Raw embedding cosines around 0.50-0.60 are common for genuinely
+        # related short titles. Calibrate them only when the candidate also
+        # contains role-identifying tokens; unrelated generic job videos retain
+        # their low raw cosine and cannot pass a strict configured threshold.
+        calibrated = ((raw_cosine + 1.0) / 2.0) * (
+            0.55 + (0.45 * lexical_coverage)
+        )
+        scores.append(max(0.0, min(1.0, max(raw_cosine, calibrated))))
+    return scores
+
+
+def _normalized_tokens(value: str) -> list[str]:
     return [
-        max(0.0, min(1.0, cosine_similarity(vectors[0], vector)))
-        for vector in vectors[1:]
+        token
+        for token in "".join(
+            character.lower() if character.isalnum() else " "
+            for character in str(value or "")
+        ).split()
+        if token
     ]
 
 
