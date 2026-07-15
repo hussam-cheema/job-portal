@@ -59,7 +59,7 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
 
     monkeypatch.setattr(qna, "search_youtube", search)
 
-    # EmbeddingGemma commonly gives related short titles a raw cosine near
+    # Qwen3 Embedding can give related short titles a moderate raw cosine.
     # 0.5-0.6. The production calibration must let role-token matches clear a
     # configured 0.70 threshold without admitting a generic careers video.
     def semantic_vectors(texts, *, query_first=False):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -155,13 +157,75 @@ def get_transcript(video_id: str) -> str | None:
                     texts.append(c.get("text", ""))
                 else:
                     texts.append(getattr(c, "text", str(c)))
-            return " ".join(texts).strip() or None
+            transcript = " ".join(texts).strip()
+            if transcript:
+                return transcript
         except Exception:
             chunks = YouTubeTranscriptApi.get_transcript(video_id)
-            return " ".join(c.get("text", "") for c in chunks).strip() or None
+            transcript = " ".join(c.get("text", "") for c in chunks).strip()
+            if transcript:
+                return transcript
     except Exception as exc:
-        logger.debug("transcript_failed video_id=%s error=%s", video_id, exc)
+        logger.debug("transcript_api_failed video_id=%s error=%s", video_id, exc)
+
+    # YouTube can deny the transcript endpoint while still exposing authored or
+    # auto-generated subtitle tracks to yt-dlp. This independent fallback keeps
+    # those English/Urdu captions available without downloading the video.
+    try:
+        return _transcript_ytdlp(
+            video_id,
+            timeout_seconds=float(_yt_cfg().get("source_timeout_seconds") or 60),
+        )
+    except Exception as exc:
+        logger.debug("transcript_ytdlp_failed video_id=%s error=%s", video_id, exc)
         return None
+
+
+def _transcript_ytdlp(video_id: str, *, timeout_seconds: float) -> str | None:
+    with tempfile.TemporaryDirectory(prefix="jobportal-youtube-") as directory:
+        output = str(Path(directory) / "%(id)s.%(ext)s")
+        proc = subprocess.run(
+            [
+                "yt-dlp",
+                f"https://www.youtube.com/watch?v={video_id}",
+                "--skip-download",
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-langs",
+                "en.*,ur.*,en,ur",
+                "--sub-format",
+                "json3",
+                "--output",
+                output,
+                "--quiet",
+                "--no-warnings",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, timeout_seconds),
+            check=False,
+        )
+        subtitle_files = sorted(Path(directory).glob(f"{video_id}*.json3"))
+        if proc.returncode != 0 and not subtitle_files:
+            return None
+        for path in subtitle_files:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            parts: list[str] = []
+            for event in data.get("events") or []:
+                text = "".join(
+                    str(segment.get("utf8") or "")
+                    for segment in event.get("segs") or []
+                    if isinstance(segment, dict)
+                ).replace("\n", " ").strip()
+                if text and text != "[Music]":
+                    parts.append(text)
+            transcript = " ".join(parts).strip()
+            if transcript:
+                return transcript
+    return None
 
 
 def get_top_comments(
@@ -193,10 +257,13 @@ def get_top_comments(
 
 
 def _comments_api(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
+    conf = _yt_cfg()
+    max_reply_threads = max(0, int(conf.get("max_comment_reply_threads") or 12))
+    max_replies = max(1, int(conf.get("max_replies_per_thread") or 10))
     response = httpx.get(
         "https://www.googleapis.com/youtube/v3/commentThreads",
         params={
-            "part": "snippet",
+            "part": "snippet,replies",
             "videoId": video_id,
             "maxResults": min(max_comments, 100),
             "textFormat": "plainText",
@@ -208,12 +275,73 @@ def _comments_api(video_id: str, max_comments: int, timeout_seconds: float) -> l
     response.raise_for_status()
     payload = response.json()
     comments: list[str] = []
-    for item in payload.get("items", []):
-        top = item.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
+    reply_fetches = 0
+    for item in payload.get("items", [])[:max_comments]:
+        snippet = item.get("snippet") or {}
+        top_level = snippet.get("topLevelComment") or {}
+        top = top_level.get("snippet") or {}
         text = (top.get("textDisplay") or "").strip()
-        if text:
-            comments.append(text)
+        if not text:
+            continue
+        reply_rows = list((item.get("replies") or {}).get("comments") or [])
+        replies = [
+            str((row.get("snippet") or {}).get("textDisplay") or "").strip()
+            for row in reply_rows
+        ]
+        replies = [reply for reply in replies if reply]
+        total_replies = int(snippet.get("totalReplyCount") or len(replies))
+        parent_id = str(top_level.get("id") or "")
+        if (
+            parent_id
+            and total_replies > len(replies)
+            and reply_fetches < max_reply_threads
+        ):
+            reply_fetches += 1
+            try:
+                replies = _comment_replies_api(
+                    parent_id,
+                    max_replies=max_replies,
+                    timeout_seconds=timeout_seconds,
+                ) or replies
+            except Exception as exc:
+                logger.debug("youtube_reply_fetch_failed parent_id=%s error=%s", parent_id, exc)
+        comments.append(_format_comment_thread(text, replies[:max_replies]))
     return comments
+
+
+def _comment_replies_api(
+    parent_id: str,
+    *,
+    max_replies: int,
+    timeout_seconds: float,
+) -> list[str]:
+    response = httpx.get(
+        "https://www.googleapis.com/youtube/v3/comments",
+        params={
+            "part": "snippet",
+            "parentId": parent_id,
+            "maxResults": min(max_replies, 100),
+            "textFormat": "plainText",
+            "key": env("YOUTUBE_API_KEY"),
+        },
+        timeout=max(1.0, timeout_seconds),
+    )
+    response.raise_for_status()
+    return [
+        text
+        for item in response.json().get("items", [])
+        if (text := str((item.get("snippet") or {}).get("textDisplay") or "").strip())
+    ]
+
+
+def _format_comment_thread(top_level: str, replies: list[str]) -> str:
+    lines = [f"TOP-LEVEL COMMENT: {top_level.strip()}"]
+    lines.extend(
+        f"REPLY {index}: {reply.strip()}"
+        for index, reply in enumerate(replies, start=1)
+        if reply.strip()
+    )
+    return "\n".join(lines)
 
 
 def _comments_ytdlp(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
@@ -235,15 +363,36 @@ def _comments_ytdlp(video_id: str, max_comments: int, timeout_seconds: float) ->
     if not proc.stdout.strip():
         return []
     data = json.loads(proc.stdout)
-    out: list[str] = []
-    for c in data.get("comments") or []:
-        if isinstance(c, dict):
-            text = c.get("text") or c.get("comment") or ""
+    rows = [row for row in data.get("comments") or [] if isinstance(row, dict)]
+    by_parent: dict[str, list[str]] = {}
+    roots: list[tuple[str, str]] = []
+    standalone: list[str] = []
+    for index, row in enumerate(rows):
+        text = str(row.get("text") or row.get("comment") or "").strip()
+        if not text:
+            continue
+        comment_id = str(row.get("id") or f"comment-{index}")
+        parent = str(row.get("parent") or "").strip()
+        if parent and parent not in {"root", "None"}:
+            by_parent.setdefault(parent, []).append(text)
         else:
-            text = str(c)
-        text = text.strip()
+            roots.append((comment_id, text))
+    if roots:
+        max_replies = max(1, int(_yt_cfg().get("max_replies_per_thread") or 10))
+        for comment_id, text in roots[:max_comments]:
+            standalone.append(
+                _format_comment_thread(text, by_parent.get(comment_id, [])[:max_replies])
+            )
+        return standalone
+
+    # Older yt-dlp payloads may not expose ids/parents. Preserve those comments
+    # individually rather than discarding them.
+    for row in (data.get("comments") or [])[:max_comments]:
+        text = str(
+            (row.get("text") or row.get("comment") or "")
+            if isinstance(row, dict)
+            else row
+        ).strip()
         if text:
-            out.append(text)
-        if len(out) >= max_comments:
-            break
-    return out
+            standalone.append(text)
+    return standalone

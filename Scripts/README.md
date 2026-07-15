@@ -15,9 +15,11 @@ Run from the repository root with the backend virtual environment:
 "job portal backend/.venv/bin/python" Scripts/test_seo.py
 ```
 
-For the production-equivalent EmbeddingGemma runtime:
+For the production-equivalent Qwen3-Embedding-0.6B runtime and the same English/Roman-Urdu ranking path used by the application:
 
 ```bash
+docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo backend \
+  python Scripts/test_qwen3_embedding.py
 docker compose run --rm --no-deps -v "$PWD:/repo" -w /repo backend \
   python Scripts/test_qna_pipeline.py --title "FIA Inspector in FPSC"
 ```

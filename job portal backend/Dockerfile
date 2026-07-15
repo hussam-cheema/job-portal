@@ -23,9 +23,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SEED_ON_STARTUP=false \
     PORT=8000 \
     WEB_CONCURRENCY=1 \
-    EMBEDDINGGEMMA_MODEL_PATH=/models/embeddinggemma-300M-qat-Q4_0.gguf \
-    EMBEDDINGGEMMA_MODEL_MOUNT_PATH=/models \
-    EMBEDDINGGEMMA_THREADS=1
+    QWEN3_EMBEDDING_MODEL_PATH=/models/Qwen3-Embedding-0.6B-Q8_0.gguf \
+    QWEN3_EMBEDDING_MODEL_MOUNT_PATH=/models \
+    QWEN3_EMBEDDING_THREADS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \

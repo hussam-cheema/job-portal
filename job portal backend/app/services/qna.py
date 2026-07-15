@@ -35,6 +35,7 @@ Return ONLY valid JSON:
       "answer": "...",
       "answer_evidence": "...",
       "topic": "...",
+      "intent": "...",
       "source": "transcript|comment|mixed",
       "video_index": 1
     }
@@ -50,27 +51,33 @@ GROUNDING RULES:
    that fully supports the answer (normally one sentence and never more than 400 characters).
    Do not include source labels or ellipses. If no such excerpt exists, omit the pair. The saved
    answer is validated against and derived from this exact excerpt.
-4. Prefer concrete job duties, eligibility, test syllabus, application process, preparation,
-   interview questions, and factual answers relevant to the job title.
+4. Extract useful pairs in whatever language the source provides: English, Urdu, Roman Urdu,
+   or mixed English/Roman Urdu. Prefer concrete job duties, eligibility, test syllabus,
+   application process, preparation, interview questions, and factual answers relevant to the
+   job title. Do not reject a grounded answer merely because its grammar or spelling is informal.
 5. Ignore greetings, promotions, requests for likes/subscriptions, and unrelated discussion.
 6. Do not use placeholders such as "See video", "N/A", or "contact us" as answers.
 7. Set video_index to the source video that best supports the answer.
 8. Return at least one pair whenever the supplied material contains any useful job-relevant
    factual statement. Return {"qna": []} only when no grounded job-relevant fact exists.
 9. Return no more than the requested maximum number of pairs.
-10. Questions must be semantically unique. Group candidates by topic before returning them and
-    return at most one pair for each topic or intent. For example, do not return several
-    differently worded questions about age eligibility or several about educational eligibility.
-    Prefer broad topic coverage (age, education, experience, duties, application, documents,
-    fees, dates, syllabus, test, interview, salary, vacancies, location) before another closely
-    related question.
+10. Questions must be semantically unique. Group candidates by intent before returning them.
+    Do not return differently worded duplicates, but do keep distinct questions inside the same
+    broad topic—for example maximum age, age relaxation, and post-specific age limits are three
+    different intents. Prefer broad topic coverage (age, education, experience, duties,
+    application, documents, fees, dates, syllabus, test, interview, salary, vacancies, location)
+    before additional questions from one topic.
 11. Set topic to a short snake_case category describing the question's intent, such as
     age_eligibility, education_eligibility, duties, application_process, required_documents,
     fees, deadline, test_syllabus, interview, salary, vacancies, or posting_location.
+    Also set intent to a more specific snake_case meaning inside that topic, such as maximum_age,
+    age_relaxation, minimum_qualification, private_degree_acceptance, written_test_pattern, or
+    interview_questions. Paraphrases of the same meaning must use the same intent value.
 12. An answer must be an actual declarative answer that logically resolves its paired question.
     Never use another question, a request for information, speculation, or an unanswered comment
-    as an answer. A sentence ending in "?" or phrases such as "does anyone know", "please tell
-    me", "what is", "how can", and "can someone explain" are questions, not answers.
+    as an answer. Reject uncertain guesses containing words such as "maybe", "probably", "likely",
+    "I think", or "shayad". A sentence ending in "?" or phrases such as "does anyone know",
+    "please tell me", "what is", "how can", and "can someone explain" are questions, not answers.
 13. Before returning each pair, perform this check: (a) read the question, (b) read only the
     proposed answer_evidence, and (c) confirm that the evidence directly answers the question
     without needing outside knowledge. If it does not, omit the pair. Do not pair nearby source
@@ -78,6 +85,11 @@ GROUNDING RULES:
 14. Viewer comments written in Roman Urdu are still questions when they ask "kya/kia", request
     "bata dein/bta den", or ask the uploader to tell, guide, confirm, or reply. Do not treat such
     a request as an answer merely because it has no question mark.
+15. Comment input may contain a TOP-LEVEL COMMENT followed by REPLY lines. A top-level English,
+    Urdu, or Roman-Urdu question may be paired with a declarative reply from that same thread.
+    The answer_evidence must be the verbatim reply text that actually resolves it. Never pair a
+    question with a reply from another thread, and never treat an unanswered top-level question
+    as a Q&A pair.
 
 FEW-SHOT EXAMPLES:
 
@@ -87,8 +99,8 @@ SOURCE:
 is a bachelor's degree. Applicants must be between 18 and 30 years old."
 CORRECT OUTPUT:
 {"qna":[
-  {"question":"What is the required educational qualification?","answer":"The required qualification is a bachelor's degree.","answer_evidence":"The required qualification is a bachelor's degree.","topic":"education_eligibility","source":"transcript","video_index":1},
-  {"question":"What is the age limit?","answer":"Applicants must be between 18 and 30 years old.","answer_evidence":"Applicants must be between 18 and 30 years old.","topic":"age_eligibility","source":"transcript","video_index":1}
+  {"question":"What is the required educational qualification?","answer":"The required qualification is a bachelor's degree.","answer_evidence":"The required qualification is a bachelor's degree.","topic":"education_eligibility","intent":"minimum_qualification","source":"transcript","video_index":1},
+  {"question":"What is the age limit?","answer":"Applicants must be between 18 and 30 years old.","answer_evidence":"Applicants must be between 18 and 30 years old.","topic":"age_eligibility","intent":"maximum_age","source":"transcript","video_index":1}
 ]}
 WRONG: using "Does anyone know the age limit?" as the answer to either question.
 
@@ -105,7 +117,7 @@ SOURCE:
 closing date. Is there an application fee?"
 CORRECT OUTPUT:
 {"qna":[
-  {"question":"How can candidates apply?","answer":"Applications must be submitted through the official online portal before the closing date.","answer_evidence":"Applications must be submitted through the official online portal before the closing date.","topic":"application_process","source":"comment","video_index":1}
+  {"question":"How can candidates apply?","answer":"Applications must be submitted through the official online portal before the closing date.","answer_evidence":"Applications must be submitted through the official online portal before the closing date.","topic":"application_process","intent":"online_application_method","source":"comment","video_index":1}
 ]}
 WRONG: using "Is there an application fee?" as the answer. It is a separate unanswered question.
 
@@ -121,8 +133,18 @@ SOURCE:
 "AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai."
 CORRECT OUTPUT:
 {"qna":[
-  {"question":"What are the age limits for AD FIA and Inspector FIA?","answer":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","answer_evidence":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","topic":"age_eligibility","source":"comment","video_index":1}
+  {"question":"What are the age limits for AD FIA and Inspector FIA?","answer":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","answer_evidence":"AD FIA age limit 22 to 35 years hai aur Inspector FIA age limit 20 to 33 years hai.","topic":"age_eligibility","intent":"post_specific_age_limits","source":"comment","video_index":1}
 ]}
+
+Example 6 — bilingual YouTube comment thread with a real reply:
+SOURCE:
+"TOP-LEVEL COMMENT: Sir FIA Inspector ke liye age relaxation milti hai?
+REPLY 1: Jee, general age relaxation 5 years hai."
+CORRECT OUTPUT:
+{"qna":[
+  {"question":"Is age relaxation available for FIA Inspector?","answer":"Jee, general age relaxation 5 years hai.","answer_evidence":"Jee, general age relaxation 5 years hai.","topic":"age_eligibility","intent":"age_relaxation","source":"comment","video_index":1}
+]}
+WRONG: using the top-level Roman-Urdu question as the answer.
 """
 
 
@@ -314,6 +336,36 @@ def _question_topic(question: str, answer: str, suggested: str = "") -> str:
     return clean_suggested or "other"
 
 
+def _question_intent(question: str, topic: str, suggested: str = "") -> str:
+    """Return a stable, specific intent so paraphrases are removed without losing subtopics."""
+    searchable = _normalized_text(question)
+    suggested_key = re.sub(r"[^a-z0-9]+", "_", (suggested or "").lower()).strip("_")
+    if topic == "age_eligibility":
+        if "relax" in searchable:
+            return "age_relaxation"
+        if any(term in searchable for term in ("minimum age", "lower age")):
+            return "minimum_age"
+        if any(term in searchable for term in ("maximum age", "upper age", "age limit", "official age")):
+            return "maximum_age"
+    if topic == "education_eligibility":
+        if any(term in searchable for term in ("private degree", "private ba", "private adp")):
+            return "private_degree_acceptance"
+        if any(term in searchable for term in ("simple ba", "ba bsc", "specific degree")):
+            return "specific_degree_acceptance"
+        if any(term in searchable for term in ("minimum", "required", "qualification", "education")):
+            return "minimum_qualification"
+    if topic == "test_syllabus" and any(
+        term in searchable for term in ("pattern", "stages", "mcq", "descriptive")
+    ):
+        return "written_test_pattern"
+    if suggested_key and suggested_key not in {topic, "other"}:
+        return suggested_key
+    # The normalized content words give otherwise uncategorized intents a
+    # deterministic key without merging every question in a broad topic.
+    tokens = sorted(_question_tokens(question))[:8]
+    return "_".join(tokens) or topic or "other"
+
+
 def _locate_answer_evidence(
     evidence: str,
     sources: list[dict[str, Any]],
@@ -362,6 +414,11 @@ _ROMAN_URDU_QUESTION_REQUESTS = re.compile(
     r"\b(?:ke|ya)\s+(?:permanent|temporary|regular|contract)\s*$)",
     flags=re.I,
 )
+_UNCERTAIN_ANSWER = re.compile(
+    r"\b(?:maybe|probably|possibly|likely|perhaps|i\s+(?:think|guess)|shayad|shaayad|"
+    r"lagta\s+hai|ho\s+sakta\s+hai)\b",
+    flags=re.I,
+)
 
 
 def _answer_is_question_like(value: str) -> bool:
@@ -379,6 +436,10 @@ def _answer_is_question_like(value: str) -> bool:
     )
 
 
+def _answer_is_uncertain(value: str) -> bool:
+    return bool(_UNCERTAIN_ANSWER.search(_normalized_text(value)))
+
+
 def is_acceptable_qna_answer(question: str, answer: str) -> bool:
     """Conservatively hide legacy rows that contain a question instead of an answer."""
     normalized_question = _normalized_text(question)
@@ -387,20 +448,45 @@ def is_acceptable_qna_answer(question: str, answer: str) -> bool:
         return False
     if normalized_question == normalized_answer:
         return False
-    return not _answer_is_question_like(answer)
+    return not _answer_is_question_like(answer) and not _answer_is_uncertain(answer)
 
 
-def _diverse_qna(items: list[dict[str, Any]], max_qna: int) -> list[dict[str, Any]]:
+def _diverse_qna(
+    items: list[dict[str, Any]],
+    max_qna: int,
+    *,
+    max_per_topic: int | None = None,
+) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
-    selected_topics: set[str] = set()
+    topic_counts: dict[str, int] = {}
+    selected_intents: set[str] = set()
+    conf = cfg("youtube_qna") or {}
+    configured_limit = conf.get("max_qna_per_topic") if isinstance(conf, dict) else None
+    topic_limit = max(
+        1,
+        int(
+            max_per_topic
+            if max_per_topic is not None
+            else configured_limit or 4
+        ),
+    )
     for item in items:
         topic = str(item.get("topic") or "other")
-        if topic != "other" and topic in selected_topics:
+        intent = str(
+            item.get("intent")
+            or _question_intent(item["question"], topic)
+            or "other"
+        )
+        if topic != "other" and topic_counts.get(topic, 0) >= topic_limit:
+            continue
+        if intent != "other" and intent in selected_intents:
             continue
         if any(_questions_are_similar(item["question"], prior["question"]) for prior in selected):
             continue
+        item["intent"] = intent
         selected.append(item)
-        selected_topics.add(topic)
+        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        selected_intents.add(intent)
         if len(selected) >= max_qna:
             break
     return selected
@@ -451,6 +537,9 @@ def _extract_qna_batch(
         if _answer_is_question_like(proposed_answer) or _answer_is_question_like(answer_evidence):
             logger.warning("qna_rejected_question_as_answer question=%s", question[:120])
             continue
+        if _answer_is_uncertain(proposed_answer) or _answer_is_uncertain(answer_evidence):
+            logger.warning("qna_rejected_uncertain_answer question=%s", question[:120])
+            continue
         if proposed_answer.lower() in {"see video", "see video.", "n/a", "none", "unknown"}:
             continue
         try:
@@ -466,6 +555,11 @@ def _extract_qna_batch(
         video_index, source_type, grounded_answer = located
         if not question.endswith("?"):
             question = f"{question.rstrip('.')}?"
+        topic = _question_topic(
+            question,
+            grounded_answer,
+            str(row.get("topic") or ""),
+        )
         items.append(
             {
                 "question": question,
@@ -473,10 +567,11 @@ def _extract_qna_batch(
                 "answer": grounded_answer,
                 "source": source_type,
                 "video_index": video_index,
-                "topic": _question_topic(
+                "topic": topic,
+                "intent": _question_intent(
                     question,
-                    grounded_answer,
-                    str(row.get("topic") or ""),
+                    topic,
+                    str(row.get("intent") or ""),
                 ),
                 "chunk_number": chunk_number,
             }
@@ -567,17 +662,24 @@ def extract_qna_from_sources(
         int(source["video_index"]): float(source.get("title_similarity") or 0.0)
         for source in usable
     }
+    role_tokens = _question_tokens(_canonical_job_title(job_title))
     candidates: list[dict[str, Any]] = []
     for _, rows in sorted(batch_results, key=lambda result: result[0]):
         for row in rows:
             candidate = dict(row)
             title_score = source_scores.get(int(row["video_index"]), 0.0)
+            question_tokens = _question_tokens(row["question"])
+            target_coverage = (
+                len(role_tokens & question_tokens) / len(role_tokens)
+                if role_tokens
+                else 0.0
+            )
             # Every candidate has already passed exact source-evidence validation.
             # Rank primarily by the source video's configured title similarity;
             # do not reward verbosity, which can incorrectly push a longer answer
             # ahead of a more useful concise answer from the same source.
             candidate["rank_score"] = round(
-                (0.95 * title_score) + 0.05,
+                (0.85 * title_score) + (0.10 * target_coverage) + 0.05,
                 4,
             )
             candidates.append(candidate)
@@ -699,6 +801,7 @@ def fetch_qna_for_job_title(
     max_videos = int(conf.get("max_youtube_videos") or 5)
     max_search_results = int(conf.get("max_youtube_search_results") or 50)
     max_comments = int(conf.get("max_comments") or 50)
+    max_per_topic = max(1, int(conf.get("max_qna_per_topic") or 3))
     timeout = float(conf.get("timeout_seconds") or 60)
     ai_timeout = float(
         conf.get("ai_timeout_seconds")
@@ -719,7 +822,8 @@ def fetch_qna_for_job_title(
     collected: list[dict[str, Any]] = []
     videos: list[dict[str, Any]] = []
     videos_scanned = 0
-    seen_topics: set[str] = set()
+    topic_counts: dict[str, int] = {}
+    selected_intents: set[str] = set()
     role_title = _canonical_job_title(job_title)
     try:
         query = f"{role_title} jobs interview eligibility test preparation Pakistan".strip()
@@ -810,14 +914,22 @@ def fetch_qna_for_job_title(
                             pair["answer"],
                             str(pair.get("topic") or ""),
                         )
-                        if topic != "other" and topic in seen_topics:
+                        intent = _question_intent(
+                            pair["question"],
+                            topic,
+                            str(pair.get("intent") or ""),
+                        )
+                        if topic != "other" and topic_counts.get(topic, 0) >= max_per_topic:
+                            continue
+                        if intent != "other" and intent in selected_intents:
                             continue
                         if any(
                             _questions_are_similar(pair["question"], item["question"])
                             for item in collected
                         ):
                             continue
-                        seen_topics.add(topic)
+                        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+                        selected_intents.add(intent)
                         source = sources_by_index[int(pair["video_index"])]
                         collected.append(
                             {

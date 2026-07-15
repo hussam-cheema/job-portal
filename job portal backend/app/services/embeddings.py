@@ -77,9 +77,9 @@ def _openai_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 def _local_model_path() -> Path:
-    configured = env("EMBEDDINGGEMMA_MODEL_PATH") or str(
+    configured = env("QWEN3_EMBEDDING_MODEL_PATH") or str(
         _embedding_config().get("local_model_path")
-        or "/models/embeddinggemma-300M-qat-Q4_0.gguf"
+        or "/models/Qwen3-Embedding-0.6B-Q8_0.gguf"
     )
     return Path(configured).expanduser()
 
@@ -89,18 +89,18 @@ def _load_local_model():
     try:
         from llama_cpp import Llama
     except ImportError as exc:
-        raise RuntimeError("EmbeddingGemma requires llama-cpp-python") from exc
+        raise RuntimeError("Qwen3 Embedding requires llama-cpp-python") from exc
 
     model_path = _local_model_path()
     if not model_path.is_file():
         raise RuntimeError(
-            f"Quantized EmbeddingGemma model is missing at {model_path}. "
+            f"Qwen3-Embedding-0.6B model is missing at {model_path}. "
             "Verify the persistent /models mount and restart the revision."
         )
 
     conf = _embedding_config()
-    threads = max(1, int(env("EMBEDDINGGEMMA_THREADS") or conf.get("local_threads") or 1))
-    logger.info("loading_embeddinggemma model=%s threads=%s", model_path, threads)
+    threads = max(1, int(env("QWEN3_EMBEDDING_THREADS") or conf.get("local_threads") or 1))
+    logger.info("loading_qwen3_embedding model=%s threads=%s", model_path, threads)
     return Llama(
         model_path=str(model_path),
         embedding=True,
@@ -114,28 +114,33 @@ def _load_local_model():
     )
 
 
-def _embeddinggemma_embeddings(
+def _qwen3_embeddings(
     texts: list[str], *, query_first: bool = False
 ) -> list[list[float]]:
     if not texts:
         return []
     if query_first:
-        # EmbeddingGemma's documented retrieval prompts: the job title is the
-        # query and YouTube video titles are candidate documents.
-        prompts = [f"task: search result | query: {texts[0]}"]
-        prompts.extend(f"title: none | text: {text}" for text in texts[1:])
+        # Qwen3's documented retrieval format applies an English instruction to
+        # the query only; candidate documents remain unprefixed. The instruction
+        # explicitly covers English, Urdu, and Roman-Urdu role wording.
+        instruction = (
+            "Given a job post title, retrieve YouTube video titles about the "
+            "same role, including English, Urdu, and Roman Urdu variants."
+        )
+        prompts = [f"Instruct: {instruction}\nQuery:{texts[0]}"]
+        prompts.extend(texts[1:])
     else:
-        prompts = [f"task: sentence similarity | query: {text}" for text in texts]
+        prompts = texts
     with _LOCAL_ENCODE_LOCK:
         response = _load_local_model().create_embedding(prompts)
     rows = sorted(response.get("data") or [], key=lambda row: row.get("index", 0))
     if len(rows) != len(texts):
-        raise RuntimeError("EmbeddingGemma returned an incomplete batch")
+        raise RuntimeError("Qwen3 Embedding returned an incomplete batch")
     vectors: list[list[float]] = []
     for row in rows:
         vector = row.get("embedding")
         if not isinstance(vector, list) or not vector or isinstance(vector[0], list):
-            raise RuntimeError("EmbeddingGemma did not return sequence-level embeddings")
+            raise RuntimeError("Qwen3 Embedding did not return sequence-level embeddings")
         vectors.append([float(value) for value in vector])
     return vectors
 
@@ -144,19 +149,19 @@ def _semantic_embeddings(texts: list[str], *, query_first: bool = False) -> list
     provider = str(
         env("EMBEDDING_PROVIDER") or _embedding_config().get("provider") or "openai"
     ).lower()
-    if provider == "embeddinggemma":
-        return _embeddinggemma_embeddings(texts, query_first=query_first)
+    if provider in {"qwen3", "qwen3-embedding"}:
+        return _qwen3_embeddings(texts, query_first=query_first)
     if provider != "openai":
         raise RuntimeError(f"Unsupported embedding provider: {provider}")
     try:
         return _openai_embeddings(texts)
     except Exception as exc:
-        logger.warning("OpenAI embeddings unavailable; using EmbeddingGemma: %s", exc)
-        return _embeddinggemma_embeddings(texts, query_first=query_first)
+        logger.warning("OpenAI embeddings unavailable; using Qwen3 Embedding: %s", exc)
+        return _qwen3_embeddings(texts, query_first=query_first)
 
 
 def text_similarity(a: str, b: str) -> float:
-    """Semantic cosine similarity using OpenAI, with EmbeddingGemma fallback."""
+    """Semantic cosine similarity using OpenAI, with Qwen3 fallback."""
     if not a or not b:
         return 0.0
     vectors = _semantic_embeddings([a, b])

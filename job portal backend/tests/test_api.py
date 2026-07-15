@@ -228,24 +228,24 @@ def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
     assert generic["score"] < 0.35
 
 
-def test_openai_embedding_failure_uses_embeddinggemma(monkeypatch: pytest.MonkeyPatch):
+def test_openai_embedding_failure_uses_qwen3(monkeypatch: pytest.MonkeyPatch):
     from app.services import embeddings
 
-    used = {"embeddinggemma": False}
+    used = {"qwen3": False}
 
     def openai_failure(texts: list[str]):
         raise RuntimeError("OpenAI unavailable")
 
     def local_vectors(texts: list[str], *, query_first: bool = False):
-        used["embeddinggemma"] = True
+        used["qwen3"] = True
         return [[1.0, 0.0], [0.8, 0.2]]
 
     monkeypatch.setattr(embeddings, "_openai_embeddings", openai_failure)
-    monkeypatch.setattr(embeddings, "_embeddinggemma_embeddings", local_vectors)
+    monkeypatch.setattr(embeddings, "_qwen3_embeddings", local_vectors)
 
     vectors = embeddings._semantic_embeddings(["query", "candidate"], query_first=True)
 
-    assert used["embeddinggemma"] is True
+    assert used["qwen3"] is True
     assert vectors == [[1.0, 0.0], [0.8, 0.2]]
 
 
@@ -794,7 +794,7 @@ def test_qna_safe_json_preserves_nested_fenced_response():
     assert parsed["qna"][0]["answer"] == "It is a federal agency."
 
 
-def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
+def test_qna_requires_source_evidence_and_keeps_distinct_intents_per_topic(
     monkeypatch: pytest.MonkeyPatch,
 ):
     from app.services import qna as qna_service
@@ -867,12 +867,15 @@ def test_qna_requires_source_evidence_and_keeps_one_question_per_topic(
     assert "FEW-SHOT EXAMPLES" in captured["system"]
     assert "unanswered questions produce no Q&A" in captured["system"]
     assert "Roman Urdu request" in captured["system"]
+    assert "English, Urdu, Roman Urdu" in captured["system"]
     assert [row["topic"] for row in rows] == [
+        "age_eligibility",
         "age_eligibility",
         "education_eligibility",
     ]
     assert rows[0]["answer"] == "Applicants must be between 18 and 30 years old."
-    assert rows[1]["answer"] == "The required qualification is a bachelor's degree."
+    assert rows[1]["answer"] == "A five-year age relaxation applies."
+    assert rows[2]["answer"] == "The required qualification is a bachelor's degree."
     assert all("100,000" not in row["answer"] for row in rows)
     assert all("closing date?" not in row["answer"].lower() for row in rows)
 
@@ -896,6 +899,185 @@ def test_qna_detects_question_like_answers(value: str, expected: bool):
     from app.services.qna import _answer_is_question_like
 
     assert _answer_is_question_like(value) is expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Maybe the screening test will be held in July.", True),
+        ("Shayad July mein test ho ga.", True),
+        ("The screening test will be held on 15 July.", False),
+    ],
+)
+def test_qna_detects_uncertain_answers(value: str, expected: bool):
+    from app.services.qna import _answer_is_uncertain
+
+    assert _answer_is_uncertain(value) is expected
+
+
+def test_qna_keeps_distinct_english_and_roman_urdu_intents_within_one_topic(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    maximum_age = "Inspector FIA ki maximum age limit 30 years hai."
+    relaxation = "Yes, candidates receive five years of general age relaxation."
+
+    def completion(_messages, **_kwargs):
+        return json.dumps(
+            {
+                "qna": [
+                    {
+                        "question": "What is the maximum age for Inspector FIA?",
+                        "answer": maximum_age,
+                        "answer_evidence": maximum_age,
+                        "topic": "age_eligibility",
+                        "video_index": 1,
+                    },
+                    {
+                        "question": "Is general age relaxation available?",
+                        "answer": relaxation,
+                        "answer_evidence": relaxation,
+                        "topic": "age_eligibility",
+                        "video_index": 1,
+                    },
+                    {
+                        "question": "Can a 31 year old apply?",
+                        "answer": "Sir 31 saal ki age mein apply kar sakte hain kya?",
+                        "answer_evidence": "Sir 31 saal ki age mein apply kar sakte hain kya?",
+                        "topic": "age_eligibility",
+                        "video_index": 1,
+                    },
+                ]
+            }
+        )
+
+    monkeypatch.setattr(qna_service, "chat_completion", completion)
+    rows = qna_service.extract_qna_from_sources(
+        job_title="FIA Inspector",
+        sources=[
+            {
+                "video_index": 1,
+                "title": "FIA Inspector eligibility Q&A",
+                "title_similarity": 0.9,
+                "transcript": maximum_age,
+                "comments": [
+                    "TOP-LEVEL COMMENT: Is age relaxation available?\n"
+                    f"REPLY 1: {relaxation}",
+                    "TOP-LEVEL COMMENT: Sir 31 saal ki age mein apply kar sakte hain kya?",
+                ],
+            }
+        ],
+        max_qna=20,
+        timeout_seconds=10,
+    )
+
+    assert [row["answer"] for row in rows] == [maximum_age, relaxation]
+    assert all("apply kar sakte" not in row["answer"] for row in rows)
+
+
+def test_youtube_api_preserves_comment_questions_with_their_replies(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import youtube
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "items": [
+                    {
+                        "snippet": {
+                            "totalReplyCount": 1,
+                            "topLevelComment": {
+                                "id": "roman-thread",
+                                "snippet": {
+                                    "textDisplay": "Sir age relaxation milti hai?"
+                                },
+                            },
+                        },
+                        "replies": {
+                            "comments": [
+                                {
+                                    "snippet": {
+                                        "textDisplay": "Jee, 5 years relaxation milti hai."
+                                    }
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "snippet": {
+                            "totalReplyCount": 1,
+                            "topLevelComment": {
+                                "id": "english-thread",
+                                "snippet": {"textDisplay": "What is the test pattern?"},
+                            },
+                        },
+                        "replies": {
+                            "comments": [
+                                {
+                                    "snippet": {
+                                        "textDisplay": "It starts with an MCQ test."
+                                    }
+                                }
+                            ]
+                        },
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(youtube.httpx, "get", lambda *_args, **_kwargs: Response())
+    rows = youtube._comments_api("video", 50, 10)
+
+    assert rows == [
+        "TOP-LEVEL COMMENT: Sir age relaxation milti hai?\n"
+        "REPLY 1: Jee, 5 years relaxation milti hai.",
+        "TOP-LEVEL COMMENT: What is the test pattern?\n"
+        "REPLY 1: It starts with an MCQ test.",
+    ]
+
+
+def test_ytdlp_transcript_fallback_reads_generated_json3(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    from app.services import youtube
+
+    class TemporaryDirectory:
+        def __init__(self, **_kwargs):
+            self.path = tmp_path
+
+        def __enter__(self):
+            return str(self.path)
+
+        def __exit__(self, *_args):
+            return None
+
+    def run(command, **_kwargs):
+        output_pattern = command[command.index("--output") + 1]
+        path = Path(output_pattern.replace("%(id)s", "video").replace("%(ext)s", "en.json3"))
+        path.write_text(
+            json.dumps(
+                {
+                    "events": [
+                        {"segs": [{"utf8": "Inspector FIA age limit "}]},
+                        {"segs": [{"utf8": "30 years hai."}]},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(youtube.tempfile, "TemporaryDirectory", TemporaryDirectory)
+    monkeypatch.setattr(youtube.subprocess, "run", run)
+
+    assert youtube._transcript_ytdlp("video", timeout_seconds=10) == (
+        "Inspector FIA age limit 30 years hai."
+    )
 
 
 def test_qna_chunks_all_source_content_and_keeps_grounded_late_result(

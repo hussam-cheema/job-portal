@@ -39,10 +39,10 @@ services:
       SMTP_AUTH: "false"
       SMTP_STARTTLS: "false"
       SMTP_USE_SSL: "false"
-      EMBEDDINGGEMMA_MODEL_PATH: /models/embeddinggemma-300M-qat-Q4_0.gguf
-      EMBEDDINGGEMMA_MODEL_MOUNT_PATH: /models
-      EMBEDDINGGEMMA_REQUIRE_PERSISTENT_STORAGE: "true"
-      EMBEDDINGGEMMA_THREADS: "1"
+      QWEN3_EMBEDDING_MODEL_PATH: /models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      QWEN3_EMBEDDING_MODEL_MOUNT_PATH: /models
+      QWEN3_EMBEDDING_REQUIRE_PERSISTENT_STORAGE: "true"
+      QWEN3_EMBEDDING_THREADS: "1"
       # R2_ENABLED and credentials come from the backend env_file so local
       # development can explicitly disable remote uploads.
     networks:

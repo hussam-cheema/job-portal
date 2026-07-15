@@ -27,6 +27,7 @@ def check() -> str:
         _collect_video_source,
         _diverse_qna,
         _extract_qna_batch,
+        _question_tokens,
         _source_chunks,
     )
     from app.services.youtube import search_youtube
@@ -127,6 +128,7 @@ def check() -> str:
         int(source["video_index"]): float(source.get("title_similarity") or 0)
         for source in usable
     }
+    role_tokens = _question_tokens(_canonical_job_title(title))
     candidates = []
     for chunk_number, chunk in enumerate(chunks, start=1):
         rows = _extract_qna_batch(
@@ -139,14 +141,32 @@ def check() -> str:
         )
         for row in rows:
             candidate = dict(row)
+            question_tokens = _question_tokens(row["question"])
+            target_coverage = (
+                len(role_tokens & question_tokens) / len(role_tokens)
+                if role_tokens
+                else 0.0
+            )
             candidate["rank_score"] = round(
-                0.95 * source_scores.get(int(row["video_index"]), 0) + 0.05,
+                0.85 * source_scores.get(int(row["video_index"]), 0)
+                + 0.10 * target_coverage
+                + 0.05,
                 4,
             )
             candidates.append(candidate)
         print(f"  chunk={chunk_number} candidates={len(rows)}")
         for row in rows:
-            score = 0.95 * source_scores.get(int(row["video_index"]), 0) + 0.05
+            question_tokens = _question_tokens(row["question"])
+            target_coverage = (
+                len(role_tokens & question_tokens) / len(role_tokens)
+                if role_tokens
+                else 0.0
+            )
+            score = (
+                0.85 * source_scores.get(int(row["video_index"]), 0)
+                + 0.10 * target_coverage
+                + 0.05
+            )
             print(
                 f"    score={score:.4f} video={row['video_index']} "
                 f"question={row['question']}"
