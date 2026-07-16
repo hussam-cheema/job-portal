@@ -7,6 +7,7 @@ import io
 import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -192,7 +193,11 @@ def test_watermark_changes_image_and_preserves_format():
     watermarked = Image.open(io.BytesIO(watermarked_bytes)).convert("RGB")
 
     assert Image.open(io.BytesIO(watermarked_bytes)).format == "WEBP"
-    assert ImageChops.difference(source, watermarked).getbbox() is not None
+    difference = ImageChops.difference(source, watermarked)
+    visibly_changed = sum(
+        1 for pixel in difference.get_flattened_data() if max(pixel) >= 16
+    )
+    assert visibly_changed >= int(source.width * source.height * 0.005)
 
 
 def test_embedded_description_image_is_watermarked_and_uploaded(
@@ -242,6 +247,167 @@ def test_embedded_description_image_is_watermarked_and_uploaded(
     assert captured["job_id"] == created.json()["id"]
     uploaded = Image.open(io.BytesIO(captured["data"])).convert("RGB")
     assert ImageChops.difference(image, uploaded).getbbox() is not None
+
+
+def test_two_legacy_r2_description_images_are_rewatermarked_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import storage
+    from app.services.watermark import process_description_images
+
+    source = Image.new("RGB", (1000, 700), "white")
+    source_buffer = io.BytesIO()
+    source.save(source_buffer, format="PNG")
+    source_bytes = source_buffer.getvalue()
+    uploads: list[dict[str, object]] = []
+
+    def fake_read(url: str, *, max_bytes: int):
+        assert max_bytes >= len(source_bytes)
+        return {
+            "data": source_bytes,
+            "content_type": "image/png",
+            "metadata": {},
+            "filename": Path(urlparse(url).path).name,
+            "key": urlparse(url).path.lstrip("/"),
+        }
+
+    def fake_upload(data: bytes, **kwargs):
+        uploads.append({"data": data, **kwargs})
+        index = len(uploads)
+        return {
+            "s3_path": f"job-portal/job-1/images/watermarked-{index}.png",
+            "public_url": f"https://files.example.test/watermarked-{index}.png",
+            "file_type": kwargs["content_type"],
+            "file_size": len(data),
+            "original_name": kwargs["filename"],
+            "storage": "r2",
+        }
+
+    monkeypatch.setattr(storage, "read_public_object", fake_read)
+    monkeypatch.setattr(storage, "upload_bytes", fake_upload)
+    description = (
+        '<p><img alt="first" src="https://files.example.test/legacy-1.png"></p>'
+        '<p><img src="https://files.example.test/legacy-2.png" alt="second"></p>'
+    )
+
+    updated = process_description_images(description, "job-1")
+
+    assert updated.count("https://files.example.test/watermarked-") == 2
+    assert len(uploads) == 2
+    for upload in uploads:
+        assert upload["metadata"] == {"watermark-version": "2"}
+        rendered = Image.open(io.BytesIO(upload["data"])).convert("RGB")
+        assert ImageChops.difference(source, rendered).getbbox() is not None
+
+
+def test_current_r2_watermark_is_not_applied_twice(monkeypatch: pytest.MonkeyPatch):
+    from app.services import storage
+    from app.services.watermark import process_description_images
+
+    monkeypatch.setattr(
+        storage,
+        "read_public_object",
+        lambda _url, *, max_bytes: {
+            "data": b"unused",
+            "content_type": "image/png",
+            "metadata": {"watermark-version": "2"},
+            "filename": "current.png",
+            "key": "job-portal/job-1/images/current.png",
+        },
+    )
+    upload = MagicMock()
+    monkeypatch.setattr(storage, "upload_bytes", upload)
+    description = '<p><img src="https://files.example.test/current.png"></p>'
+
+    assert process_description_images(description, "job-1") == description
+    upload.assert_not_called()
+
+
+def test_legacy_watermark_migration_updates_jobs_once(monkeypatch: pytest.MonkeyPatch):
+    from datetime import datetime
+
+    from app.models import Job, SiteSetting
+    from app.services import watermark
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+    session.add(
+        Job(
+            id="legacy-watermark-job",
+            slug="legacy-watermark-job",
+            title="Legacy watermark job",
+            description='<p><img src="https://files.example.test/legacy.png"></p>',
+            published_date=datetime.utcnow(),
+        )
+    )
+    session.commit()
+
+    process = MagicMock(
+        return_value='<p><img src="https://files.example.test/watermarked.png"></p>'
+    )
+    monkeypatch.setattr(watermark, "process_description_images", process)
+    try:
+        assert watermark.migrate_legacy_job_watermarks(session) == 1
+        session.commit()
+        assert session.get(Job, "legacy-watermark-job").description.endswith(
+            'watermarked.png"></p>'
+        )
+        assert session.get(SiteSetting, "job_description_watermarks_v2").value == "1"
+
+        assert watermark.migrate_legacy_job_watermarks(session) == 0
+        process.assert_called_once()
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+def test_admin_upload_watermarks_each_of_two_images(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import uploads as uploads_router
+
+    stored: list[dict[str, object]] = []
+
+    def fake_upload(data: bytes, **kwargs):
+        stored.append({"data": data, **kwargs})
+        index = len(stored)
+        return {
+            "s3_path": f"job-portal/pending/images/{index}.png",
+            "public_url": f"https://files.example.test/{index}.png",
+            "file_type": kwargs["content_type"],
+            "file_size": len(data),
+            "original_name": kwargs["filename"],
+            "storage": "r2",
+        }
+
+    monkeypatch.setattr(uploads_router, "upload_bytes", fake_upload)
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    for color, filename in (("white", "first.png"), ("black", "second.png")):
+        image = Image.new("RGB", (1000, 700), color)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        response = client.post(
+            "/api/admin/upload",
+            headers=auth,
+            files={"file": (filename, buffer.getvalue(), "image/png")},
+        )
+        assert response.status_code == 200
+
+    assert len(stored) == 2
+    for upload in stored:
+        assert upload["metadata"] == {"watermark-version": "2"}
+        rendered = Image.open(io.BytesIO(upload["data"])).convert("RGB")
+        assert rendered.size == (1000, 700)
 
 
 def test_contact(client: TestClient):

@@ -26,11 +26,11 @@ r2:
 
 watermark:
   enabled: true
-  text: "https://pakjobs.example.com"
+  text: "PakistanJobs"
   color: "#FF0000"
-  opacity: 0.10
+  opacity: 0.32
   position: "center"
-  font_scale: 0.05
+  font_scale: 0.075
 
 branding:
   max_logo_mb: 2

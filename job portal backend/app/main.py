@@ -23,6 +23,7 @@ from app.logging_config import get_logger, setup_logging
 from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
 from app.seed import ensure_default_pages, seed_if_empty, sync_local_core_pages_once
 from app.services.taxonomy import ensure_default_taxonomy
+from app.services.watermark import migrate_legacy_job_watermarks
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("jobportal.main")
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             created = ensure_default_pages(db)
             locally_synced = sync_local_core_pages_once(db)
             taxonomy_created = ensure_default_taxonomy(db)
+            watermarks_upgraded = migrate_legacy_job_watermarks(db)
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))
@@ -48,6 +50,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info("local CMS pages synchronized count=%s", len(locally_synced))
             if taxonomy_created:
                 logger.info("taxonomy terms created count=%s", len(taxonomy_created))
+            if watermarks_upgraded:
+                logger.info(
+                    "legacy job description watermarks upgraded count=%s",
+                    watermarks_upgraded,
+                )
         finally:
             db.close()
     except Exception:

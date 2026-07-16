@@ -4,6 +4,7 @@ import mimetypes
 import uuid
 from pathlib import Path
 from typing import Optional
+from urllib.parse import unquote, urlsplit
 
 from app.config import cfg, env, r2_enabled
 from app.logging_config import get_logger
@@ -75,6 +76,7 @@ def upload_bytes(
     content_type: Optional[str] = None,
     folder: str = "files",
     job_id: Optional[str] = None,
+    metadata: Optional[dict[str, str]] = None,
 ) -> dict:
     """Upload to Cloudflare R2 under the job UUID folder."""
     try:
@@ -106,6 +108,7 @@ def upload_bytes(
                 Key=key,
                 Body=data,
                 ContentType=ctype,
+                Metadata=metadata or {},
             )
         except Exception:
             logger.exception("r2 put_object failed key=%s", key)
@@ -125,6 +128,51 @@ def upload_bytes(
     except Exception:
         logger.exception("upload_bytes failed")
         raise
+
+
+def read_public_object(
+    public_url: str,
+    *,
+    max_bytes: int,
+) -> Optional[dict[str, object]]:
+    """Read an object only when the URL belongs to this application's R2 bucket.
+
+    This deliberately refuses arbitrary remote URLs so job-description processing
+    cannot be used as a server-side request forgery proxy.
+    """
+    base = env("R2_PUBLIC_BASE_URL") or str(cfg("r2", "public_base_url") or "")
+    if not base or not public_url:
+        return None
+
+    base_parts = urlsplit(base.rstrip("/"))
+    url_parts = urlsplit(public_url)
+    if (
+        url_parts.scheme.lower() != base_parts.scheme.lower()
+        or url_parts.netloc.lower() != base_parts.netloc.lower()
+    ):
+        return None
+
+    base_path = base_parts.path.rstrip("/")
+    object_path = url_parts.path
+    expected_prefix = f"{base_path}/" if base_path else "/"
+    if not object_path.startswith(expected_prefix):
+        return None
+    key = unquote(object_path[len(expected_prefix) :]).lstrip("/")
+    if not key or not key.startswith(f"{_prefix()}/"):
+        return None
+
+    response = _r2_client().get_object(Bucket=_bucket(), Key=key)
+    body = response["Body"]
+    data = body.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError("Stored image exceeds the configured image size limit")
+    return {
+        "data": data,
+        "content_type": response.get("ContentType") or mimetypes.guess_type(key)[0],
+        "metadata": response.get("Metadata") or {},
+        "key": key,
+        "filename": Path(key).name,
+    }
 
 
 def resolve_local_path(object_path: str) -> Optional[Path]:

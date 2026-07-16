@@ -18,23 +18,32 @@ def check() -> str:
     add_backend_to_path()
     from app.services.watermark import apply_watermark
 
-    source = Image.new("RGB", (1200, 630), color=(242, 245, 248))
-    source_buffer = io.BytesIO()
-    source.save(source_buffer, format="PNG")
-    result = apply_watermark(source_buffer.getvalue(), "image/png")
-
-    try:
-        rendered = Image.open(io.BytesIO(result)).convert("RGB")
-    except Exception as exc:
-        raise CheckFailed(f"watermark output is not a valid image: {exc}") from exc
-    if rendered.size != source.size:
-        raise CheckFailed(f"watermark changed image dimensions to {rendered.size}")
-    if ImageChops.difference(source, rendered).getbbox() is None:
-        raise CheckFailed("watermark output is pixel-identical to the source image")
-
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(result)
-    return f"watermark changed the image and wrote {args.output}"
+    outputs = [args.output, args.output.with_name(f"{args.output.stem}-dark{args.output.suffix}")]
+    for source_color, output in zip(((242, 245, 248), (20, 25, 31)), outputs):
+        source = Image.new("RGB", (1200, 630), color=source_color)
+        source_buffer = io.BytesIO()
+        source.save(source_buffer, format="PNG")
+        result = apply_watermark(source_buffer.getvalue(), "image/png", strict=True)
+
+        try:
+            rendered = Image.open(io.BytesIO(result)).convert("RGB")
+        except Exception as exc:
+            raise CheckFailed(f"watermark output is not a valid image: {exc}") from exc
+        if rendered.size != source.size:
+            raise CheckFailed(f"watermark changed image dimensions to {rendered.size}")
+        difference = ImageChops.difference(source, rendered)
+        visibly_changed = sum(
+            1 for pixel in difference.get_flattened_data() if max(pixel) >= 16
+        )
+        minimum_visible_pixels = int(source.width * source.height * 0.005)
+        if visibly_changed < minimum_visible_pixels:
+            raise CheckFailed(
+                "watermark exists only as an imperceptible pixel change "
+                f"({visibly_changed} visible pixels; need {minimum_visible_pixels})"
+            )
+        output.write_bytes(result)
+    return f"visible watermarks verified on light and dark images: {outputs[0]}, {outputs[1]}"
 
 
 if __name__ == "__main__":

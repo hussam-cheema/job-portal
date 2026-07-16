@@ -15,7 +15,7 @@ from app.logging_config import get_logger
 from app.models import Job, JobAttachment, User
 from app.schemas import JobAttachmentOut, UploadOut
 from app.services.storage import resolve_local_path, upload_bytes
-from app.services.watermark import apply_watermark
+from app.services.watermark import WATERMARK_VERSION, apply_watermark
 
 router = APIRouter()
 logger = get_logger("jobportal.uploads")
@@ -82,6 +82,7 @@ async def upload_file(
             content_type=content_type,
             folder=folder,
             job_id=job_id,
+            metadata={"watermark-version": WATERMARK_VERSION} if is_image else None,
         )
 
         attachment_id = None
