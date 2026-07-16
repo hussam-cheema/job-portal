@@ -2,9 +2,15 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
-import { adminSeoAction, adminSeoDashboard } from "@/lib/api";
+import {
+  adminSeoAction,
+  adminSeoDashboard,
+  adminSendDigest,
+  adminSubscriptionSummary,
+  adminUpdateDigestTemplate,
+} from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
-import type { SEODashboard } from "@/lib/types";
+import type { DigestAdminSummary, SEODashboard } from "@/lib/types";
 
 export default function AdminSeoPage() {
   const { token } = useAdminAuth();
@@ -14,6 +20,8 @@ export default function AdminSeoPage() {
   const [social, setSocial] = useState({ facebook_url: "", youtube_url: "", x_url: "" });
   const [backlink, setBacklink] = useState({ source_url: "", anchor_text: "" });
   const [busy, setBusy] = useState(false);
+  const [digest, setDigest] = useState<DigestAdminSummary | null>(null);
+  const [digestForm, setDigestForm] = useState({ subject_template: "", body_template: "" });
 
   async function reload() {
     if (!token) return;
@@ -31,8 +39,34 @@ export default function AdminSeoPage() {
   useEffect(() => {
     if (!token) return;
     reload().catch((e) => setError(e instanceof Error ? e.message : "Failed"));
+    adminSubscriptionSummary(token).then((value) => {
+      setDigest(value);
+      setDigestForm({ subject_template: value.subject_template, body_template: value.body_template });
+    }).catch((e) => setError(e instanceof Error ? e.message : "Subscription settings failed"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  async function saveDigestTemplate(event: FormEvent) {
+    event.preventDefault();
+    if (!token) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const value = await adminUpdateDigestTemplate(token, digestForm);
+      setDigest(value); setMsg("Daily alert email template saved.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Save failed"); }
+    finally { setBusy(false); }
+  }
+
+  async function sendDigestNow() {
+    if (!token) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const value = await adminSendDigest(token);
+      setMsg(value.message);
+      setDigest(await adminSubscriptionSummary(token));
+    } catch (err) { setError(err instanceof Error ? err.message : "Send failed"); }
+    finally { setBusy(false); }
+  }
 
   async function run(path: string, method = "POST", body?: unknown) {
     if (!token) return;
@@ -95,6 +129,29 @@ export default function AdminSeoPage() {
               <Metric label="Load speed /100" value={Math.round(speed)} />
               <Metric label="Authority score" value={Math.round(authority)} />
             </div>
+
+            <section className="card-panel p-5 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-[var(--navy-100)]">Daily job alert subscriptions</h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">Scheduled for 12:00 PM PKT. Job links and deadlines are inserted automatically.</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-semibold text-[var(--navy-100)]">{digest?.active_subscriber_count ?? 0}</div>
+                  <div className="text-xs text-[var(--muted)]">active of {digest?.subscriber_count ?? 0} total</div>
+                </div>
+              </div>
+              <form onSubmit={saveDigestTemplate} className="space-y-3">
+                <div><label className="field-label" htmlFor="digest-email-subject">Email subject</label><input id="digest-email-subject" className="input" value={digestForm.subject_template} onChange={(e) => setDigestForm({ ...digestForm, subject_template: e.target.value })} required /></div>
+                <div><label className="field-label" htmlFor="digest-email-body">Predefined email body text</label><textarea id="digest-email-body" className="input min-h-32" value={digestForm.body_template} onChange={(e) => setDigestForm({ ...digestForm, body_template: e.target.value })} required /></div>
+                <p className="text-xs text-[var(--muted)]">Available placeholders: <code>{"{site_title}"}</code>, <code>{"{date}"}</code>, <code>{"{range_start}"}</code>, <code>{"{range_end}"}</code>.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn btn-primary" type="submit" disabled={busy}>Save email template</button>
+                  <button className="btn btn-ghost" type="button" disabled={busy} onClick={sendDigestNow}>Process current digest window</button>
+                </div>
+              </form>
+              <p className="text-xs text-[var(--muted)]">Last digest: {digest?.last_digest_status || "not run"}{digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}</p>
+            </section>
 
             {/* GSC */}
             <section className="card-panel p-5 space-y-3">

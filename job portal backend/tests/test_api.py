@@ -87,7 +87,7 @@ def test_login_and_create_job(client: TestClient):
             "job_type": "private",
             "cities": ["Karachi"],
             "skills": ["Python"],
-            "tags": ["Software"],
+            "tags": ["Software Engineering"],
         },
     )
     assert r.status_code == 200
@@ -117,6 +117,44 @@ def test_admin_pages_self_heal_core_pages(client: TestClient):
     assert {"about", "contact", "privacy", "disclaimer"}.issubset(pages)
     assert "PakistanJobs" in pages["disclaimer"]["content"]
     assert "Daily Jang" in pages["disclaimer"]["content"]
+
+
+def test_local_core_pages_receive_production_snapshot_once(monkeypatch: pytest.MonkeyPatch):
+    from datetime import datetime
+    from app.models import Page
+    from app.seed import DEFAULT_PAGES, sync_local_core_pages_once
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        for slug, title, _content in DEFAULT_PAGES:
+            session.add(
+                Page(
+                    id=f"page-{slug}",
+                    slug=slug,
+                    title=title,
+                    content="<p>stale local content</p>",
+                    is_published=True,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+            )
+        session.commit()
+        monkeypatch.setenv("SITE_URL", "http://localhost:3000")
+        assert len(sync_local_core_pages_once(session)) == 4
+        session.commit()
+        expected = {slug: content for slug, _title, content in DEFAULT_PAGES}
+        actual = {row.slug: row.content for row in session.query(Page).all()}
+        assert actual == expected
+        assert sync_local_core_pages_once(session) == []
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
 
 
 def test_admin_can_update_public_branding_text(client: TestClient):
@@ -291,6 +329,175 @@ def test_stats_open_for_apply(client: TestClient):
     data = r.json()
     assert "open_for_apply" in data
     assert data["open_for_apply"] >= 1
+
+
+def test_nationwide_and_closed_listing_flags(client: TestClient):
+    from app.constants import PAKISTAN_CITIES
+    from datetime import datetime, timedelta
+
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "admin-password"})
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Nationwide Closed Role",
+            "description": "<p>A nationwide job with a passed application deadline.</p>",
+            "published_date": datetime.utcnow().isoformat(),
+            "deadline_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+            "job_type": "government",
+            "cities": PAKISTAN_CITIES,
+            "tags": ["Government"],
+        },
+    )
+    assert created.status_code == 200
+    item = client.get(f"/api/jobs/{created.json()['id']}").json()
+    assert item["nationwide"] is True
+    assert item["location"] == "Pakistan"
+    assert item["applications_closed"] is True
+
+
+def test_taxonomy_controls_job_categories(client: TestClient):
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "admin-password"})
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created_term = client.post(
+        "/api/admin/taxonomy",
+        headers=auth,
+        json={"name": "Data Science", "slug": "data-science"},
+    )
+    assert created_term.status_code == 200
+    public = client.get("/api/taxonomy")
+    assert any(term["slug"] == "data-science" for term in public.json())
+
+    valid = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Data Scientist",
+            "description": "<p>Analyze data and build production models.</p>",
+            "published_date": "2026-07-16T00:00:00",
+            "tags": ["data-science"],
+            "skills": ["Python"],
+            "cities": ["Lahore"],
+        },
+    )
+    assert valid.status_code == 200
+    assert valid.json()["tags"] == ["Data Science"]
+
+    invalid = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Uncontrolled Category Role",
+            "description": "<p>This category was never defined by the administrator.</p>",
+            "published_date": "2026-07-16T00:00:00",
+            "tags": ["Made Up Category"],
+        },
+    )
+    assert invalid.status_code == 400
+    assert "predefined" in invalid.json()["detail"].lower()
+
+    filters = client.get("/api/filters").json()
+    assert "Data Science" in filters["tags"]
+    assert "Python" not in filters["tags"]
+    assert "Lahore" not in filters["tags"]
+
+    renamed = client.put(
+        f"/api/admin/taxonomy/{created_term.json()['id']}",
+        headers=auth,
+        json={"name": "Analytics", "slug": "analytics"},
+    )
+    assert renamed.status_code == 200
+    changed_job = client.get(f"/api/jobs/{valid.json()['id']}").json()
+    assert changed_job["tags"] == ["Analytics"]
+
+    removable = client.post(
+        "/api/admin/taxonomy",
+        headers=auth,
+        json={"name": "Temporary Category", "slug": "temporary-category"},
+    )
+    assert removable.status_code == 200
+    assert client.delete(
+        f"/api/admin/taxonomy/{removable.json()['id']}", headers=auth
+    ).status_code == 200
+    assert all(
+        term["slug"] != "temporary-category" for term in client.get("/api/taxonomy").json()
+    )
+    legal = next(term for term in client.get("/api/admin/taxonomy", headers=auth).json() if term["slug"] == "legal")
+    assert client.delete(f"/api/admin/taxonomy/{legal['id']}", headers=auth).status_code == 200
+    assert all(term["slug"] != "legal" for term in client.get("/api/taxonomy").json())
+
+
+def test_subscription_validation_duplicate_template_and_daily_digest(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from datetime import timedelta
+    from app.services import newsletter
+
+    assert client.post("/api/subscriptions", json={"email": "bad"}).status_code == 400
+    assert client.post("/api/subscriptions", json={"email": "x@mailinator.com"}).status_code == 400
+    subscribed = client.post("/api/subscriptions", json={"email": "reader@gmail.com"})
+    assert subscribed.status_code == 200
+    assert subscribed.json()["status"] == "subscribed"
+    duplicate = client.post("/api/subscriptions", json={"email": "READER@GMAIL.COM"})
+    assert duplicate.json()["status"] == "already_subscribed"
+
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "admin-password"})
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    summary = client.get("/api/admin/subscriptions", headers=auth)
+    assert summary.status_code == 200
+    assert summary.json()["active_subscriber_count"] == 1
+
+    updated = client.put(
+        "/api/admin/subscriptions/template",
+        headers=auth,
+        json={
+            "subject_template": "{site_title} jobs — {date}",
+            "body_template": "Dear Sir/Madam,\n\nJobs from {range_start} to {range_end}:",
+        },
+    )
+    assert updated.status_code == 200
+
+    start_utc, _, _, _ = newsletter.digest_window()
+    job = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Daily Alert Role",
+            "description": "<p>A new job included in the noon Pakistan digest.</p>",
+            "published_date": (start_utc + timedelta(hours=1)).isoformat(),
+            "deadline_date": (start_utc + timedelta(days=7)).isoformat(),
+            "tags": ["Software Engineering"],
+        },
+    )
+    assert job.status_code == 200
+
+    delivered = []
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
+    monkeypatch.setattr(newsletter, "_send_smtp_message", lambda message: delivered.append(message))
+    sent = client.post("/api/admin/subscriptions/send-digest", headers=auth)
+    assert sent.status_code == 200
+    assert sent.json()["jobs_count"] == 1
+    assert sent.json()["sent_count"] == 1
+    assert delivered[0]["To"] == "reader@gmail.com"
+    plain = delivered[0].get_body(preferencelist=("plain",)).get_content()
+    assert "Dear Sir/Madam" in plain
+    assert "Daily Alert Role" in plain
+    assert "Deadline:" in plain
+    assert "/jobs/" in plain
+
+    repeated = client.post("/api/admin/subscriptions/send-digest", headers=auth)
+    assert repeated.json()["status"] == "already_processed"
+
+    monkeypatch.setenv("DAILY_DIGEST_TOKEN", "daily-test-token-with-at-least-32-chars")
+    assert client.post("/api/subscriptions/run-daily").status_code == 401
+    scheduled = client.post(
+        "/api/subscriptions/run-daily",
+        headers={"X-Digest-Token": "daily-test-token-with-at-least-32-chars"},
+    )
+    assert scheduled.status_code == 200
+    assert scheduled.json()["status"] == "already_processed"
 
 
 def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):

@@ -16,6 +16,15 @@ export function formatDateShort(value: string | null | undefined): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
 }
 
+export function isDeadlinePast(value?: string | null): boolean {
+  if (!value) return false;
+  const deadline = new Date(value);
+  if (Number.isNaN(deadline.getTime())) return false;
+  const now = new Date();
+  return Date.UTC(deadline.getUTCFullYear(), deadline.getUTCMonth(), deadline.getUTCDate()) <
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+}
+
 export function formatSalary(
   min: number | null | undefined,
   max: number | null | undefined,

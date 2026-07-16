@@ -7,6 +7,7 @@ import { toSeoSlug } from "@/lib/slug";
 import {
   formatDateShort,
   formatSalary,
+  isDeadlinePast,
   labelSource,
   sourceBadgeClass,
   summarize,
@@ -23,6 +24,8 @@ export function JobCard({ job }: Props) {
     job.salary_range ||
     formatSalary(job.salary_min, job.salary_max, job.currency, job.salary_range);
   const date = formatDateShort(job.published_date || job.created_at);
+  const applicationsClosed =
+    job.applications_closed || isDeadlinePast(job.application_deadline || job.deadline_date);
   const tags = job.tags?.length
     ? job.tags
     : ([labelSource(job.source_type), job.category, job.city].filter(Boolean) as string[]);
@@ -51,9 +54,14 @@ export function JobCard({ job }: Props) {
               {job.title}
             </Link>
           </h2>
+          {applicationsClosed && (
+            <span className="mt-2 inline-flex rounded-full border border-red-500 bg-red-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-500">
+              Applications Closed
+            </span>
+          )}
           <p className="mt-1 text-sm text-[var(--muted)]">
             {job.company || job.source || "Unknown employer"}
-            {job.location ? ` · ${job.location}` : job.city ? ` · ${job.city}` : ""}
+            {job.nationwide ? " · Pakistan" : job.location ? ` · ${job.location}` : job.city ? ` · ${job.city}` : ""}
             {salary ? ` · ${salary}` : ""}
           </p>
 

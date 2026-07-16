@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/jobs", label: "Job posts" },
   { href: "/admin/jobs/new", label: "Create job" },
+  { href: "/admin/taxonomy", label: "Tags / categories" },
   { href: "/admin/pages", label: "Pages" },
   { href: "/admin/pages/new", label: "Create page" },
   { href: "/admin/messages", label: "Messages" },

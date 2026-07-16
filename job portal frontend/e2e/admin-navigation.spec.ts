@@ -7,6 +7,7 @@ const dashboardLinks = [
   ["Manage pages", "/admin/pages", "Pages"],
   ["Contact messages", "/admin/messages", "Contact messages"],
   ["SEO monitor", "/admin/seo", "SEO command center"],
+  ["Tags / categories", "/admin/taxonomy", "Tags / categories"],
 ] as const;
 
 async function authenticate(page: Page) {
@@ -88,4 +89,20 @@ test("core CMS pages are visible in the dashboard", async ({ page }) => {
     await expect(adminContent.getByText(title, { exact: true })).toBeVisible();
   }
   await expect(adminContent.getByText("No pages yet. Create your first page.")).toHaveCount(0);
+});
+
+test("job form only offers predefined categories", async ({ page }) => {
+  await page.goto("/admin/jobs/new");
+  await expect(page.getByLabel("Software Engineering")).toBeVisible();
+  await expect(page.getByPlaceholder("Add tag and press Enter")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Add city and press Enter")).toHaveCount(0);
+  await page.getByLabel("Add city from predefined list").selectOption("Lahore");
+  await expect(page.getByRole("button", { name: "Remove Lahore" })).toBeVisible();
+});
+
+test("SEO monitor shows subscription count and editable digest template", async ({ page }) => {
+  await page.goto("/admin/seo");
+  await expect(page.getByText("Daily job alert subscriptions")).toBeVisible();
+  await expect(page.getByText("6", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Email subject")).toHaveValue(/Daily Job Alerts/);
 });

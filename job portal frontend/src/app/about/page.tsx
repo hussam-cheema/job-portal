@@ -10,8 +10,9 @@ export const metadata: Metadata = {
 };
 
 const FALLBACK = `
-  <p><strong>PakistanJobs</strong> helps Pakistanis discover government and private job openings.</p>
-  <p>Browse opportunities with city, skills, and category tags, plus verified interview questions and answers when available.</p>
+  <p><strong>PakistanJobs</strong> is a modern job portal for Pakistan. Browse curated government and private openings with city, skills, and category tags.</p>
+  <p>Job pages include commonly asked questions and answers sourced from closely matched YouTube videos when verified Q&amp;A is available.</p>
+  <p>Whether you are preparing for private-sector roles or public-sector competitive exams, PakistanJobs helps you discover opportunities faster.</p>
 `;
 
 export default function AboutPage() {

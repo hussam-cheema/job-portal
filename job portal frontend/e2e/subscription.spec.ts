@@ -1,0 +1,22 @@
+import { expect, test } from "@playwright/test";
+
+test("public daily alert form validates and subscribes an email", async ({ page }) => {
+  await page.goto("/");
+  const email = page.getByLabel("Email address");
+  await email.fill("invalid");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  await email.fill("reader@gmail.com");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  await expect(page.getByText("Your email has been subscribed to daily job alerts.")).toBeVisible();
+});
+
+test("nationwide expired jobs show Pakistan and Applications Closed on list and detail", async ({ page }) => {
+  await page.goto("/");
+  const card = page.getByRole("article").filter({ hasText: "Nationwide Closed Role" });
+  await expect(card.getByText(/FPSC · Pakistan/)).toBeVisible();
+  await expect(card.getByText("Applications Closed", { exact: true })).toBeVisible();
+  await card.getByRole("link", { name: "Nationwide Closed Role" }).click();
+  await expect(page.getByRole("heading", { name: "Nationwide Closed Role" })).toBeVisible();
+  await expect(page.getByText("Applications Closed", { exact: true })).toBeVisible();
+});

@@ -5,6 +5,7 @@ import { JobCard } from "@/components/JobCard";
 import { JobFilters } from "@/components/JobFilters";
 import { JobStats } from "@/components/JobStats";
 import { Pagination } from "@/components/Pagination";
+import { SubscriptionForm } from "@/components/SubscriptionForm";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -61,6 +62,10 @@ export default async function HomePage({
       <section className="mb-6">
         <JobStats stats={stats} />
       </section>
+
+      <div className="mb-6">
+        <SubscriptionForm />
+      </div>
 
       <section className="mb-6">
         <Suspense fallback={<div className="h-24 animate-pulse rounded-xl bg-[var(--card)]" />}>

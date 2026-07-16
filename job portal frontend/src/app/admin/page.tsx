@@ -31,6 +31,9 @@ export default function AdminHome() {
           <AdminRouteLink href="/admin/seo" className="btn btn-ghost">
             SEO monitor
           </AdminRouteLink>
+          <AdminRouteLink href="/admin/taxonomy" className="btn btn-ghost">
+            Tags / categories
+          </AdminRouteLink>
         </div>
       </div>
     </AdminShell>

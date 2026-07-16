@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -8,8 +10,9 @@ from sqlalchemy import func, select
 from app.auth import ensure_admin_user
 from app.database import SessionLocal
 from app.logging_config import get_logger
-from app.models import Job, JobQnA, Page
+from app.models import Job, JobQnA, Page, SiteSetting
 from app.services.seo import upsert_job_seo, upsert_page_seo
+from app.services.taxonomy import ensure_default_taxonomy
 from app.utils import slugify
 
 logger = get_logger("jobportal.seed")
@@ -77,6 +80,37 @@ def ensure_default_pages(db) -> list[Page]:
         created.append(page)
     return created
 
+
+def sync_local_core_pages_once(db) -> list[Page]:
+    """Apply the current production-page snapshot to the local DB exactly once."""
+    site_host = (urlparse(os.getenv("SITE_URL", "http://localhost:3000")).hostname or "").lower()
+    if site_host not in {"localhost", "127.0.0.1", "frontend"}:
+        return []
+    marker_key = "local_core_pages_synced_from_production_v1"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    changed: list[Page] = []
+    for slug, title, content in DEFAULT_PAGES:
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page)
+        changed.append(page)
+    db.add(
+        SiteSetting(
+            key=marker_key,
+            value="true",
+            updated_at=datetime.utcnow(),
+        )
+    )
+    db.flush()
+    return changed
+
 SEED_JOBS = [
     {
         "title": "Senior Software Engineer — Backend",
@@ -129,6 +163,8 @@ def seed_if_empty() -> None:
         ensure_admin_user(db)
 
         ensure_default_pages(db)
+        sync_local_core_pages_once(db)
+        ensure_default_taxonomy(db)
 
         count = db.execute(select(func.count()).select_from(Job)).scalar() or 0
         if count > 0:
@@ -191,6 +227,9 @@ def seed_if_empty() -> None:
                     created_at=now,
                 )
             )
+
+        db.flush()
+        ensure_default_taxonomy(db)
 
         db.commit()
         logger.info("seeded sample jobs count=%s", len(SEED_JOBS))

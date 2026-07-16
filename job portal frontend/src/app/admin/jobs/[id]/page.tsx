@@ -9,6 +9,7 @@ import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
 import {
   adminCreateJob,
   adminFetchQnA,
+  adminListTaxonomy,
   adminUpdateJob,
   adminUpload,
   fetchFilters,
@@ -16,7 +17,7 @@ import {
   API_BASE,
 } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
-import type { JobQnA } from "@/lib/types";
+import type { JobQnA, TaxonomyTerm } from "@/lib/types";
 import { toDateInputValue } from "@/lib/format";
 
 const empty = {
@@ -75,6 +76,7 @@ export default function JobFormPage() {
   const { token } = useAdminAuth();
   const [form, setForm] = useState(empty);
   const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<TaxonomyTerm[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qna, setQna] = useState<JobQnA[]>([]);
@@ -96,7 +98,10 @@ export default function JobFormPage() {
 
   useEffect(() => {
     fetchFilters().then((f) => setCityOptions(asStringList(f.cities)));
-  }, []);
+    if (token) {
+      adminListTaxonomy(token).then(setCategoryOptions).catch(() => setCategoryOptions([]));
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!jobId) {
@@ -475,14 +480,27 @@ export default function JobFormPage() {
                 </div>
               )}
             </div>
-            <TagInput
-              values={form.cities}
-              onChange={(v) => setField("cities", v)}
-              placeholder="Add city and press Enter"
-            />
+            {form.cities.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 rounded-xl border border-[var(--border)] p-3">
+                {form.cities.map((city) => (
+                  <span key={city} className="tag flex items-center gap-1.5">
+                    {city}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${city}`}
+                      className="font-bold text-[var(--muted)] hover:text-red-500"
+                      onClick={() => setField("cities", form.cities.filter((value) => value !== city))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {cityOptions.length > 0 && (
               <select
                 className="select mt-2"
+                aria-label="Add city from predefined list"
                 value=""
                 onChange={(e) => {
                   if (e.target.value) {
@@ -508,11 +526,18 @@ export default function JobFormPage() {
 
         <div>
           <label className="field-label">Tags (categories)</label>
-          <TagInput
-            values={form.tags}
-            onChange={(v) => setField("tags", v)}
-            placeholder="Add tag and press Enter"
-          />
+          <div className="grid gap-2 rounded-xl border border-[var(--border)] p-3 sm:grid-cols-2 lg:grid-cols-3">
+            {categoryOptions.filter((term) => term.is_active || form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase())).map((term) => {
+              const selected = form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase());
+              return (
+                <label key={term.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--navy-850)]">
+                  <input type="checkbox" checked={selected} onChange={() => setField("tags", selected ? form.tags.filter((value) => value.toLowerCase() !== term.name.toLowerCase()) : [...form.tags, term.name])} />
+                  <span className="text-sm text-[var(--navy-200)]">{term.name}{!term.is_active ? " (inactive)" : ""}</span>
+                </label>
+              );
+            })}
+            {categoryOptions.length === 0 && <p className="text-sm text-[var(--muted)]">Create tags/categories from the dashboard first.</p>}
+          </div>
         </div>
 
         <div>

@@ -4,6 +4,7 @@ import { fetchJob } from "@/lib/api";
 import {
   formatDate,
   formatSalary,
+  isDeadlinePast,
   labelSource,
   sourceBadgeClass,
   stripHtml,
@@ -48,6 +49,8 @@ export default async function JobDetailPage({ params }: Props) {
   const referenceUrl =
     job.reference_url ||
     (job.source_url && job.source_url !== job.application_url ? job.source_url : "");
+  const applicationsClosed =
+    job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
 
   return (
     <div className="site-wrap py-10">
@@ -92,6 +95,11 @@ export default async function JobDetailPage({ params }: Props) {
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--navy-100)] leading-snug">
             {job.title}
           </h1>
+          {applicationsClosed && (
+            <div className="mt-4 inline-flex rounded-full border-2 border-red-500 bg-red-500/10 px-4 py-2 text-sm font-bold uppercase tracking-wide text-red-500">
+              Applications Closed
+            </div>
+          )}
           <p className="mt-3 text-[var(--navy-300)] text-lg">
             {job.company || job.source || "Unknown company"}
             {job.location ? (

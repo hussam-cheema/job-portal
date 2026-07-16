@@ -9,7 +9,7 @@ This guide deploys the application with the following architecture:
 - **DNS and edge TLS:** Cloudflare
 - **CI/CD and image registry:** GitHub Actions and GitHub Container Registry (GHCR)
 
-The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). Pull requests run backend tests plus frontend lint/build checks. A successful push to `main` builds an immutable backend image, deploys a new Container Apps revision, verifies `/ready`, and then deploys the frontend.
+The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) and [`.github/workflows/daily-job-alerts.yml`](.github/workflows/daily-job-alerts.yml). Pull requests run backend tests plus frontend lint/build checks. A successful push to `main` builds an immutable backend image, deploys a new Container Apps revision, verifies `/ready`, and then deploys the frontend. The second workflow invokes the protected subscriber-digest endpoint at noon PKT.
 
 ## 1. Before you begin
 
@@ -204,6 +204,7 @@ Add the following secrets under the Container App's secret settings:
 | `jwt-secret` | Random value with at least 32 characters |
 | `admin-password` | Strong password with 12-72 characters |
 | `smtp-password` | SMTP/App Password for the recovery email account |
+| `daily-digest-token` | Random scheduler token with at least 32 characters |
 | `r2-access-key-id` | R2 Access Key ID |
 | `r2-secret-access-key` | R2 Secret Access Key |
 
@@ -241,6 +242,7 @@ SMTP_FROM_EMAIL=hussam.cheema7102@gmail.com
 SMTP_AUTH=true
 SMTP_STARTTLS=true
 SMTP_USE_SSL=false
+DAILY_DIGEST_TOKEN=secretref:daily-digest-token
 
 SITE_URL=https://www.example.com
 SITE_NAME=PakJobs
@@ -267,7 +269,7 @@ Add any YouTube or LLM API keys as Container App secrets only when those feature
 
 The first successful admin login creates the configured admin account if it does not already exist, so production does not require startup seed data.
 
-The admin account locks after the fourth consecutive failed password attempt. Both lockout recovery and the login page's forgot-password action send a single-use reset link to `ADMIN_RECOVERY_EMAIL`. The endpoint enforces a resend cooldown plus per-IP and global hourly limits, so automation cannot flood the mailbox. The link expires after `PASSWORD_RESET_TOKEN_TTL_MINUTES` and permits choosing a new username and password without the old password. When Gmail is used for SMTP, store a Google App Password in the `smtp-password` Container App secret; never store it in GitHub or a committed `.env` file.
+The admin account locks after the fourth consecutive failed password attempt. Both lockout recovery and the login page's forgot-password action send a single-use reset link to `ADMIN_RECOVERY_EMAIL`. The endpoint enforces a resend cooldown plus per-IP and global hourly limits, so automation cannot flood the mailbox. The link expires after `PASSWORD_RESET_TOKEN_TTL_MINUTES` and permits choosing a new username and password without the old password. When Gmail is used for SMTP, store a Google App Password in the `smtp-password` Container App secret; never store it in GitHub or a committed `.env` file. The same SMTP account sends subscriber digests, so its App Password must remain configured after password recovery testing is complete.
 
 For local development, `docker compose up -d mailpit` starts a test SMTP inbox. The backend container sends recovery messages to Mailpit on port `1025`; open `http://localhost:8025` to inspect them. This avoids sending real recovery messages while testing locally.
 
@@ -322,6 +324,7 @@ Add these **environment secrets** to `production`:
 | `AZURE_TENANT_ID` | Entra tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Static Web Apps deployment token |
+| `DAILY_DIGEST_TOKEN` | Exact same random value as the Container App `daily-digest-token` secret |
 
 Add these **environment variables** to `production`:
 
@@ -381,6 +384,8 @@ Then verify:
 - Merge to `main`: GitHub deploys the backend and then the frontend.
 - A failed backend readiness check prevents the frontend deployment.
 - Production secrets are maintained in Azure; changing an Azure secret creates or updates a Container Apps revision independently of a source deployment.
+- `.github/workflows/daily-job-alerts.yml` invokes the protected digest endpoint every day at 07:00 UTC (12:00 PM PKT). GitHub schedules can start a few minutes late, but the backend always selects the exact previous-noon-to-current-noon PKT window and processes a window only once.
+- The digest sends nothing when the window contains no newly published jobs. The SEO Monitor shows the active/total subscriber count, editable subject/body text, and the last digest status; its manual button processes the same idempotent window.
 
 For rollback:
 

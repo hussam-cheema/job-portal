@@ -20,8 +20,9 @@ from app.exceptions import (
     validation_exception_handler,
 )
 from app.logging_config import get_logger, setup_logging
-from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, uploads
-from app.seed import ensure_default_pages, seed_if_empty
+from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
+from app.seed import ensure_default_pages, seed_if_empty, sync_local_core_pages_once
+from app.services.taxonomy import ensure_default_taxonomy
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("jobportal.main")
@@ -38,9 +39,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         db = SessionLocal()
         try:
             created = ensure_default_pages(db)
+            locally_synced = sync_local_core_pages_once(db)
+            taxonomy_created = ensure_default_taxonomy(db)
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))
+            if locally_synced:
+                logger.info("local CMS pages synchronized count=%s", len(locally_synced))
+            if taxonomy_created:
+                logger.info("taxonomy terms created count=%s", len(taxonomy_created))
         finally:
             db.close()
     except Exception:
@@ -92,6 +99,8 @@ app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(seo.router, prefix="/api", tags=["seo"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
+app.include_router(taxonomy.router, prefix="/api", tags=["taxonomy"])
+app.include_router(subscriptions.router, prefix="/api", tags=["subscriptions"])
 
 
 @app.get("/sitemap.xml", tags=["seo"], response_class=None)

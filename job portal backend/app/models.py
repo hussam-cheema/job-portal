@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -174,6 +174,61 @@ class SiteSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class TaxonomyTerm(Base):
+    """Administrator-managed category/tag available to job posts."""
+
+    __tablename__ = "taxonomy_terms"
+    __table_args__ = (UniqueConstraint("kind", "slug", name="uq_taxonomy_kind_slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="category", index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(140), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class EmailSubscriber(Base):
+    __tablename__ = "email_subscribers"
+
+    user_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
+    subscribed_email: Mapped[str] = mapped_column(
+        String(320), unique=True, nullable=False, index=True
+    )
+    unsubscribe_token: Mapped[str] = mapped_column(
+        String(96), unique=True, nullable=False, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    subscribed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_digest_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class SubscriptionDigestRun(Base):
+    __tablename__ = "subscription_digest_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    window_end: Mapped[datetime] = mapped_column(
+        DateTime, unique=True, nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
+    jobs_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recipients_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class SEOBacklink(Base):

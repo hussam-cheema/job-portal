@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TokenOut(BaseModel):
@@ -205,6 +205,8 @@ class JobSummary(BaseModel):
     application_deadline: Optional[datetime] = None
     source_type: str = "private"
     source_name: Optional[str] = None
+    nationwide: bool = False
+    applications_closed: bool = False
 
 
 class JobDetail(JobSummary):
@@ -375,3 +377,68 @@ class UploadOut(BaseModel):
     public_url: str
     original_name: Optional[str] = None
     is_inline_image: bool = False
+
+
+class TaxonomyTermIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    slug: Optional[str] = Field(default=None, max_length=140)
+    kind: str = Field(default="category", pattern=r"^(category|tag)$")
+    is_active: bool = True
+
+
+class TaxonomyTermUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    slug: Optional[str] = Field(default=None, max_length=140)
+    is_active: Optional[bool] = None
+
+
+class TaxonomyTermOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    slug: str
+    kind: str
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class SubscriptionIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class SubscriptionResult(BaseModel):
+    ok: bool = True
+    status: str
+    message: str
+
+
+class DigestTemplateUpdate(BaseModel):
+    subject_template: str = Field(..., min_length=1, max_length=300)
+    body_template: str = Field(..., min_length=1, max_length=6000)
+
+
+class DigestAdminSummary(BaseModel):
+    subscriber_count: int = 0
+    active_subscriber_count: int = 0
+    subject_template: str
+    body_template: str
+    last_digest_at: Optional[datetime] = None
+    last_digest_status: Optional[str] = None
+
+
+class DigestRunOut(BaseModel):
+    status: str
+    window_start: datetime
+    window_end: datetime
+    jobs_count: int
+    recipients_count: int
+    sent_count: int
+    failed_count: int
+    message: str

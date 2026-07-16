@@ -29,8 +29,68 @@ const server = createServer((request, response) => {
       companies: [], employment_types: [], tags: [], job_types: ["government", "private"],
     });
   }
+  if (path === "/api/taxonomy" || path === "/api/admin/taxonomy") {
+    return json(response, [
+      { id: "term-software", kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: true },
+      { id: "term-government", kind: "category", name: "Government", slug: "government", is_active: true },
+    ]);
+  }
+  if (path.startsWith("/api/admin/taxonomy/")) {
+    return json(response, { id: path.split("/").pop(), kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: false });
+  }
+  if (path === "/api/subscriptions") {
+    return json(response, { ok: true, status: "subscribed", message: "Your email has been subscribed to daily job alerts." });
+  }
+  if (path === "/api/subscriptions/unsubscribe") {
+    return json(response, { ok: true, status: "unsubscribed", message: "You have been unsubscribed." });
+  }
+  if (path === "/api/admin/subscriptions") {
+    return json(response, {
+      subscriber_count: 7, active_subscriber_count: 6,
+      subject_template: "Daily Job Alerts from {site_title} — {date}",
+      body_template: "Dear Sir/Madam, jobs from {range_start} to {range_end}.",
+      last_digest_at: null, last_digest_status: null,
+    });
+  }
+  if (path === "/api/admin/subscriptions/template") {
+    return json(response, {
+      subscriber_count: 7, active_subscriber_count: 6,
+      subject_template: "Saved subject", body_template: "Saved body",
+      last_digest_at: null, last_digest_status: null,
+    });
+  }
+  if (path === "/api/admin/subscriptions/send-digest") {
+    return json(response, { status: "completed", window_start: new Date().toISOString(), window_end: new Date().toISOString(), jobs_count: 2, recipients_count: 6, sent_count: 6, failed_count: 0, message: "Sent 6 of 6 daily job alert emails." });
+  }
   if (path === "/api/jobs") {
-    return json(response, { items: [], total: 0, page: 1, page_size: 50, pages: 0 });
+    return json(response, { items: [{
+      id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
+      description: "A nationwide job with a passed deadline.", published_date: "2026-07-01T00:00:00Z",
+      deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
+      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      experience_required: null, education_required: null, skills: [], job_type: "government",
+      cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
+      company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
+      salary_min: null, salary_max: null, currency: "PKR", category: "Government",
+      source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
+    }], total: 1, page: 1, page_size: 50, pages: 1 });
+  }
+  if (path === "/api/stats") {
+    return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
+  }
+  if (path === "/api/jobs/closed-role") {
+    return json(response, {
+      id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
+      description: "<p>A nationwide job with a passed deadline.</p>", published_date: "2026-07-01T00:00:00Z",
+      deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
+      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      experience_required: null, education_required: null, skills: [], job_type: "government",
+      cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
+      company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
+      salary_min: null, salary_max: null, currency: "PKR", category: "Government",
+      source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
+      application_email: null, source_url: null, attachments: [], qna: [], resources: [],
+    });
   }
   if (path === "/api/admin/pages") {
     return json(response, [

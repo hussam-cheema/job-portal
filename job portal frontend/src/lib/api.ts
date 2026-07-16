@@ -11,6 +11,10 @@ import type {
   QnAFetchResult,
   SEODashboard,
   StatsResponse,
+  TaxonomyTerm,
+  SubscriptionResult,
+  DigestAdminSummary,
+  DigestRun,
 } from "./types";
 
 const API_BASE = (
@@ -181,6 +185,31 @@ export async function submitContact(data: {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Network error" };
   }
+}
+
+export async function subscribeEmail(email: string): Promise<SubscriptionResult> {
+  const res = await fetch(`${API_BASE}/api/subscriptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || "Unable to subscribe this email");
+  return body as SubscriptionResult;
+}
+
+export async function unsubscribeEmail(token: string): Promise<SubscriptionResult> {
+  const res = await fetch(
+    `${API_BASE}/api/subscriptions/unsubscribe?token=${encodeURIComponent(token)}`,
+    { method: "POST" }
+  );
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || "Unable to unsubscribe");
+  return body as SubscriptionResult;
+}
+
+export function fetchTaxonomy(): Promise<TaxonomyTerm[]> {
+  return getJson<TaxonomyTerm[]>("/api/taxonomy", []);
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -454,6 +483,82 @@ export async function adminDeleteMessage(token: string, id: string) {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Delete failed");
+  return res.json();
+}
+
+export async function adminListTaxonomy(token: string): Promise<TaxonomyTerm[]> {
+  const res = await fetch(`${API_BASE}/api/admin/taxonomy`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
+  return res.json();
+}
+
+export async function adminCreateTaxonomyTerm(
+  token: string,
+  data: { name: string; slug?: string; is_active?: boolean }
+): Promise<TaxonomyTerm> {
+  const res = await fetch(`${API_BASE}/api/admin/taxonomy`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ kind: "category", ...data }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Create failed");
+  return res.json();
+}
+
+export async function adminUpdateTaxonomyTerm(
+  token: string,
+  id: string,
+  data: { name?: string; slug?: string; is_active?: boolean }
+): Promise<TaxonomyTerm> {
+  const res = await fetch(`${API_BASE}/api/admin/taxonomy/${id}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Update failed");
+  return res.json();
+}
+
+export async function adminDeleteTaxonomyTerm(token: string, id: string) {
+  const res = await fetch(`${API_BASE}/api/admin/taxonomy/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Delete failed");
+  return res.json();
+}
+
+export async function adminSubscriptionSummary(token: string): Promise<DigestAdminSummary> {
+  const res = await fetch(`${API_BASE}/api/admin/subscriptions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
+  return res.json();
+}
+
+export async function adminUpdateDigestTemplate(
+  token: string,
+  data: { subject_template: string; body_template: string }
+): Promise<DigestAdminSummary> {
+  const res = await fetch(`${API_BASE}/api/admin/subscriptions/template`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Save failed");
+  return res.json();
+}
+
+export async function adminSendDigest(token: string): Promise<DigestRun> {
+  const res = await fetch(`${API_BASE}/api/admin/subscriptions/send-digest`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Send failed");
   return res.json();
 }
 

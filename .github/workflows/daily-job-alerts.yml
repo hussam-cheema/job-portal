@@ -1,0 +1,27 @@
+name: Daily job alert emails
+
+on:
+  schedule:
+    # 12:00 PM Pakistan Standard Time (UTC+5)
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: daily-job-alert-digest
+  cancel-in-progress: false
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Process the 12 PM PKT digest window
+        env:
+          API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          DIGEST_TOKEN: ${{ secrets.DAILY_DIGEST_TOKEN }}
+        run: |
+          test -n "$API_URL" || { echo "NEXT_PUBLIC_API_URL is not configured"; exit 1; }
+          test -n "$DIGEST_TOKEN" || { echo "DAILY_DIGEST_TOKEN is not configured"; exit 1; }
+          curl --fail-with-body --retry 5 --retry-delay 15 --retry-all-errors \
+            -X POST "${API_URL%/}/api/subscriptions/run-daily" \
+            -H "X-Digest-Token: ${DIGEST_TOKEN}"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 from uuid import uuid4
 
@@ -15,7 +16,7 @@ from app.constants import DEFAULT_CATEGORIES, JOB_TYPES, PAKISTAN_CITIES, SECTOR
 from app.database import get_db
 from app.exceptions import empty_filters, empty_job_list
 from app.logging_config import get_logger
-from app.models import Job, JobAttachment, JobQnA, User
+from app.models import Job, JobAttachment, JobQnA, TaxonomyTerm, User
 from app.schemas import (
     FiltersResponse,
     JobCreate,
@@ -29,6 +30,7 @@ from app.schemas import (
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.watermark import process_description_images
+from app.services.taxonomy import canonicalize_job_terms, ensure_default_taxonomy
 from app.utils import as_list, experience_label, normalize_job_type, slugify, strip_html
 
 router = APIRouter()
@@ -50,18 +52,15 @@ def _to_summary(job: Job) -> JobSummary:
     cities = _list_field(job.cities)
     tags = _list_field(job.tags)
     skills = _list_field(job.skills)
-    # Build display tags
-    display_tags = list(tags)
-    if job.job_type:
-        label = "Government" if _source_type(job) == "govt" else "Private"
-        if label.lower() not in {t.lower() for t in display_tags}:
-            display_tags.insert(0, label)
-    for c in cities:
-        if c.lower() not in {t.lower() for t in display_tags}:
-            display_tags.append(c)
-    for s in skills[:4]:
-        if s.lower() not in {t.lower() for t in display_tags}:
-            display_tags.append(s)
+    configured_cities = {city.casefold() for city in PAKISTAN_CITIES}
+    selected_cities = {city.casefold() for city in cities}
+    nationwide = bool(configured_cities) and configured_cities.issubset(selected_cities)
+    location = "Pakistan" if nationwide else ", ".join(cities) if cities else None
+    deadline = job.deadline_date
+    applications_closed = bool(
+        deadline
+        and deadline.date() < datetime.now(ZoneInfo("Asia/Karachi")).date()
+    )
 
     return JobSummary(
         id=job.id,
@@ -79,12 +78,12 @@ def _to_summary(job: Job) -> JobSummary:
         skills=skills,
         job_type=job.job_type,
         cities=cities,
-        tags=display_tags,
+        tags=tags,
         keywords=job.keywords,
         created_at=job.created_at,
         company=job.source,
-        location=", ".join(cities) if cities else None,
-        city=cities[0] if cities else None,
+        location=location,
+        city="Pakistan" if nationwide else cities[0] if cities else None,
         province=None,
         employment_type=None,
         salary_min=None,
@@ -94,6 +93,8 @@ def _to_summary(job: Job) -> JobSummary:
         application_deadline=job.deadline_date,
         source_type=_source_type(job),
         source_name=job.source,
+        nationwide=nationwide,
+        applications_closed=applications_closed,
     )
 
 
@@ -235,7 +236,7 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
     if "cities" in data and data["cities"] is not None:
         job.cities = as_list(data["cities"])
     if "tags" in data and data["tags"] is not None:
-        job.tags = as_list(data["tags"])
+        job.tags = canonicalize_job_terms(db, as_list(data["tags"]))
     if "keywords" in data:
         job.keywords = data["keywords"]
     job.updated_at = datetime.utcnow()
@@ -503,30 +504,25 @@ def admin_fetch_qna(
 def get_filters(db: Session = Depends(get_db)):
     try:
         jobs = db.execute(select(Job)).scalars().all()
-        tags: list[str] = ["Government", "Private"]
+        ensure_default_taxonomy(db)
         cities_db: list[str] = []
-        # Homepage "Categories" select = defaults + every tag used on job posts
-        category_set: set[str] = set(DEFAULT_CATEGORIES)
+        category_set: set[str] = {
+            row.name
+            for row in db.execute(
+                select(TaxonomyTerm).where(
+                    TaxonomyTerm.kind == "category",
+                    TaxonomyTerm.is_active.is_(True),
+                )
+            ).scalars().all()
+        }
         companies: list[str] = []
         for j in jobs:
             for t in _list_field(j.tags):
-                tags.append(t)
                 category_set.add(t)
             for c in _list_field(j.cities):
                 cities_db.append(c)
-                tags.append(c)
-            for s in _list_field(j.skills):
-                tags.append(s)
             if j.source:
                 companies.append(j.source)
-
-        seen: set[str] = set()
-        uniq_tags = []
-        for t in tags:
-            k = t.lower()
-            if k not in seen and t:
-                seen.add(k)
-                uniq_tags.append(t)
 
         # Case-insensitive unique categories, preserve nicer casing
         cat_map: dict[str, str] = {}
@@ -546,7 +542,9 @@ def get_filters(db: Session = Depends(get_db)):
             cities=cities,
             companies=sorted(set(companies)),
             employment_types=[],
-            tags=uniq_tags[:200],
+            # Kept for backwards-compatible clients; tags now represent only
+            # the controlled category taxonomy, not cities or free-form skills.
+            tags=categories,
             job_types=JOB_TYPES,
         )
     except Exception:

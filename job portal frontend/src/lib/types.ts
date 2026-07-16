@@ -30,6 +30,43 @@ export type JobSummary = {
   application_deadline: string | null;
   source_type: string;
   source_name: string | null;
+  nationwide?: boolean;
+  applications_closed?: boolean;
+};
+
+export type TaxonomyTerm = {
+  id: string;
+  kind: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type SubscriptionResult = {
+  status: "subscribed" | "already_subscribed" | "unsubscribed" | "not_subscribed";
+  message: string;
+};
+
+export type DigestAdminSummary = {
+  subscriber_count: number;
+  active_subscriber_count: number;
+  subject_template: string;
+  body_template: string;
+  last_digest_at: string | null;
+  last_digest_status: string | null;
+};
+
+export type DigestRun = {
+  status: string;
+  window_start: string;
+  window_end: string;
+  jobs_count: number;
+  recipients_count: number;
+  sent_count: number;
+  failed_count: number;
+  message: string;
 };
 
 export type QnAItem = {
