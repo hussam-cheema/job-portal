@@ -75,9 +75,10 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
             status="not_subscribed",
             message="This subscription is already inactive or the link is invalid.",
         )
-    row.is_active = False
-    row.unsubscribed_at = datetime.utcnow()
-    row.updated_at = datetime.utcnow()
+    # An unsubscribe is a deletion request, not a soft-disable. Removing the
+    # row keeps dashboard counts accurate and avoids retaining an address that
+    # explicitly asked to leave the mailing list.
+    db.delete(row)
     db.commit()
     return SubscriptionResult(status="unsubscribed", message="You have been unsubscribed.")
 

@@ -25,14 +25,14 @@ const server = createServer((request, response) => {
   }
   if (path === "/api/filters") {
     return json(response, {
-      source_types: [], sectors: ["govt", "private"], categories: [], cities: ["Lahore"],
-      companies: [], employment_types: [], tags: [], job_types: ["government", "private"],
+      source_types: [], sectors: ["govt", "private"], categories: ["Software Engineering"], cities: ["Lahore"],
+      companies: [], employment_types: [], tags: ["Software Engineering"], job_types: ["government", "private"],
     });
   }
   if (path === "/api/taxonomy" || path === "/api/admin/taxonomy") {
     return json(response, [
       { id: "term-software", kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: true },
-      { id: "term-government", kind: "category", name: "Government", slug: "government", is_active: true },
+      { id: "term-education", kind: "category", name: "Education", slug: "education", is_active: true },
     ]);
   }
   if (path.startsWith("/api/admin/taxonomy/")) {
@@ -67,7 +67,7 @@ const server = createServer((request, response) => {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: "A nationwide job with a passed deadline.", published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
-      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
@@ -83,7 +83,7 @@ const server = createServer((request, response) => {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: "<p>A nationwide job with a passed deadline.</p>", published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
-      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,

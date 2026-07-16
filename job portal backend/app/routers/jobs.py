@@ -503,9 +503,7 @@ def admin_fetch_qna(
 @router.get("/filters", response_model=FiltersResponse)
 def get_filters(db: Session = Depends(get_db)):
     try:
-        jobs = db.execute(select(Job)).scalars().all()
         ensure_default_taxonomy(db)
-        cities_db: list[str] = []
         category_set: set[str] = {
             row.name
             for row in db.execute(
@@ -516,11 +514,8 @@ def get_filters(db: Session = Depends(get_db)):
             ).scalars().all()
         }
         companies: list[str] = []
+        jobs = db.execute(select(Job)).scalars().all()
         for j in jobs:
-            for t in _list_field(j.tags):
-                category_set.add(t)
-            for c in _list_field(j.cities):
-                cities_db.append(c)
             if j.source:
                 companies.append(j.source)
 
@@ -534,7 +529,7 @@ def get_filters(db: Session = Depends(get_db)):
                 cat_map[key] = str(c).strip()
         categories = sorted(cat_map.values(), key=str.lower)
 
-        cities = sorted(set(PAKISTAN_CITIES) | set(cities_db), key=str.lower)
+        cities = sorted(set(PAKISTAN_CITIES), key=str.lower)
         return FiltersResponse(
             source_types=["govt", "private"],
             sectors=SECTORS,

@@ -118,7 +118,7 @@ def build_digest_message(
     plain = (
         f"{title}\n\n{body_intro}\n\n"
         + "\n\n".join(plain_jobs)
-        + f"\n\nRegards,\n{title}\n\nUnsubscribe: {unsubscribe_url}"
+        + f"\n\nRegards,\n{title}\n\nTo stop receiving these emails, unsubscribe here:\n{unsubscribe_url}"
     )
     intro_html = "<br>".join(html.escape(body_intro).splitlines())
     html_body = (
@@ -126,7 +126,8 @@ def build_digest_message(
         f"<p>{intro_html}</p>"
         f"<ul>{''.join(html_jobs)}</ul>"
         f'<p>Regards,<br><a href="{html.escape(base_url, quote=True)}">{html.escape(title)}</a></p>'
-        f'<p style="font-size:12px;color:#64748b"><a href="{html.escape(unsubscribe_url, quote=True)}">Unsubscribe from daily job alerts</a></p>'
+        f'<p style="margin-top:28px;font-size:12px;color:#64748b">No longer want these alerts? '
+        f'<a href="{html.escape(unsubscribe_url, quote=True)}">Unsubscribe from daily job alerts</a>.</p>'
     )
 
     from_email = env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")

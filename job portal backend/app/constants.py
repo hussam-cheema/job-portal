@@ -23,7 +23,7 @@ PAKISTAN_CITIES: list[str] = sorted(
 DEFAULT_CATEGORIES: list[str] = sorted(
     [
         "Accounting", "AI Engineer", "Banking & Finance", "Customer Service",
-        "Data & Analytics", "Education", "Engineering", "Government",
+        "Data & Analytics", "Education", "Engineering",
         "Healthcare", "HR & Admin", "Legal", "Marketing", "Police", "Product",
         "Sales", "Software Engineering", "Teaching", "Telecom",
     ]

@@ -5,8 +5,8 @@ import re
 import time
 import unicodedata
 from concurrent.futures import (
+    FIRST_COMPLETED,
     ThreadPoolExecutor,
-    TimeoutError as FutureTimeoutError,
     wait,
 )
 from difflib import SequenceMatcher
@@ -733,18 +733,6 @@ def extract_qna_from_video(
     ]
 
 
-def _call_with_timeout(function, timeout_seconds: float):
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qna-external")
-    future = executor.submit(function)
-    try:
-        return future.result(timeout=max(1.0, timeout_seconds))
-    except FutureTimeoutError as exc:
-        future.cancel()
-        raise TimeoutError("external Q&A source timed out") from exc
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
-
-
 def _collect_video_source(
     video: dict[str, Any],
     *,
@@ -755,34 +743,105 @@ def _collect_video_source(
     transcript: str | None = None
     comments: list[str] = []
     video_id = str(video.get("video_id") or "")
-    try:
-        transcript = _call_with_timeout(
-            lambda: get_transcript(video_id), source_timeout_seconds
-        )
-    except Exception as exc:
-        logger.warning(
-            "qna_transcript_unavailable video_id=%s error=%s",
-            video_id,
-            str(exc)[:200],
-        )
-    try:
-        comments = get_top_comments(
-            video_id,
-            max_comments=max_comments,
-            timeout_seconds=source_timeout_seconds,
-        )
-    except Exception as exc:
-        logger.warning(
-            "qna_comments_unavailable video_id=%s error=%s",
-            video_id,
-            str(exc)[:200],
-        )
+    # Captions and comments are independent sources. Fetching them sequentially
+    # meant a blocked caption request could consume the entire source deadline
+    # and discard comments that YouTube had already returned. Run both at once,
+    # and once either yields useful content give the other only a short grace
+    # period before returning the available source.
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qna-video-source")
+    transcript_future = executor.submit(get_transcript, video_id)
+    comments_future = executor.submit(
+        get_top_comments,
+        video_id,
+        max_comments=max_comments,
+        timeout_seconds=source_timeout_seconds,
+    )
+    futures = {transcript_future, comments_future}
+    started = time.monotonic()
+    done, pending = wait(
+        futures,
+        timeout=max(1.0, source_timeout_seconds),
+        return_when=FIRST_COMPLETED,
+    )
+
+    def consume(completed) -> None:
+        nonlocal transcript, comments
+        if transcript_future in completed:
+            try:
+                transcript = transcript_future.result()
+            except Exception as exc:
+                logger.warning(
+                    "qna_transcript_unavailable video_id=%s error=%s",
+                    video_id,
+                    str(exc)[:200],
+                )
+        if comments_future in completed:
+            try:
+                comments = comments_future.result()
+            except Exception as exc:
+                logger.warning(
+                    "qna_comments_unavailable video_id=%s error=%s",
+                    video_id,
+                    str(exc)[:200],
+                )
+
+    consume(done)
+    remaining = max(0.0, source_timeout_seconds - (time.monotonic() - started))
+    if pending and remaining > 0:
+        grace = min(1.0, remaining) if transcript or comments else remaining
+        completed, pending = wait(pending, timeout=grace)
+        consume(completed)
+    for future in pending:
+        future.cancel()
+    executor.shutdown(wait=False, cancel_futures=True)
     return {
         **video,
         "video_index": video_index,
         "transcript": transcript,
         "comments": comments,
     }
+
+
+def _collect_video_sources(
+    videos: list[dict[str, Any]],
+    *,
+    start_index: int,
+    max_comments: int,
+    source_timeout_seconds: float,
+    collection_timeout_seconds: float,
+    source_workers: int,
+) -> list[dict[str, Any]]:
+    if not videos or collection_timeout_seconds <= 0:
+        return []
+    executor = ThreadPoolExecutor(
+        max_workers=min(source_workers, len(videos)),
+        thread_name_prefix="qna-source",
+    )
+    future_map = {
+        executor.submit(
+            _collect_video_source,
+            video,
+            video_index=start_index + offset,
+            max_comments=max_comments,
+            source_timeout_seconds=source_timeout_seconds,
+        ): start_index + offset
+        for offset, video in enumerate(videos)
+    }
+    done, pending = wait(
+        future_map,
+        timeout=max(1.0, collection_timeout_seconds),
+    )
+    for future in pending:
+        future.cancel()
+    executor.shutdown(wait=False, cancel_futures=True)
+    sources: list[dict[str, Any]] = []
+    for future in done:
+        try:
+            sources.append(future.result())
+        except Exception as exc:
+            logger.warning("qna_source_collection_failed error=%s", str(exc)[:200])
+    sources.sort(key=lambda source: int(source["video_index"]))
+    return sources
 
 
 def fetch_qna_for_job_title(
@@ -854,40 +913,74 @@ def fetch_qna_for_job_title(
         )
 
         videos_scanned = len(videos)
-        sources: list[dict[str, Any]] = []
-        if videos:
-            executor = ThreadPoolExecutor(
-                max_workers=min(source_workers, len(videos)),
-                thread_name_prefix="qna-source",
-            )
-            future_map = {
-                executor.submit(
-                    _collect_video_source,
-                    video,
-                    video_index=index,
-                    max_comments=max_comments,
-                    source_timeout_seconds=source_timeout,
-                ): index
-                for index, video in enumerate(videos, start=1)
-            }
-            remaining = max(1.0, deadline - time.monotonic() - 2)
-            done, pending = wait(
-                future_map,
-                timeout=min(source_collection_timeout, remaining),
-            )
-            for future in pending:
-                future.cancel()
-            executor.shutdown(wait=False, cancel_futures=True)
-            for future in done:
-                try:
-                    sources.append(future.result())
-                except Exception as exc:
-                    logger.warning("qna_source_collection_failed error=%s", str(exc)[:200])
-            sources.sort(key=lambda source: int(source["video_index"]))
+        remaining = max(1.0, deadline - time.monotonic() - 2)
+        sources = _collect_video_sources(
+            videos,
+            start_index=1,
+            max_comments=max_comments,
+            source_timeout_seconds=source_timeout,
+            collection_timeout_seconds=min(source_collection_timeout, remaining),
+            source_workers=source_workers,
+        )
 
         usable_sources = [
             source for source in sources if source.get("transcript") or source.get("comments")
         ]
+        # Some highly relevant videos disable both captions and comments. If
+        # the complete first selection has no usable source, try one alternate
+        # interview/Q&A query and replacement videos. The same configured
+        # min_title_similarity remains mandatory; this only avoids giving up
+        # because the first titles happened to expose no retrievable content.
+        if videos and not usable_sources and deadline - time.monotonic() > 5:
+            fallback_query = f"{role_title} interview questions answers preparation Pakistan".strip()
+            fallback_raw = search_youtube(
+                fallback_query,
+                max_results=max_search_results,
+                timeout_seconds=min(15.0, max(1.0, deadline - time.monotonic())),
+            )
+            attempted_ids = {str(video.get("video_id") or "") for video in videos}
+            fallback_ranked = rank_by_similarity(
+                job_title,
+                [
+                    video
+                    for video in fallback_raw
+                    if str(video.get("video_id") or "") not in attempted_ids
+                ],
+                key="title",
+                score_key="title_similarity",
+            )
+            fallback_videos = [
+                video
+                for video in fallback_ranked
+                if float(video.get("title_similarity") or 0) >= min_sim
+            ][:max_videos]
+            if fallback_videos:
+                fallback_sources = _collect_video_sources(
+                    fallback_videos,
+                    start_index=len(videos) + 1,
+                    max_comments=max_comments,
+                    source_timeout_seconds=source_timeout,
+                    collection_timeout_seconds=min(
+                        source_collection_timeout,
+                        max(1.0, deadline - time.monotonic() - 2),
+                    ),
+                    source_workers=source_workers,
+                )
+                sources.extend(fallback_sources)
+                videos.extend(fallback_videos)
+                videos_scanned = len(videos)
+                usable_sources = [
+                    source
+                    for source in sources
+                    if source.get("transcript") or source.get("comments")
+                ]
+                logger.info(
+                    "qna_source_fallback job_id=%s candidates=%s matched=%s usable=%s",
+                    job_id,
+                    len(fallback_raw),
+                    len(fallback_videos),
+                    len(usable_sources),
+                )
         if videos and not usable_sources:
             error = (
                 "Relevant YouTube videos were found, but their transcripts and comments "

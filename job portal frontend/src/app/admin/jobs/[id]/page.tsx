@@ -526,18 +526,45 @@ export default function JobFormPage() {
 
         <div>
           <label className="field-label">Tags (categories)</label>
-          <div className="grid gap-2 rounded-xl border border-[var(--border)] p-3 sm:grid-cols-2 lg:grid-cols-3">
-            {categoryOptions.filter((term) => term.is_active || form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase())).map((term) => {
-              const selected = form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase());
-              return (
-                <label key={term.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--navy-850)]">
-                  <input type="checkbox" checked={selected} onChange={() => setField("tags", selected ? form.tags.filter((value) => value.toLowerCase() !== term.name.toLowerCase()) : [...form.tags, term.name])} />
-                  <span className="text-sm text-[var(--navy-200)]">{term.name}{!term.is_active ? " (inactive)" : ""}</span>
-                </label>
-              );
-            })}
-            {categoryOptions.length === 0 && <p className="text-sm text-[var(--muted)]">Create tags/categories from the dashboard first.</p>}
-          </div>
+          {form.tags.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2 rounded-xl border border-[var(--border)] p-3">
+              {form.tags.map((tag) => (
+                <span key={tag} className="tag flex items-center gap-1.5">
+                  {tag}
+                  <button
+                    type="button"
+                    aria-label={`Remove category ${tag}`}
+                    className="font-bold text-[var(--muted)] hover:text-red-500"
+                    onClick={() => setField("tags", form.tags.filter((value) => value.toLowerCase() !== tag.toLowerCase()))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <select
+            className="select"
+            aria-label="Select tags or categories"
+            value=""
+            onChange={(event) => {
+              const selected = event.target.value;
+              if (!selected || form.tags.some((value) => value.toLowerCase() === selected.toLowerCase())) return;
+              setField("tags", [...form.tags, selected]);
+            }}
+          >
+            <option value="">Select one or more categories…</option>
+            {categoryOptions
+              .filter((term) => term.is_active)
+              .filter((term) => !form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase()))
+              .map((term) => (
+                <option key={term.id} value={term.name}>{term.name}</option>
+              ))}
+          </select>
+          {form.tags.length > 0 && categoryOptions.some((term) => !term.is_active && form.tags.some((value) => value.toLowerCase() === term.name.toLowerCase())) && (
+            <p className="mt-2 text-xs text-[var(--muted)]">Inactive categories already assigned to this post remain selected until removed.</p>
+          )}
+          {categoryOptions.length === 0 && <p className="mt-2 text-sm text-[var(--muted)]">Create tags/categories from the dashboard first.</p>}
         </div>
 
         <div>

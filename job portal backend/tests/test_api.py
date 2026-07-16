@@ -4,6 +4,7 @@ import json
 import os
 import base64
 import io
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -347,7 +348,7 @@ def test_nationwide_and_closed_listing_flags(client: TestClient):
             "deadline_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
             "job_type": "government",
             "cities": PAKISTAN_CITIES,
-            "tags": ["Government"],
+            "tags": [],
         },
     )
     assert created.status_code == 200
@@ -401,6 +402,8 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     assert "Data Science" in filters["tags"]
     assert "Python" not in filters["tags"]
     assert "Lahore" not in filters["tags"]
+    assert "Government" not in filters["tags"]
+    assert "Private" not in filters["tags"]
 
     renamed = client.put(
         f"/api/admin/taxonomy/{created_term.json()['id']}",
@@ -486,6 +489,7 @@ def test_subscription_validation_duplicate_template_and_daily_digest(
     assert "Daily Alert Role" in plain
     assert "Deadline:" in plain
     assert "/jobs/" in plain
+    assert "unsubscribe" in plain.lower()
 
     repeated = client.post("/api/admin/subscriptions/send-digest", headers=auth)
     assert repeated.json()["status"] == "already_processed"
@@ -498,6 +502,19 @@ def test_subscription_validation_duplicate_template_and_daily_digest(
     )
     assert scheduled.status_code == 200
     assert scheduled.json()["status"] == "already_processed"
+
+    unsubscribe_match = re.search(r"/unsubscribe\?token=([^\s]+)", plain)
+    assert unsubscribe_match is not None
+    unsubscribe_token = unsubscribe_match.group(1)
+
+    removed = client.post(f"/api/subscriptions/unsubscribe?token={unsubscribe_token}")
+    assert removed.status_code == 200
+    assert removed.json()["status"] == "unsubscribed"
+    summary_after_removal = client.get("/api/admin/subscriptions", headers=auth).json()
+    assert summary_after_removal["subscriber_count"] == 0
+    assert summary_after_removal["active_subscriber_count"] == 0
+    repeated_removal = client.post(f"/api/subscriptions/unsubscribe?token={unsubscribe_token}")
+    assert repeated_removal.json()["status"] == "not_subscribed"
 
 
 def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
@@ -949,6 +966,96 @@ def test_qna_refresh_replaces_only_after_strict_title_match(monkeypatch: pytest.
     assert len(rows) == 1
     assert rows[0].id != "old-qna"
     assert rows[0].youtube_url == "https://youtu.be/match"
+    db.close()
+
+
+def test_qna_source_returns_comments_when_transcript_is_slow(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import time
+    from app.services import qna as qna_service
+
+    def slow_transcript(_video_id: str):
+        time.sleep(2)
+        return "Late transcript content."
+
+    monkeypatch.setattr(qna_service, "get_transcript", slow_transcript)
+    monkeypatch.setattr(
+        qna_service,
+        "get_top_comments",
+        lambda _video_id, **_kwargs: [
+            "TOP-LEVEL COMMENT: What is the test pattern?\nREPLY 1: Pehle MCQs test hota hai."
+        ],
+    )
+
+    started = time.monotonic()
+    source = qna_service._collect_video_source(
+        {
+            "video_id": "video-1",
+            "title": "FIA Inspector interview preparation",
+            "url": "https://youtu.be/video-1",
+        },
+        video_index=1,
+        max_comments=50,
+        source_timeout_seconds=1.5,
+    )
+
+    assert source["comments"]
+    assert time.monotonic() - started < 1.8
+
+
+def test_qna_retries_with_alternate_matched_videos_when_first_sources_are_empty(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    searches = 0
+
+    def search(*_args, **_kwargs):
+        nonlocal searches
+        searches += 1
+        if searches == 1:
+            return [{"video_id": "blocked", "title": "FIA Inspector interview", "url": "https://youtu.be/blocked"}]
+        return [{"video_id": "usable", "title": "FIA Inspector questions and answers", "url": "https://youtu.be/usable"}]
+
+    monkeypatch.setattr(qna_service, "search_youtube", search)
+    monkeypatch.setattr(
+        qna_service,
+        "rank_by_similarity",
+        lambda _title, rows, **_kwargs: [{**row, "title_similarity": 0.9} for row in rows],
+    )
+    monkeypatch.setattr(
+        qna_service,
+        "get_transcript",
+        lambda video_id: "The written test begins with MCQs." if video_id == "usable" else None,
+    )
+    monkeypatch.setattr(qna_service, "get_top_comments", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        qna_service,
+        "extract_qna_from_sources",
+        lambda **_kwargs: [{
+            "question": "What is the first written-test stage?",
+            "answer": "The written test begins with MCQs.",
+            "source": "transcript",
+            "video_index": 2,
+        }],
+    )
+
+    result = qna_service.fetch_qna_for_job_title(
+        db,
+        job_id="fallback-job",
+        job_title="FIA Inspector jobs in government",
+    )
+
+    assert searches == 2
+    assert result["error"] is None
+    assert result["count"] == 1
+    assert result["videos_scanned"] == 2
+    assert result["items"][0].youtube_url == "https://youtu.be/usable"
     db.close()
 
 

@@ -7,20 +7,38 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import DEFAULT_CATEGORIES
-from app.models import Job, SiteSetting, TaxonomyTerm
-from app.utils import as_list, slugify
+from app.constants import DEFAULT_CATEGORIES, PAKISTAN_CITIES
+from app.models import SiteSetting, TaxonomyTerm
+from app.utils import slugify
 
 
 def ensure_default_taxonomy(db: Session) -> list[TaxonomyTerm]:
-    """Seed built-in and legacy job categories without overwriting admin edits."""
+    """Seed real categories and remove legacy city/sector terms once."""
     existing = db.execute(select(TaxonomyTerm)).scalars().all()
+    cleanup_marker_key = "taxonomy_reserved_terms_removed_v1"
+    cleanup_marker = db.get(SiteSetting, cleanup_marker_key)
+    if cleanup_marker is None:
+        reserved_slugs = {
+            slugify(value).lower()
+            for value in [*PAKISTAN_CITIES, "Government", "Private", "Govt"]
+        }
+        for row in existing:
+            if row.kind == "category" and row.slug.lower() in reserved_slugs:
+                db.delete(row)
+        db.add(
+            SiteSetting(
+                key=cleanup_marker_key,
+                value="true",
+                updated_at=datetime.utcnow(),
+            )
+        )
+        db.flush()
+        existing = db.execute(select(TaxonomyTerm)).scalars().all()
+
     known_slugs = {(row.kind, row.slug.lower()) for row in existing}
     marker_key = "taxonomy_defaults_seeded_v1"
     marker = db.get(SiteSetting, marker_key)
     names: list[str] = list(DEFAULT_CATEGORIES) if marker is None else []
-    for job in db.execute(select(Job)).scalars().all():
-        names.extend(as_list(job.tags))
 
     created: list[TaxonomyTerm] = []
     for raw in names:

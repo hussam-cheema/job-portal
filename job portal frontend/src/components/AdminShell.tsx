@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/admin/messages", label: "Messages" },
   { href: "/admin/analytics", label: "Site analytics" },
   { href: "/admin/seo", label: "SEO monitor" },
+  { href: "/admin/newsletter", label: "Newsletter subscription" },
   { href: "/admin/settings", label: "Settings" },
 ];
 

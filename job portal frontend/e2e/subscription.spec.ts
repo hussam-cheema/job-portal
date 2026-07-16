@@ -11,6 +11,11 @@ test("public daily alert form validates and subscribes an email", async ({ page 
   await expect(page.getByText("Your email has been subscribed to daily job alerts.")).toBeVisible();
 });
 
+test("unsubscribe link removes a newsletter subscription", async ({ page }) => {
+  await page.goto("/unsubscribe?token=personal-token");
+  await expect(page.getByText("You have been unsubscribed.")).toBeVisible();
+});
+
 test("nationwide expired jobs show Pakistan and Applications Closed on list and detail", async ({ page }) => {
   await page.goto("/");
   const card = page.getByRole("article").filter({ hasText: "Nationwide Closed Role" });
@@ -19,4 +24,15 @@ test("nationwide expired jobs show Pakistan and Applications Closed on list and 
   await card.getByRole("link", { name: "Nationwide Closed Role" }).click();
   await expect(page.getByRole("heading", { name: "Nationwide Closed Role" })).toBeVisible();
   await expect(page.getByText("Applications Closed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "https://fpsc.gov.pk/advertisement" })).toHaveAttribute("href", "https://fpsc.gov.pk/advertisement");
+  await expect(page.getByRole("link", { name: "https://fpsc.gov.pk/apply" })).toHaveAttribute("href", "https://fpsc.gov.pk/apply");
+});
+
+test("homepage category selector contains only controlled categories", async ({ page }) => {
+  await page.goto("/");
+  const categories = page.getByLabel("Category");
+  await expect(categories.locator("option")).toHaveText(["All categories", "Software Engineering"]);
+  await expect(categories.locator('option[value="Lahore"]')).toHaveCount(0);
+  await expect(categories.locator('option[value="Government"]')).toHaveCount(0);
+  await expect(categories.locator('option[value="Private"]')).toHaveCount(0);
 });

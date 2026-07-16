@@ -16,6 +16,10 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
+function externalHref(value: string) {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const job = await fetchJob(id);
@@ -125,17 +129,27 @@ export default async function JobDetailPage({ params }: Props) {
                   <span className="font-semibold text-[var(--navy-300)]">
                     Job Advertisement Reference URL:
                   </span>
-                  <span className="break-all text-[var(--navy-200)]">
+                  <a
+                    href={externalHref(referenceUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-[var(--accent)] hover:underline"
+                  >
                     {referenceUrl}
-                  </span>
+                  </a>
                 </div>
               )}
               {job.application_url && (
                 <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
                   <span className="font-semibold text-[var(--navy-300)]">Apply Here:</span>
-                  <span className="break-all text-[var(--navy-200)]">
+                  <a
+                    href={externalHref(job.application_url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-[var(--accent)] hover:underline"
+                  >
                     {job.application_url}
-                  </span>
+                  </a>
                 </div>
               )}
             </div>
