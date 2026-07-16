@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { submitContact } from "@/lib/api";
+import { fetchPage, submitContact } from "@/lib/api";
 
 const LIMITS = {
   name: 50,
@@ -16,6 +16,10 @@ function isValidEmail(email: string): boolean {
 }
 
 export default function ContactPage() {
+  const [pageTitle, setPageTitle] = useState("Contact Us");
+  const [pageContent, setPageContent] = useState(
+    "<p>Questions, partnership ideas, or corrections to a listing? Send a message below.</p>"
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -23,6 +27,14 @@ export default function ContactPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    void fetchPage("contact").then((page) => {
+      if (!page) return;
+      setPageTitle(page.title);
+      setPageContent(page.content);
+    });
+  }, []);
 
   function clientValidate(): string | null {
     if (!name.trim()) return "Name is required";
@@ -72,10 +84,11 @@ export default function ContactPage() {
       <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--navy-200)]">
         ← Jobs
       </Link>
-      <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">Contact us</h1>
-      <p className="mt-3 text-[var(--navy-200)] leading-relaxed">
-        Questions, partnership ideas, or corrections to a listing? Send a message below.
-      </p>
+      <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">{pageTitle}</h1>
+      <div
+        className="prose-job mt-3 text-[var(--navy-200)] leading-relaxed"
+        dangerouslySetInnerHTML={{ __html: pageContent }}
+      />
 
       <form onSubmit={onSubmit} className="card-panel mt-8 p-6 space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">

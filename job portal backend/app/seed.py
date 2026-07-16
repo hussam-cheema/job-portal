@@ -29,17 +29,28 @@ DEFAULT_PAGES = [
     (
         "about",
         "About Us",
-        "<p>PakistanJobs helps Pakistanis discover government and private job openings.</p>",
+        "<p><strong>PakistanJobs</strong> is a modern job portal for Pakistan. Browse curated "
+        "government and private openings with city, skills, and category tags.</p>"
+        "<p>Job pages include commonly asked questions and answers sourced from closely matched "
+        "YouTube videos when verified Q&amp;A is available.</p>"
+        "<p>Whether you are preparing for private-sector roles or public-sector competitive exams, "
+        "PakistanJobs helps you discover opportunities faster.</p>",
     ),
     (
         "privacy",
         "Privacy Policy",
-        "<p>We respect your privacy. Contact messages are only used to respond to your inquiry.</p>",
+        "<p>PakistanJobs displays publicly available job advertisements collected from third-party "
+        "sources, including newspapers, company sites, and government portals.</p>"
+        "<p>We do not sell personal data. If you contact us, we use your message only to respond. "
+        "Server logs may include standard technical data for security and reliability.</p>"
+        "<p>Job listings may include employer contact details published by the source. Use those "
+        "details only for legitimate applications.</p>",
     ),
     (
         "contact",
         "Contact Us",
-        "<p>Use the contact form or email us. We do not process job applications.</p>",
+        "<p>Questions, partnership ideas, or corrections to a listing? Send a message below. "
+        "PakistanJobs does not process job applications.</p>",
     ),
     ("disclaimer", "Disclaimer", DISCLAIMER_HTML),
 ]

@@ -45,6 +45,9 @@ export default async function JobDetailPage({ params }: Props) {
       ].filter(Boolean) as string[]);
 
   const attachments = (job.attachments || []).filter((a) => !a.is_inline_image);
+  const referenceUrl =
+    job.reference_url ||
+    (job.source_url && job.source_url !== job.application_url ? job.source_url : "");
 
   return (
     <div className="site-wrap py-10">
@@ -107,15 +110,15 @@ export default async function JobDetailPage({ params }: Props) {
               <Meta label="Source" value={job.source_name || job.source || ""} />
             )}
           </div>
-          {(job.reference_url || job.source_url || job.application_url) && (
+          {(referenceUrl || job.application_url) && (
             <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
-              {(job.reference_url || job.source_url) && (
+              {referenceUrl && (
                 <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
                   <span className="font-semibold text-[var(--navy-300)]">
                     Job Advertisement Reference URL:
                   </span>
                   <span className="break-all text-[var(--navy-200)]">
-                    {job.reference_url || job.source_url}
+                    {referenceUrl}
                   </span>
                 </div>
               )}

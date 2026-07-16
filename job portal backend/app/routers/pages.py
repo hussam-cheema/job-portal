@@ -54,7 +54,7 @@ def admin_list_pages(db: Session = Depends(get_db), _: User = Depends(get_curren
         return db.execute(select(Page).order_by(Page.updated_at.desc())).scalars().all()
     except Exception:
         logger.exception("admin_list_pages failed")
-        return []
+        raise HTTPException(status_code=500, detail="Failed to load pages") from None
 
 
 @router.post("/admin/pages", response_model=PageOut)

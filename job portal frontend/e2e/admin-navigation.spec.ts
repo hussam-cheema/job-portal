@@ -83,8 +83,9 @@ test("a stale Next.js chunk triggers one automatic recovery", async ({ page }) =
 
 test("core CMS pages are visible in the dashboard", async ({ page }) => {
   await page.goto("/admin/pages");
+  const adminContent = page.locator(".admin-content");
   for (const title of ["About Us", "Contact Us", "Privacy Policy", "Disclaimer"]) {
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await expect(adminContent.getByText(title, { exact: true })).toBeVisible();
   }
-  await expect(page.getByText("No pages yet. Create your first page.")).toHaveCount(0);
+  await expect(adminContent.getByText("No pages yet. Create your first page.")).toHaveCount(0);
 });

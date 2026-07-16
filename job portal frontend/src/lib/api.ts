@@ -48,6 +48,16 @@ const EMPTY_STATS: StatsResponse = {
   last_updated: null,
 };
 
+const DEFAULT_BRANDING: Branding = {
+  site_name: "PakJobs",
+  site_title: "PakJobs Jobs in Pakistan",
+  site_header: "Latest government & private job openings in Pakistan",
+  site_description:
+    "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
+  footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
+  logo_url: null,
+};
+
 function buildQuery(params: JobQuery): string {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -121,16 +131,14 @@ export function fetchStats(): Promise<StatsResponse> {
   return getJson<StatsResponse>("/api/stats", EMPTY_STATS);
 }
 
-export function fetchBranding(): Promise<Branding> {
-  return getJson<Branding>("/api/settings/branding", {
-    site_name: "PakJobs",
-    site_title: "PakJobs Jobs in Pakistan",
-    site_header: "Latest government & private job openings in Pakistan",
-    site_description:
-      "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
-    footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
-    logo_url: null,
-  });
+export async function fetchBranding(): Promise<Branding> {
+  // Merge rather than replace so a new frontend stays compatible while an old
+  // backend revision or a cached response still exposes only site_name/logo_url.
+  const response = await getJson<Partial<Branding>>(
+    "/api/settings/branding",
+    DEFAULT_BRANDING
+  );
+  return { ...DEFAULT_BRANDING, ...response };
 }
 
 export async function trackVisit(visitorId: string, path: string): Promise<void> {
