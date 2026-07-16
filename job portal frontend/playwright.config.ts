@@ -7,6 +7,10 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
+  // The Next.js dev server compiles routes lazily. Serial workers prevent
+  // concurrent first-time route compilation from making otherwise valid
+  // client-side navigation tests flaky in CI.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {

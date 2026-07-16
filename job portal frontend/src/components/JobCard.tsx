@@ -25,7 +25,7 @@ export function JobCard({ job }: Props) {
     formatSalary(job.salary_min, job.salary_max, job.currency, job.salary_range);
   const date = formatDateShort(job.published_date || job.created_at);
   const applicationsClosed =
-    job.applications_closed || isDeadlinePast(job.application_deadline || job.deadline_date);
+    job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
   const tags = job.tags?.length
     ? job.tags
     : ([labelSource(job.source_type), job.category, job.city].filter(Boolean) as string[]);
@@ -105,9 +105,9 @@ export function JobCard({ job }: Props) {
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
               {job.experience_required && <span>Exp: {job.experience_required}</span>}
               {job.education_required && <span>Edu: {job.education_required}</span>}
-              {(job.application_deadline || job.deadline_date) && (
+              {(job.deadline_date || job.application_deadline) && (
                 <span className="font-bold text-red-500">
-                  Deadline: {formatDateShort(job.application_deadline || job.deadline_date)}
+                  Deadline: {formatDateShort(job.deadline_date || job.application_deadline)}
                 </span>
               )}
             </div>

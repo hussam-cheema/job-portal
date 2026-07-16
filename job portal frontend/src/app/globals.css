@@ -929,3 +929,133 @@ iframe {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Resume Builder - A4 document layout mirrors the supplied reference. */
+.resume-preview-shell {
+  overflow: auto;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: #cbd5e1;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.resume-paper {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 13mm 10mm 11mm;
+  background: #fff;
+  color: #171717;
+  font-family: "Avenir Next", "Century Gothic", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.31;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.16);
+}
+
+.resume-header {
+  margin-bottom: 3.8mm;
+  text-align: center;
+}
+
+.resume-header h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 26pt;
+  font-weight: 700;
+  line-height: 1.08;
+}
+
+.resume-header p {
+  margin-top: 1.5mm;
+  font-size: 10.5pt;
+}
+
+.resume-section {
+  margin-top: 3.5mm;
+}
+
+.resume-section h2 {
+  margin: 0;
+  padding: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15.5pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.resume-section-rule {
+  width: 100%;
+  height: 0;
+  margin: 2.2mm 0 2.2mm;
+  border-bottom: 0.35mm solid #222;
+}
+
+.resume-entry {
+  margin-bottom: 2.7mm;
+  break-inside: avoid;
+}
+
+.resume-entry:last-child {
+  margin-bottom: 0;
+}
+
+.resume-entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8mm;
+  align-items: start;
+}
+
+.resume-entry h3 {
+  margin: 0;
+  font-size: 10.5pt;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.resume-entry p,
+.resume-additional p {
+  margin: 0;
+}
+
+.resume-entry-aside {
+  max-width: 55mm;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.resume-entry ul {
+  margin: 0.6mm 0 0 4mm;
+  padding-left: 2.8mm;
+  list-style: disc outside;
+}
+
+.resume-entry li {
+  display: list-item;
+  margin: 0;
+  padding-left: 0.6mm;
+}
+
+.resume-additional strong {
+  font-weight: 700;
+}
+
+.resume-editor-entry {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.resume-editor-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+@media (max-width: 640px) {
+  .resume-preview-shell {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+    padding: 0.65rem;
+  }
+}

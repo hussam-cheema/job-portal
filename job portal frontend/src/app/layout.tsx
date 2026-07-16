@@ -78,6 +78,27 @@ export default async function RootLayout({
               </Link>
               <nav className="flex items-center justify-self-end gap-1.5 sm:gap-2 text-sm shrink-0">
                 <AdminDashboardLink />
+                <Link
+                  href="/resume-builder"
+                  className="theme-toggle whitespace-nowrap"
+                  title="Build your resume"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 2.75h8l4 4V21.25H6z" />
+                    <path d="M14 2.75v4h4M9 11h6M9 15h6M9 18h4" />
+                  </svg>
+                  <span className="sm:hidden">Resume</span>
+                  <span className="hidden sm:inline">Resume Builder</span>
+                </Link>
                 <ThemeToggle />
               </nav>
             </div>

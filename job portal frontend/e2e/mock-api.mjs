@@ -66,7 +66,10 @@ const server = createServer((request, response) => {
     return json(response, { items: [{
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: "A nationwide job with a passed deadline.", published_date: "2026-07-01T00:00:00Z",
-      deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
+      // Canonical deadline_date must win over the legacy alias. The alias
+      // deliberately represents the previous UTC day to guard the Pakistan
+      // timezone regression reported in production.
+      deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
@@ -82,7 +85,7 @@ const server = createServer((request, response) => {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: "<p>A nationwide job with a passed deadline.</p>", published_date: "2026-07-01T00:00:00Z",
-      deadline_date: "2026-07-02T00:00:00Z", application_deadline: "2026-07-02T00:00:00Z",
+      deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",

@@ -18,12 +18,12 @@ import {
 } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 import type { JobQnA, TaxonomyTerm } from "@/lib/types";
-import { toDateInputValue } from "@/lib/format";
+import { dateInputToApiValue, toDateInputValue, todayInPakistan } from "@/lib/format";
 
 const empty = {
   title: "",
   description: "",
-  published_date: new Date().toISOString().slice(0, 10),
+  published_date: todayInPakistan(),
   deadline_date: "",
   salary_range: "",
   source: "",
@@ -198,10 +198,8 @@ export default function JobFormPage() {
       const payload = {
         title: form.title.trim(),
         description: form.description,
-        published_date: new Date(form.published_date).toISOString(),
-        deadline_date: form.deadline_date
-          ? new Date(form.deadline_date).toISOString()
-          : null,
+        published_date: dateInputToApiValue(form.published_date) || "",
+        deadline_date: dateInputToApiValue(form.deadline_date),
         salary_range: form.salary_range || null,
         source: form.source || null,
         reference_url: form.reference_url || null,

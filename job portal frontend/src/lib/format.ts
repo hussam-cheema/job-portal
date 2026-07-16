@@ -1,8 +1,45 @@
+type CalendarDate = { year: number; month: number; day: number };
+
+function calendarDate(value: string | null | undefined): CalendarDate | null {
+  if (!value) return null;
+  const text = value.trim();
+  const datePrefix = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+
+  // PostgreSQL returns our calendar fields as naive midnight timestamps. Do
+  // not pass those through Date: doing so lets the server/browser timezone
+  // move the selected day backwards or forwards.
+  if (datePrefix && !hasExplicitZone) {
+    return {
+      year: Number(datePrefix[1]),
+      month: Number(datePrefix[2]),
+      day: Number(datePrefix[3]),
+    };
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(parsed);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value || 0);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+function calendarDateAsUtc(value: string | null | undefined): Date | null {
+  const parts = calendarDate(value);
+  return parts ? new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)) : null;
+}
+
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
+  const d = calendarDateAsUtc(value);
+  if (!d) return "—";
   return d.toLocaleDateString("en-PK", {
+    timeZone: "UTC",
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -10,19 +47,22 @@ export function formatDate(value: string | null | undefined): string {
 }
 
 export function formatDateShort(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  const d = calendarDateAsUtc(value);
+  if (!d) return "—";
+  return d.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
 export function isDeadlinePast(value?: string | null): boolean {
-  if (!value) return false;
-  const deadline = new Date(value);
-  if (Number.isNaN(deadline.getTime())) return false;
-  const now = new Date();
-  return Date.UTC(deadline.getUTCFullYear(), deadline.getUTCMonth(), deadline.getUTCDate()) <
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const deadline = calendarDate(value);
+  if (!deadline) return false;
+  const today = calendarDate(new Date().toISOString());
+  if (!today) return false;
+  const key = (date: CalendarDate) => date.year * 10000 + date.month * 100 + date.day;
+  return key(deadline) < key(today);
 }
 
 export function formatSalary(
@@ -118,8 +158,18 @@ export function slugTag(tag: string): string {
 }
 
 export function toDateInputValue(value?: string | null): string {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value.slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  const parts = calendarDate(value);
+  if (!parts) return value?.slice(0, 10) || "";
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+export function dateInputToApiValue(value?: string | null): string | null {
+  if (!value) return null;
+  // Send a timezone-free calendar value. The database column is deliberately
+  // timezone-free, so this preserves exactly what the administrator selected.
+  return `${value.slice(0, 10)}T00:00:00`;
+}
+
+export function todayInPakistan(): string {
+  return toDateInputValue(new Date().toISOString());
 }
