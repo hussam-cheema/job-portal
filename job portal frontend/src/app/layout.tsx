@@ -53,8 +53,8 @@ export default async function RootLayout({
         <ClientChunkRecovery />
         <div className="min-h-screen flex flex-col">
           <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
-            <div className="site-wrap min-h-14 py-2 flex items-center justify-between gap-2">
-              <Link href="/" className="flex items-center gap-2 sm:gap-2.5 group min-w-0">
+            <div className="site-wrap min-h-14 py-2 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-4">
+              <Link href="/" className="group shrink-0" aria-label={`${branding.site_name} home`}>
                 {branding.logo_url ? (
                   <Image
                     src={branding.logo_url}
@@ -69,16 +69,14 @@ export default async function RootLayout({
                     PJ
                   </span>
                 )}
-                <div className="leading-tight min-w-0">
-                  <div className="font-semibold tracking-tight text-[var(--navy-100)] group-hover:text-[var(--accent)] transition-colors truncate">
-                    {branding.site_name}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)] hidden xs:block sm:block">
-                    Jobs in Pakistan
-                  </div>
-                </div>
               </Link>
-              <nav className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0">
+              <Link
+                href="/"
+                className="justify-self-center whitespace-nowrap text-center text-[clamp(0.68rem,2.3vw,1rem)] font-semibold tracking-tight text-[var(--navy-100)] transition-colors hover:text-[var(--accent)]"
+              >
+                {branding.site_title}
+              </Link>
+              <nav className="flex items-center justify-self-end gap-1.5 sm:gap-2 text-sm shrink-0">
                 <AdminDashboardLink />
                 <ThemeToggle />
               </nav>
@@ -92,9 +90,9 @@ export default async function RootLayout({
             <div className="site-wrap py-8 sm:py-10">
               <div className="flex flex-col md:flex-row gap-6 md:items-start md:justify-between">
                 <div className="max-w-md">
-                  <p className="font-semibold text-[var(--navy-100)]">PakJobs</p>
+                  <p className="font-semibold text-[var(--navy-100)]">{branding.site_title}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Government & private job openings across Pakistan — curated manually with interview QnA.
+                    {branding.site_description}
                   </p>
                   <SocialFooterIcons />
                 </div>
@@ -108,10 +106,13 @@ export default async function RootLayout({
                   <Link href="/privacy" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">
                     Privacy policy
                   </Link>
+                  <Link href="/disclaimer" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">
+                    Disclaimer
+                  </Link>
                 </nav>
               </div>
-              <p className="mt-8 text-xs text-[var(--navy-500)]">
-                © {new Date().getFullYear()} PakJobs
+              <p className="mt-8 text-center text-xs text-[var(--navy-500)]">
+                {branding.footer_copyright.replace("{year}", String(new Date().getFullYear()))}
               </p>
             </div>
           </footer>

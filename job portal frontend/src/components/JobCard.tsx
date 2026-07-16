@@ -98,7 +98,7 @@ export function JobCard({ job }: Props) {
               {job.experience_required && <span>Exp: {job.experience_required}</span>}
               {job.education_required && <span>Edu: {job.education_required}</span>}
               {(job.application_deadline || job.deadline_date) && (
-                <span>
+                <span className="font-bold text-red-500">
                   Deadline: {formatDateShort(job.application_deadline || job.deadline_date)}
                 </span>
               )}

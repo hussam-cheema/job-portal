@@ -384,7 +384,7 @@ export default function JobFormPage() {
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Reference URL</label>
+            <label className="field-label">Job Advertisement Reference URL</label>
             <input
               type="url"
               className="input"
@@ -394,7 +394,7 @@ export default function JobFormPage() {
             />
           </div>
           <div>
-            <label className="field-label">URL to apply</label>
+            <label className="field-label">Apply Here</label>
             <input
               type="url"
               className="input"

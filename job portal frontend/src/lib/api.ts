@@ -124,6 +124,11 @@ export function fetchStats(): Promise<StatsResponse> {
 export function fetchBranding(): Promise<Branding> {
   return getJson<Branding>("/api/settings/branding", {
     site_name: "PakJobs",
+    site_title: "PakJobs Jobs in Pakistan",
+    site_header: "Latest government & private job openings in Pakistan",
+    site_description:
+      "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
+    footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
     logo_url: null,
   });
 }
@@ -256,6 +261,26 @@ export async function adminDeleteLogo(token: string): Promise<Branding> {
   return res.json();
 }
 
+export async function adminUpdateBranding(
+  token: string,
+  data: Pick<
+    Branding,
+    "site_title" | "site_header" | "site_description" | "footer_copyright"
+  >
+): Promise<Branding> {
+  const res = await fetch(`${API_BASE}/api/admin/settings/branding`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    throw new Error(
+      (await res.json().catch(() => ({}))).detail || "Website settings update failed"
+    );
+  }
+  return res.json();
+}
+
 export async function adminAnalytics(
   token: string,
   month?: string
@@ -351,7 +376,9 @@ export async function adminListPages(token: string): Promise<PageItem[]> {
     headers: authHeaders(token),
     cache: "no-store",
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => ({}))).detail || "Failed to load pages");
+  }
   return res.json();
 }
 

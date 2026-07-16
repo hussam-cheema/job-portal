@@ -210,6 +210,10 @@ export type SEODashboard = {
 
 export type Branding = {
   site_name: string;
+  site_title: string;
+  site_header: string;
+  site_description: string;
+  footer_copyright: string;
   logo_url: string | null;
 };
 

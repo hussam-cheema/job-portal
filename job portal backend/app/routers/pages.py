@@ -12,6 +12,7 @@ from app.database import get_db
 from app.logging_config import get_logger
 from app.models import Page, User
 from app.schemas import PageIn, PageOut, PageUpdate
+from app.seed import ensure_default_pages
 from app.services.seo import delete_seo, upsert_page_seo
 from app.utils import slugify
 
@@ -48,6 +49,8 @@ def get_page(slug: str, db: Session = Depends(get_db)):
 @router.get("/admin/pages", response_model=list[PageOut])
 def admin_list_pages(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     try:
+        if ensure_default_pages(db):
+            db.commit()
         return db.execute(select(Page).order_by(Page.updated_at.desc())).scalars().all()
     except Exception:
         logger.exception("admin_list_pages failed")

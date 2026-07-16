@@ -2,8 +2,11 @@
 
 site:
   name: "PakJobs"
+  title: "PakJobs Jobs in Pakistan"
+  header: "Latest government & private job openings in Pakistan"
   url: "https://pakjobs.example.com"  # used for SEO + image watermark text
-  description: "Modern job portal for Pakistan — government and private openings"
+  description: "Hover a job for a summary, then open the full page for complete details and available interview Q&A."
+  footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved"
 
 database:
   echo: false
@@ -22,6 +25,7 @@ r2:
   max_image_mb: 8
 
 watermark:
+  enabled: true
   text: "https://pakjobs.example.com"
   color: "#FF0000"
   opacity: 0.10

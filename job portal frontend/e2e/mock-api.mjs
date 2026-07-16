@@ -14,7 +14,14 @@ const server = createServer((request, response) => {
   const path = new URL(request.url || "/", "http://127.0.0.1:4010").pathname;
   if (path === "/ready") return json(response, { status: "ready" });
   if (path === "/api/settings/branding") {
-    return json(response, { site_name: "PakJobs", logo_url: null });
+    return json(response, {
+      site_name: "PakJobs",
+      site_title: "PakJobs Jobs in Pakistan",
+      site_header: "Latest government & private job openings in Pakistan",
+      site_description: "Find current job opportunities across Pakistan.",
+      footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
+      logo_url: null,
+    });
   }
   if (path === "/api/filters") {
     return json(response, {
@@ -25,7 +32,15 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs") {
     return json(response, { items: [], total: 0, page: 1, page_size: 50, pages: 0 });
   }
-  if (path === "/api/admin/pages" || path === "/api/admin/contact") return json(response, []);
+  if (path === "/api/admin/pages") {
+    return json(response, [
+      { id: "about", slug: "about", title: "About Us", content: "<p>About</p>", is_published: true },
+      { id: "contact", slug: "contact", title: "Contact Us", content: "<p>Contact</p>", is_published: true },
+      { id: "privacy", slug: "privacy", title: "Privacy Policy", content: "<p>Privacy</p>", is_published: true },
+      { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", is_published: true },
+    ]);
+  }
+  if (path === "/api/admin/contact") return json(response, []);
   if (path === "/api/admin/analytics/realtime") {
     return json(response, {
       window_minutes: 5, active_visitors: 0, page_views: 0,

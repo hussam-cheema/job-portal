@@ -100,32 +100,35 @@ export default async function JobDetailPage({ params }: Props) {
             <Meta
               label="Deadline"
               value={formatDate(job.deadline_date || job.application_deadline)}
+              emphasize
             />
             {salary && <Meta label="Salary" value={salary} />}
             {(job.source_name || job.source) && (
               <Meta label="Source" value={job.source_name || job.source || ""} />
             )}
-            {(job.reference_url || job.source_url) && (
-              <a
-                href={job.reference_url || job.source_url || "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--accent)] hover:underline"
-              >
-                Reference URL
-              </a>
-            )}
-            {job.application_url && (
-              <a
-                href={job.application_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--accent)] hover:underline"
-              >
-                Apply URL
-              </a>
-            )}
           </div>
+          {(job.reference_url || job.source_url || job.application_url) && (
+            <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
+              {(job.reference_url || job.source_url) && (
+                <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
+                  <span className="font-semibold text-[var(--navy-300)]">
+                    Job Advertisement Reference URL:
+                  </span>
+                  <span className="break-all text-[var(--navy-200)]">
+                    {job.reference_url || job.source_url}
+                  </span>
+                </div>
+              )}
+              {job.application_url && (
+                <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
+                  <span className="font-semibold text-[var(--navy-300)]">Apply Here:</span>
+                  <span className="break-all text-[var(--navy-200)]">
+                    {job.application_url}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="px-5 sm:px-8 py-7">
@@ -234,11 +237,23 @@ export default async function JobDetailPage({ params }: Props) {
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({
+  label,
+  value,
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  emphasize?: boolean;
+}) {
   return (
-    <div>
-      <span className="text-[var(--navy-500)]">{label}: </span>
-      <span className="text-[var(--navy-200)]">{value}</span>
+    <div className={emphasize ? "font-bold text-red-500" : ""}>
+      <span className={emphasize ? "text-red-500" : "text-[var(--navy-500)]"}>
+        {label}:{" "}
+      </span>
+      <span className={emphasize ? "text-red-500" : "text-[var(--navy-200)]"}>
+        {value}
+      </span>
     </div>
   );
 }

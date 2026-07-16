@@ -82,7 +82,18 @@ class AnalyticsDashboard(BaseModel):
 
 class BrandingOut(BaseModel):
     site_name: str
+    site_title: str
+    site_header: str
+    site_description: str
+    footer_copyright: str
     logo_url: Optional[str] = None
+
+
+class BrandingUpdateIn(BaseModel):
+    site_title: str = Field(..., min_length=1, max_length=120)
+    site_header: str = Field(..., min_length=1, max_length=240)
+    site_description: str = Field(..., min_length=1, max_length=500)
+    footer_copyright: str = Field(..., min_length=1, max_length=240)
 
 
 class JobQnAOut(BaseModel):

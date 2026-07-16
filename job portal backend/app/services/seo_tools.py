@@ -61,6 +61,7 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/about", "changefreq": "monthly", "priority": 0.6},
         {"loc": f"{base}/contact", "changefreq": "monthly", "priority": 0.5},
         {"loc": f"{base}/privacy", "changefreq": "yearly", "priority": 0.3},
+        {"loc": f"{base}/disclaimer", "changefreq": "yearly", "priority": 0.3},
     ]
     try:
         for job in db.execute(select(Job)).scalars().all():
@@ -73,8 +74,9 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 }
             )
         for page in db.execute(select(Page).where(Page.is_published.is_(True))).scalars().all():
-            path = f"/{page.slug}" if page.slug in {"about", "contact", "privacy"} else f"/p/{page.slug}"
-            if page.slug in {"about", "contact", "privacy"}:
+            core_slugs = {"about", "contact", "privacy", "disclaimer"}
+            path = f"/{page.slug}" if page.slug in core_slugs else f"/p/{page.slug}"
+            if page.slug in core_slugs:
                 continue  # already added static
             urls.append(
                 {

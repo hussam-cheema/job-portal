@@ -90,7 +90,7 @@ export default function AdminPagesListPage() {
               <div className="flex flex-wrap gap-2 shrink-0">
                 <Link
                   href={
-                    ["about", "contact", "privacy"].includes(p.slug)
+                    ["about", "contact", "privacy", "disclaimer"].includes(p.slug)
                       ? `/${p.slug}`
                       : `/p/${p.slug}`
                   }

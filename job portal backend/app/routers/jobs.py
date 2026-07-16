@@ -28,6 +28,7 @@ from app.schemas import (
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
 from app.services.seo import delete_seo, upsert_job_seo
+from app.services.watermark import process_description_images
 from app.utils import as_list, experience_label, normalize_job_type, slugify, strip_html
 
 router = APIRouter()
@@ -207,7 +208,10 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
             # keep slug stable on update unless empty
             pass
     if "description" in data and data["description"] is not None:
-        job.description = data["description"]
+        try:
+            job.description = process_description_images(data["description"], job.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "published_date" in data and data["published_date"] is not None:
         job.published_date = data["published_date"]
     if "deadline_date" in data:

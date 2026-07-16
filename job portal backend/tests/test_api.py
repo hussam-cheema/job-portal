@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import base64
+import io
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from PIL import Image, ImageChops
 
 # Ensure test DB before app import side effects where possible
 os.environ["SEED_ON_STARTUP"] = "false"
@@ -98,6 +101,108 @@ def test_login_and_create_job(client: TestClient):
     r = client.get("/api/jobs")
     assert r.status_code == 200
     assert r.json()["total"] >= 1
+
+
+def test_admin_pages_self_heal_core_pages(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    token = login.json()["access_token"]
+    response = client.get(
+        "/api/admin/pages", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    pages = {page["slug"]: page for page in response.json()}
+    assert {"about", "contact", "privacy", "disclaimer"}.issubset(pages)
+    assert "PakistanJobs" in pages["disclaimer"]["content"]
+    assert "Daily Jang" in pages["disclaimer"]["content"]
+
+
+def test_admin_can_update_public_branding_text(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    payload = {
+        "site_title": "PakistanJobs Jobs in Pakistan",
+        "site_header": "Current jobs across Pakistan",
+        "site_description": "A description controlled from the admin dashboard.",
+        "footer_copyright": "Copyrights © {year} - PakistanJobs All rights reserved",
+    }
+    updated = client.put("/api/admin/settings/branding", headers=auth, json=payload)
+
+    assert updated.status_code == 200
+    assert updated.json()["site_name"] == "PakJobs"
+    assert updated.json()["logo_url"] is None
+    public = client.get("/api/settings/branding")
+    assert public.status_code == 200
+    for key, value in payload.items():
+        assert public.json()[key] == value
+
+
+def test_watermark_changes_image_and_preserves_format():
+    from app.services.watermark import apply_watermark
+
+    source = Image.new("RGB", (900, 300), "white")
+    original_buffer = io.BytesIO()
+    source.save(original_buffer, format="WEBP")
+    watermarked_bytes = apply_watermark(
+        original_buffer.getvalue(), "image/webp", strict=True
+    )
+    watermarked = Image.open(io.BytesIO(watermarked_bytes)).convert("RGB")
+
+    assert Image.open(io.BytesIO(watermarked_bytes)).format == "WEBP"
+    assert ImageChops.difference(source, watermarked).getbbox() is not None
+
+
+def test_embedded_description_image_is_watermarked_and_uploaded(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.services import storage
+
+    captured: dict[str, object] = {}
+
+    def fake_upload(data: bytes, **kwargs):
+        captured["data"] = data
+        captured.update(kwargs)
+        return {
+            "s3_path": "job-portal/job/images/watermarked.png",
+            "public_url": "https://files.example.test/watermarked.png",
+            "file_type": kwargs["content_type"],
+            "file_size": len(data),
+            "original_name": kwargs["filename"],
+            "storage": "r2",
+        }
+
+    monkeypatch.setattr(storage, "upload_bytes", fake_upload)
+    image = Image.new("RGB", (900, 300), "white")
+    image_buffer = io.BytesIO()
+    image.save(image_buffer, format="PNG")
+    data_url = base64.b64encode(image_buffer.getvalue()).decode("ascii")
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    created = client.post(
+        "/api/admin/jobs",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        json={
+            "title": "Watermarked description test",
+            "description": f'<p><img src="data:image/png;base64,{data_url}"></p>',
+            "published_date": "2026-07-16T00:00:00",
+            "job_type": "private",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["description"] == (
+        '<p><img src="https://files.example.test/watermarked.png"></p>'
+    )
+    assert captured["folder"] == "images"
+    assert captured["job_id"] == created.json()["id"]
+    uploaded = Image.open(io.BytesIO(captured["data"])).convert("RGB")
+    assert ImageChops.difference(image, uploaded).getbbox() is not None
 
 
 def test_contact(client: TestClient):

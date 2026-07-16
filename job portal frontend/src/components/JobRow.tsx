@@ -71,7 +71,7 @@ export function JobRow({ job, index }: Props) {
           </span>
         )}
         {job.application_deadline && (
-          <span className="text-[11px] text-[var(--muted)]">
+          <span className="text-[11px] font-bold text-red-500">
             Due {formatDate(job.application_deadline)}
           </span>
         )}

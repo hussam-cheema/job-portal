@@ -14,6 +14,58 @@ from app.utils import slugify
 
 logger = get_logger("jobportal.seed")
 
+DISCLAIMER_HTML = (
+    "<p><strong>PakistanJobs</strong> aggregates job advertisements from Pakistan's leading "
+    "newspapers, including <em>Daily Jang</em>, <em>Express</em>, <em>Nawa-i-Waqt</em>, "
+    "<em>The News</em>, <em>Dawn</em>, <em>The Nation</em>, and others, as well as from the "
+    "careers and jobs pages of government institutions and private companies. Our goal is to "
+    "support job seekers across cities such as Karachi, Lahore, Rawalpindi, Islamabad, Peshawar, "
+    "and beyond by bringing together newspaper listings and both private- and public-sector job "
+    "postings in one place. This service is offered in good faith as a public resource, and we "
+    "are not responsible for any advertisement that is inaccurate, misrepresented, or misleading.</p>"
+)
+
+DEFAULT_PAGES = [
+    (
+        "about",
+        "About Us",
+        "<p>PakistanJobs helps Pakistanis discover government and private job openings.</p>",
+    ),
+    (
+        "privacy",
+        "Privacy Policy",
+        "<p>We respect your privacy. Contact messages are only used to respond to your inquiry.</p>",
+    ),
+    (
+        "contact",
+        "Contact Us",
+        "<p>Use the contact form or email us. We do not process job applications.</p>",
+    ),
+    ("disclaimer", "Disclaimer", DISCLAIMER_HTML),
+]
+
+
+def ensure_default_pages(db) -> list[Page]:
+    """Create missing core CMS pages without overwriting administrator edits."""
+    created: list[Page] = []
+    for slug, title, content in DEFAULT_PAGES:
+        exists = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if exists:
+            continue
+        page = Page(
+            id=str(uuid4()),
+            slug=slug,
+            title=title,
+            content=content,
+            is_published=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(page)
+        upsert_page_seo(db, page)
+        created.append(page)
+    return created
+
 SEED_JOBS = [
     {
         "title": "Senior Software Engineer — Backend",
@@ -65,25 +117,7 @@ def seed_if_empty() -> None:
     try:
         ensure_admin_user(db)
 
-        # Default CMS pages
-        for slug, title, content in [
-            ("about", "About Us", "<p>PakJobs helps Pakistanis discover government and private job openings.</p>"),
-            ("privacy", "Privacy Policy", "<p>We respect your privacy. Contact messages are only used to respond to your inquiry.</p>"),
-            ("contact", "Contact Us", "<p>Use the contact form or email us. We do not process job applications.</p>"),
-        ]:
-            exists = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
-            if not exists:
-                page = Page(
-                    id=str(uuid4()),
-                    slug=slug,
-                    title=title,
-                    content=content,
-                    is_published=True,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                db.add(page)
-                upsert_page_seo(db, page)
+        ensure_default_pages(db)
 
         count = db.execute(select(func.count()).select_from(Job)).scalar() or 0
         if count > 0:

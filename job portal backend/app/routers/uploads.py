@@ -73,7 +73,7 @@ async def upload_file(
             if not db.get(Job, job_id):
                 raise HTTPException(status_code=404, detail="Job not found")
 
-        data = apply_watermark(raw, content_type) if is_image else raw
+        data = apply_watermark(raw, content_type, strict=True) if is_image else raw
         folder = "images" if is_image else "attachments"
         # Store under the R2 prefix/{job_uuid}/images|attachments/.
         meta = upload_bytes(

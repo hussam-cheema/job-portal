@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
-import type { FiltersResponse, JobListResponse, StatsResponse } from "@/lib/types";
+import { fetchBranding, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
+import type { Branding, FiltersResponse, JobListResponse, StatsResponse } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { JobFilters } from "@/components/JobFilters";
 import { JobStats } from "@/components/JobStats";
@@ -26,7 +26,12 @@ export default async function HomePage({
   const date = pick(sp, "date") || pick(sp, "date_from");
   const page = Math.max(1, Number(pick(sp, "page") || 1) || 1);
 
-  const [data, filters, stats]: [JobListResponse, FiltersResponse, StatsResponse] =
+  const [data, filters, stats, branding]: [
+    JobListResponse,
+    FiltersResponse,
+    StatsResponse,
+    Branding,
+  ] =
     await Promise.all([
       fetchJobs({
         q,
@@ -39,19 +44,17 @@ export default async function HomePage({
       }),
       fetchFilters(),
       fetchStats(),
+      fetchBranding(),
     ]);
 
   return (
     <div className="site-wrap py-10">
       <section className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)] mb-3">
-          Pakistan jobs
-        </p>
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--navy-100)] max-w-3xl leading-[1.15]">
-          Latest government & private job openings in Pakistan
+          {branding.site_header}
         </h1>
         <p className="mt-4 text-[var(--muted)] max-w-2xl text-base leading-relaxed">
-          Hover a job for a summary, then open the full page for complete details and available interview Q&amp;A.
+          {branding.site_description}
         </p>
       </section>
 

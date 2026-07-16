@@ -7,6 +7,7 @@ import { useAdminAuth } from "@/lib/adminAuth";
 import {
   adminChangePassword,
   adminDeleteLogo,
+  adminUpdateBranding,
   adminUploadLogo,
   fetchBranding,
 } from "@/lib/api";
@@ -15,6 +16,16 @@ export default function SettingsPage() {
   const { token } = useAdminAuth();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [siteTitle, setSiteTitle] = useState("PakJobs Jobs in Pakistan");
+  const [siteHeader, setSiteHeader] = useState(
+    "Latest government & private job openings in Pakistan"
+  );
+  const [siteDescription, setSiteDescription] = useState(
+    "Hover a job for a summary, then open the full page for complete details and available interview Q&A."
+  );
+  const [footerCopyright, setFooterCopyright] = useState(
+    "Copyrights © {year} - PakistanJobs All rights reserved"
+  );
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,8 +34,39 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchBranding().then((branding) => setLogoUrl(branding.logo_url));
+    void fetchBranding().then((branding) => {
+      setLogoUrl(branding.logo_url);
+      setSiteTitle(branding.site_title);
+      setSiteHeader(branding.site_header);
+      setSiteDescription(branding.site_description);
+      setFooterCopyright(branding.footer_copyright);
+    });
   }, []);
+
+  async function saveBranding(event: FormEvent) {
+    event.preventDefault();
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const branding = await adminUpdateBranding(token, {
+        site_title: siteTitle.trim(),
+        site_header: siteHeader.trim(),
+        site_description: siteDescription.trim(),
+        footer_copyright: footerCopyright.trim(),
+      });
+      setSiteTitle(branding.site_title);
+      setSiteHeader(branding.site_header);
+      setSiteDescription(branding.site_description);
+      setFooterCopyright(branding.footer_copyright);
+      setMessage("Website text and footer updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Website settings update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function uploadLogo(event: FormEvent) {
     event.preventDefault();
@@ -92,6 +134,62 @@ export default function SettingsPage() {
       {message && <p className="mb-4 text-sm text-[var(--success)]">{message}</p>}
 
       <div className="grid gap-5 lg:grid-cols-2">
+        <form onSubmit={saveBranding} className="card-panel p-5 lg:col-span-2">
+          <h3 className="font-semibold text-[var(--navy-100)]">Website text</h3>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Use <code>{"{year}"}</code> in the footer text to insert the current year automatically.
+          </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="site-title">Website title</label>
+              <input
+                id="site-title"
+                className="input"
+                maxLength={120}
+                required
+                value={siteTitle}
+                onChange={(event) => setSiteTitle(event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="site-header">Website header</label>
+              <input
+                id="site-header"
+                className="input"
+                maxLength={240}
+                required
+                value={siteHeader}
+                onChange={(event) => setSiteHeader(event.target.value)}
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <label className="field-label" htmlFor="site-description">Website description</label>
+              <textarea
+                id="site-description"
+                className="input min-h-24"
+                maxLength={500}
+                required
+                value={siteDescription}
+                onChange={(event) => setSiteDescription(event.target.value)}
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <label className="field-label" htmlFor="footer-copyright">Footer copyright</label>
+              <input
+                id="footer-copyright"
+                className="input"
+                maxLength={240}
+                required
+                value={footerCopyright}
+                onChange={(event) => setFooterCopyright(event.target.value)}
+              />
+            </div>
+          </div>
+          <button type="submit" className="btn btn-primary mt-5" disabled={busy}>
+            Save website text
+          </button>
+        </form>
+
         <form onSubmit={uploadLogo} className="card-panel p-5">
           <h3 className="font-semibold text-[var(--navy-100)]">Website logo</h3>
           <div className="mt-4 flex h-24 items-center justify-center rounded border border-[var(--border)] bg-[var(--navy-850)]">

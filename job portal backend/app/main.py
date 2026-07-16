@@ -21,7 +21,7 @@ from app.exceptions import (
 )
 from app.logging_config import get_logger, setup_logging
 from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, uploads
-from app.seed import seed_if_empty
+from app.seed import ensure_default_pages, seed_if_empty
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("jobportal.main")
@@ -33,6 +33,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         init_db()
         logger.info("database ready")
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            created = ensure_default_pages(db)
+            db.commit()
+            if created:
+                logger.info("core CMS pages created count=%s", len(created))
+        finally:
+            db.close()
     except Exception:
         logger.exception("database init failed — API will use empty fallbacks")
 

@@ -11,7 +11,7 @@ from app.auth import get_current_admin
 from app.config import cfg, site_name
 from app.database import get_db
 from app.models import SiteSetting, User
-from app.schemas import BrandingOut
+from app.schemas import BrandingOut, BrandingUpdateIn
 from app.services.storage import upload_bytes
 
 router = APIRouter()
@@ -31,9 +31,53 @@ def _set_setting(db: Session, key: str, value: str | None) -> None:
         db.add(SiteSetting(key=key, value=value, updated_at=datetime.utcnow()))
 
 
+def _branding_response(db: Session) -> BrandingOut:
+    return BrandingOut(
+        site_name=site_name(),
+        site_title=_setting(db, "site_title")
+        or str(cfg("site", "title", default="PakJobs Jobs in Pakistan")),
+        site_header=_setting(db, "site_header")
+        or str(
+            cfg(
+                "site",
+                "header",
+                default="Latest government & private job openings in Pakistan",
+            )
+        ),
+        site_description=_setting(db, "site_description")
+        or str(cfg("site", "description", default="Jobs in Pakistan")),
+        footer_copyright=_setting(db, "footer_copyright")
+        or str(
+            cfg(
+                "site",
+                "footer_copyright",
+                default="Copyrights © {year} - PakistanJobs All rights reserved",
+            )
+        ),
+        logo_url=_setting(db, "logo_url"),
+    )
+
+
 @router.get("/settings/branding", response_model=BrandingOut)
 def public_branding(db: Session = Depends(get_db)):
-    return BrandingOut(site_name=site_name(), logo_url=_setting(db, "logo_url"))
+    return _branding_response(db)
+
+
+@router.get("/admin/settings/branding", response_model=BrandingOut)
+def admin_branding(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+    return _branding_response(db)
+
+
+@router.put("/admin/settings/branding", response_model=BrandingOut)
+def update_branding(
+    payload: BrandingUpdateIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    for key, value in payload.model_dump().items():
+        _set_setting(db, key, value.strip())
+    db.commit()
+    return _branding_response(db)
 
 
 @router.post("/admin/settings/logo", response_model=BrandingOut)
@@ -64,7 +108,7 @@ async def update_logo(
         )
         _set_setting(db, "logo_url", uploaded["public_url"])
         db.commit()
-        return BrandingOut(site_name=site_name(), logo_url=uploaded["public_url"])
+        return _branding_response(db)
     except HTTPException:
         raise
     except Exception:
@@ -76,4 +120,4 @@ async def update_logo(
 def remove_logo(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     _set_setting(db, "logo_url", None)
     db.commit()
-    return BrandingOut(site_name=site_name(), logo_url=None)
+    return _branding_response(db)
