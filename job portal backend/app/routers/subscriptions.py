@@ -4,17 +4,15 @@ import secrets
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
-from app.config import env
 from app.database import get_db
 from app.models import EmailSubscriber, SubscriptionDigestRun, User
 from app.schemas import (
     DigestAdminSummary,
-    DigestRunOut,
     DigestTemplateUpdate,
     SubscriptionIn,
     SubscriptionResult,
@@ -22,7 +20,6 @@ from app.schemas import (
 from app.services.contact_security import validate_email
 from app.services.newsletter import (
     digest_templates,
-    send_daily_digest,
     set_digest_templates,
     subscriber_counts,
 )
@@ -39,7 +36,7 @@ def subscribe(payload: SubscriptionIn, db: Session = Depends(get_db)):
     if row and row.is_active:
         return SubscriptionResult(
             status="already_subscribed",
-            message="This email is already subscribed to daily job alerts.",
+            message="This email is already subscribed to new job alerts.",
         )
     if row:
         row.is_active = True
@@ -61,7 +58,7 @@ def subscribe(payload: SubscriptionIn, db: Session = Depends(get_db)):
     db.commit()
     return SubscriptionResult(
         status="subscribed",
-        message="Your email has been subscribed to daily job alerts.",
+        message="Your email has been subscribed to new job alerts.",
     )
 
 
@@ -113,19 +110,3 @@ def update_template(
     )
     db.commit()
     return admin_summary(db, _)
-
-
-@router.post("/admin/subscriptions/send-digest", response_model=DigestRunOut)
-def admin_send_digest(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
-    return DigestRunOut(**send_daily_digest(db, force=False))
-
-
-@router.post("/subscriptions/run-daily", response_model=DigestRunOut)
-def scheduled_digest(
-    db: Session = Depends(get_db),
-    x_digest_token: str | None = Header(default=None),
-):
-    configured = env("DAILY_DIGEST_TOKEN")
-    if not configured or not x_digest_token or not secrets.compare_digest(configured, x_digest_token):
-        raise HTTPException(status_code=401, detail="Invalid digest scheduler token")
-    return DigestRunOut(**send_daily_digest(db, force=False))

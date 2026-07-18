@@ -431,14 +431,3 @@ class DigestAdminSummary(BaseModel):
     body_template: str
     last_digest_at: Optional[datetime] = None
     last_digest_status: Optional[str] = None
-
-
-class DigestRunOut(BaseModel):
-    status: str
-    window_start: datetime
-    window_end: datetime
-    jobs_count: int
-    recipients_count: int
-    sent_count: int
-    failed_count: int
-    message: str

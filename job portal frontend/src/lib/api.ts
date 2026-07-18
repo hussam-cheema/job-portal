@@ -14,7 +14,6 @@ import type {
   TaxonomyTerm,
   SubscriptionResult,
   DigestAdminSummary,
-  DigestRun,
 } from "./types";
 
 const API_BASE = (
@@ -569,13 +568,6 @@ export async function adminUpdateDigestTemplate(
     headers: authHeaders(token),
     body: JSON.stringify(data),
   }, "Save failed");
-}
-
-export async function adminSendDigest(token: string): Promise<DigestRun> {
-  return requestJson<DigestRun>("/api/admin/subscriptions/send-digest", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  }, "Send failed");
 }
 
 export async function adminSeoDashboard(token: string): Promise<SEODashboard | null> {

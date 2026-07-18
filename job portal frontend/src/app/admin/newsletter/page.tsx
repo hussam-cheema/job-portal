@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import {
-  adminSendDigest,
   adminSubscriptionSummary,
   adminUpdateDigestTemplate,
 } from "@/lib/api";
@@ -42,25 +41,9 @@ export default function NewsletterSubscriptionPage() {
     try {
       const value = await adminUpdateDigestTemplate(token, form);
       setDigest(value);
-      setMessage("Daily alert email template saved.");
+      setMessage("New-job alert email template saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save the newsletter template.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function sendNow() {
-    if (!token) return;
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const result = await adminSendDigest(token);
-      setMessage(result.message);
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to process the digest.");
     } finally {
       setBusy(false);
     }
@@ -74,7 +57,7 @@ export default function NewsletterSubscriptionPage() {
             <div>
               <h2 className="text-xl font-semibold text-[var(--navy-100)]">Newsletter subscription</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                Manage the daily 12:00 PM PKT job-alert email and subscriber count.
+                Manage the automatic email sent whenever a new job is published.
               </p>
             </div>
             <div className="text-right">
@@ -97,15 +80,12 @@ export default function NewsletterSubscriptionPage() {
               <textarea id="digest-email-body" className="input min-h-32" value={form.body_template} onChange={(event) => setForm({ ...form, body_template: event.target.value })} required />
             </div>
             <p className="text-xs text-[var(--muted)]">
-              Available placeholders: <code>{"{site_title}"}</code>, <code>{"{date}"}</code>, <code>{"{range_start}"}</code>, <code>{"{range_end}"}</code>. Job links, deadlines, and the personal unsubscribe link are inserted automatically.
+              Available placeholders: <code>{"{site_title}"}</code>, <code>{"{date}"}</code>, <code>{"{job_title}"}</code>, <code>{"{job_url}"}</code>, <code>{"{deadline}"}</code>, and <code>{"{published_date}"}</code>. The linked job, deadline, and personal unsubscribe link are inserted automatically.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <button className="btn btn-primary" type="submit" disabled={busy}>Save email template</button>
-              <button className="btn btn-ghost" type="button" disabled={busy} onClick={sendNow}>Process current digest window</button>
-            </div>
+            <button className="btn btn-primary" type="submit" disabled={busy}>Save email template</button>
           </form>
           <p className="text-xs text-[var(--muted)]">
-            Last digest: {digest?.last_digest_status || "not run"}{digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}
+            Last job alert: {digest?.last_digest_status || "not sent"}{digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}
           </p>
         </section>
       </div>

@@ -39,7 +39,7 @@ const server = createServer((request, response) => {
     return json(response, { id: path.split("/").pop(), kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: false });
   }
   if (path === "/api/subscriptions") {
-    return json(response, { ok: true, status: "subscribed", message: "Your email has been subscribed to daily job alerts." });
+    return json(response, { ok: true, status: "subscribed", message: "Your email has been subscribed to new job alerts." });
   }
   if (path === "/api/subscriptions/unsubscribe") {
     return json(response, { ok: true, status: "unsubscribed", message: "You have been unsubscribed." });
@@ -47,8 +47,8 @@ const server = createServer((request, response) => {
   if (path === "/api/admin/subscriptions") {
     return json(response, {
       subscriber_count: 7, active_subscriber_count: 6,
-      subject_template: "Daily Job Alerts from {site_title} — {date}",
-      body_template: "Dear Sir/Madam, jobs from {range_start} to {range_end}.",
+      subject_template: "New Job Alert: {job_title} — {site_title}",
+      body_template: "Dear Sir/Madam, a new job was published on {site_title}.",
       last_digest_at: null, last_digest_status: null,
     });
   }
@@ -58,9 +58,6 @@ const server = createServer((request, response) => {
       subject_template: "Saved subject", body_template: "Saved body",
       last_digest_at: null, last_digest_status: null,
     });
-  }
-  if (path === "/api/admin/subscriptions/send-digest") {
-    return json(response, { status: "completed", window_start: new Date().toISOString(), window_end: new Date().toISOString(), jobs_count: 2, recipients_count: 6, sent_count: 6, failed_count: 0, message: "Sent 6 of 6 daily job alert emails." });
   }
   if (path === "/api/jobs") {
     return json(response, { items: [{

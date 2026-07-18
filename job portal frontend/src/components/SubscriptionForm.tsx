@@ -35,10 +35,10 @@ export function SubscriptionForm() {
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)] md:items-center">
         <div>
           <h2 id="job-alerts-heading" className="text-lg font-semibold text-[var(--navy-100)]">
-            Subscribe to get daily Job alerts
+            Subscribe to get new Job alerts
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Receive newly published PakistanJobs listings every day at 12:00 PM PKT.
+            Receive an email whenever a new PakistanJobs listing is published.
           </p>
         </div>
         <form onSubmit={submit} noValidate>

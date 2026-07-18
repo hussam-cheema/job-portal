@@ -4,16 +4,16 @@ import argparse
 
 import httpx
 
-from common import CheckFailed, admin_headers, api_base, require_response, run
+from common import CheckFailed, add_backend_to_path, admin_headers, api_base, require_response, run
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Test the daily job-alert subscription API.")
+    parser = argparse.ArgumentParser(description="Test the event-driven job-alert subscription API.")
     parser.add_argument("--email", default="pakjobs.manual.subscription.test@gmail.com")
     parser.add_argument(
-        "--send-digest",
+        "--send-test-email",
         action="store_true",
-        help="Explicitly process the current digest window using the configured SMTP account.",
+        help="Send the latest job only to --email using the configured local SMTP account.",
     )
     return parser.parse_args()
 
@@ -36,17 +36,29 @@ def check() -> str:
             raise CheckFailed("admin summary did not count the active subscription")
         if not summary.get("subject_template") or not summary.get("body_template"):
             raise CheckFailed("digest templates were not returned")
-        digest_status = "not sent"
-        if args.send_digest:
-            digest = require_response(
-                client.post(
-                    f"{api_base()}/api/admin/subscriptions/send-digest",
-                    headers=admin_headers(client),
-                ),
-                "manual digest",
-            ).json()
-            digest_status = f"digest status={digest.get('status')}, sent={digest.get('sent_count', 0)}"
-    return f"validation, subscription, duplicate handling, template, and count passed ({email}; {digest_status})"
+        delivery_status = "test email not requested"
+    if args.send_test_email:
+        add_backend_to_path()
+        from sqlalchemy import select
+
+        from app.database import SessionLocal
+        from app.models import EmailSubscriber, Job
+        from app.services.newsletter import build_job_alert_message, _send_smtp_message
+
+        with SessionLocal() as db:
+            subscriber = db.execute(
+                select(EmailSubscriber).where(EmailSubscriber.subscribed_email == email)
+            ).scalar_one_or_none()
+            job = db.execute(
+                select(Job).order_by(Job.created_at.desc())
+            ).scalars().first()
+            if not subscriber:
+                raise CheckFailed(f"subscriber {email} was not found in the configured database")
+            if not job:
+                raise CheckFailed("create at least one job before sending a test alert")
+            _send_smtp_message(build_job_alert_message(db, subscriber, job))
+            delivery_status = f"latest-job test email sent for {job.title!r}"
+    return f"validation, subscription, duplicate handling, template, and count passed ({email}; {delivery_status})"
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ from app.schemas import (
     QnAFetchResult,
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
+from app.services.newsletter import send_new_job_alert
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.watermark import process_description_images
 from app.services.taxonomy import canonicalize_job_terms, ensure_default_taxonomy
@@ -405,6 +406,20 @@ def create_job(
         db.commit()
         db.refresh(job)
         logger.info("job created id=%s title=%s", job.id, job.title)
+        # Newsletter delivery happens only after the job commit. A temporary
+        # SMTP failure therefore cannot roll back or hide the newly-created job.
+        try:
+            alert = send_new_job_alert(db, job)
+            logger.info(
+                "new job alert processed job_id=%s status=%s sent=%s failed=%s",
+                job.id,
+                alert.get("status"),
+                alert.get("sent_count"),
+                alert.get("failed_count"),
+            )
+        except Exception:
+            db.rollback()
+            logger.exception("new job alert processing failed after commit job_id=%s", job.id)
         return _to_detail(job, db)
     except HTTPException:
         raise

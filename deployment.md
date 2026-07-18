@@ -9,7 +9,7 @@ This guide deploys the application with the following architecture:
 - **DNS and edge TLS:** Cloudflare
 - **CI/CD and image registry:** GitHub Actions and GitHub Container Registry (GHCR)
 
-The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) and [`.github/workflows/daily-job-alerts.yml`](.github/workflows/daily-job-alerts.yml). Pull requests run backend tests plus frontend lint/build checks. A successful push to `main` builds an immutable backend image, deploys a new Container Apps revision, verifies `/ready`, and then deploys the frontend. The second workflow invokes the protected subscriber-digest endpoint at noon PKT.
+The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). Pull requests run backend tests plus frontend lint/build checks. A successful push to `main` builds an immutable backend image, deploys a new Container Apps revision, verifies `/ready`, and then deploys the frontend. Subscriber emails are event-driven: after a new job is committed, the backend immediately emails that job to active subscribers.
 
 ## 1. Before you begin
 
@@ -242,8 +242,6 @@ SMTP_FROM_EMAIL=hussam.cheema7102@gmail.com
 SMTP_AUTH=true
 SMTP_STARTTLS=true
 SMTP_USE_SSL=false
-DAILY_DIGEST_TOKEN=secretref:daily-digest-token
-
 SITE_URL=https://www.example.com
 SITE_NAME=PakJobs
 CORS_ORIGINS=https://www.example.com,https://<static-web-app-hostname>
@@ -324,7 +322,6 @@ Add these **environment secrets** to `production`:
 | `AZURE_TENANT_ID` | Entra tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Static Web Apps deployment token |
-| `DAILY_DIGEST_TOKEN` | Exact same random value as the Container App `daily-digest-token` secret |
 
 Add these **environment variables** to `production`:
 
@@ -384,8 +381,8 @@ Then verify:
 - Merge to `main`: GitHub deploys the backend and then the frontend.
 - A failed backend readiness check prevents the frontend deployment.
 - Production secrets are maintained in Azure; changing an Azure secret creates or updates a Container Apps revision independently of a source deployment.
-- `.github/workflows/daily-job-alerts.yml` invokes the protected digest endpoint every day at 07:00 UTC (12:00 PM PKT). GitHub schedules can start a few minutes late, but the backend always selects the exact previous-noon-to-current-noon PKT window and processes a window only once.
-- The digest sends nothing when the window contains no newly published jobs. The SEO Monitor shows the active/total subscriber count, editable subject/body text, and the last digest status; its manual button processes the same idempotent window.
+- Creating a new job commits the post first, then immediately sends that one job to each active subscriber. Editing an existing post does not send another alert.
+- The Newsletter Subscription page shows the subscriber count, editable subject/body text, and the latest delivery status. SMTP failures are recorded in backend logs and do not roll back a successfully-created job.
 
 For rollback:
 

@@ -58,17 +58,6 @@ export type DigestAdminSummary = {
   last_digest_status: string | null;
 };
 
-export type DigestRun = {
-  status: string;
-  window_start: string;
-  window_end: string;
-  jobs_count: number;
-  recipients_count: number;
-  sent_count: number;
-  failed_count: number;
-  message: string;
-};
-
 export type QnAItem = {
   question: string;
   answer: string;

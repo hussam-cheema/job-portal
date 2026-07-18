@@ -183,6 +183,7 @@ def _ensure_new_columns() -> None:
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS readability_score DOUBLE PRECISION',
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS analysis JSON',
         'ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE',
+        'ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL',
     ]
     if DATABASE_URL.startswith("sqlite"):
         # SQLite lacks IF NOT EXISTS for columns — ignore errors
@@ -198,6 +199,7 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE seo_meta ADD COLUMN readability_score FLOAT",
             "ALTER TABLE seo_meta ADD COLUMN analysis JSON",
             "ALTER TABLE analytics_visits ADD COLUMN location_verified BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
         ]
     try:
         with engine.begin() as conn:
@@ -209,6 +211,14 @@ def _ensure_new_columns() -> None:
                     conn.execute(text(stmt))
                 except Exception:
                     pass
+            if not DATABASE_URL.startswith("sqlite"):
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS "
+                        "uq_subscription_digest_runs_job_id "
+                        "ON subscription_digest_runs (job_id) WHERE job_id IS NOT NULL"
+                    )
+                )
     except Exception:
         logger.exception("ensure_new_columns failed")
 

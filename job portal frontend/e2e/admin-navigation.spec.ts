@@ -106,11 +106,11 @@ test("job form only offers predefined categories", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remove Lahore" })).toBeVisible();
 });
 
-test("newsletter page shows subscription count and editable digest template", async ({ page }) => {
+test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
   await page.goto("/admin/seo");
   await expect(page.getByText("Daily job alert subscriptions")).toHaveCount(0);
   await page.goto("/admin/newsletter");
   await expect(page.getByRole("heading", { name: "Newsletter subscription" })).toBeVisible();
   await expect(page.getByText("6", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Email subject")).toHaveValue(/Daily Job Alerts/);
+  await expect(page.getByLabel("Email subject")).toHaveValue(/New Job Alert/);
 });

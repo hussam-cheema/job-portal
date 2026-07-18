@@ -217,6 +217,11 @@ class SubscriptionDigestRun(Base):
     __tablename__ = "subscription_digest_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # The table name is retained for backwards compatibility with existing
+    # deployments, but every new run now represents one newly-created job.
+    job_id: Mapped[Optional[str]] = mapped_column(
+        String(36), unique=True, nullable=True, index=True
+    )
     window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     window_end: Mapped[datetime] = mapped_column(
         DateTime, unique=True, nullable=False, index=True

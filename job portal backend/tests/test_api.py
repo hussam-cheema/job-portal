@@ -630,11 +630,10 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     assert all(term["slug"] != "legal" for term in client.get("/api/taxonomy").json())
 
 
-def test_subscription_validation_duplicate_template_and_daily_digest(
+def test_subscription_validation_template_and_new_job_alert(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    from datetime import timedelta
     from app.services import newsletter
 
     assert client.post("/api/subscriptions", json={"email": "bad"}).status_code == 400
@@ -655,52 +654,49 @@ def test_subscription_validation_duplicate_template_and_daily_digest(
         "/api/admin/subscriptions/template",
         headers=auth,
         json={
-            "subject_template": "{site_title} jobs — {date}",
-            "body_template": "Dear Sir/Madam,\n\nJobs from {range_start} to {range_end}:",
+            "subject_template": "New: {job_title} — {site_title}",
+            "body_template": "Dear Sir/Madam,\n\nA new job was published on {published_date}:",
         },
     )
     assert updated.status_code == 200
 
-    start_utc, _, _, _ = newsletter.digest_window()
+    delivered = []
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
+    monkeypatch.setattr(newsletter, "_send_smtp_message", lambda message: delivered.append(message))
     job = client.post(
         "/api/admin/jobs",
         headers=auth,
         json={
-            "title": "Daily Alert Role",
-            "description": "<p>A new job included in the noon Pakistan digest.</p>",
-            "published_date": (start_utc + timedelta(hours=1)).isoformat(),
-            "deadline_date": (start_utc + timedelta(days=7)).isoformat(),
+            "title": "Immediate Alert Role",
+            "description": "<p>A new job that must trigger an alert immediately.</p>",
+            "published_date": "2026-07-18T08:00:00",
+            "deadline_date": "2026-07-25T08:00:00",
             "tags": ["Software Engineering"],
         },
     )
     assert job.status_code == 200
-
-    delivered = []
-    monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
-    monkeypatch.setattr(newsletter, "_send_smtp_message", lambda message: delivered.append(message))
-    sent = client.post("/api/admin/subscriptions/send-digest", headers=auth)
-    assert sent.status_code == 200
-    assert sent.json()["jobs_count"] == 1
-    assert sent.json()["sent_count"] == 1
+    assert len(delivered) == 1
     assert delivered[0]["To"] == "reader@gmail.com"
     plain = delivered[0].get_body(preferencelist=("plain",)).get_content()
     assert "Dear Sir/Madam" in plain
-    assert "Daily Alert Role" in plain
+    assert "Immediate Alert Role" in plain
     assert "Deadline:" in plain
     assert "/jobs/" in plain
     assert "unsubscribe" in plain.lower()
+    assert "Immediate Alert Role" in delivered[0]["Subject"]
 
-    repeated = client.post("/api/admin/subscriptions/send-digest", headers=auth)
-    assert repeated.json()["status"] == "already_processed"
-
-    monkeypatch.setenv("DAILY_DIGEST_TOKEN", "daily-test-token-with-at-least-32-chars")
-    assert client.post("/api/subscriptions/run-daily").status_code == 401
-    scheduled = client.post(
-        "/api/subscriptions/run-daily",
-        headers={"X-Digest-Token": "daily-test-token-with-at-least-32-chars"},
+    # Editing an existing post must not produce another new-job notification.
+    updated_job = client.put(
+        f"/api/admin/jobs/{job.json()['id']}",
+        headers=auth,
+        json={"salary_range": "100000-120000"},
     )
-    assert scheduled.status_code == 200
-    assert scheduled.json()["status"] == "already_processed"
+    assert updated_job.status_code == 200
+    assert len(delivered) == 1
+
+    summary_after_delivery = client.get("/api/admin/subscriptions", headers=auth).json()
+    assert summary_after_delivery["last_digest_status"] == "completed"
+    assert summary_after_delivery["last_digest_at"] is not None
 
     unsubscribe_match = re.search(r"/unsubscribe\?token=([^\s]+)", plain)
     assert unsubscribe_match is not None
@@ -714,6 +710,40 @@ def test_subscription_validation_duplicate_template_and_daily_digest(
     assert summary_after_removal["active_subscriber_count"] == 0
     repeated_removal = client.post(f"/api/subscriptions/unsubscribe?token={unsubscribe_token}")
     assert repeated_removal.json()["status"] == "not_subscribed"
+
+
+def test_job_creation_survives_email_delivery_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import newsletter
+
+    assert client.post(
+        "/api/subscriptions", json={"email": "delivery-failure@gmail.com"}
+    ).status_code == 200
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
+
+    def fail_delivery(_message):
+        raise RuntimeError("simulated SMTP outage")
+
+    monkeypatch.setattr(newsletter, "_send_smtp_message", fail_delivery)
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Job Persists During SMTP Outage",
+            "description": "<p>This post must survive failed email delivery.</p>",
+            "published_date": "2026-07-18T09:00:00",
+        },
+    )
+    assert created.status_code == 200
+    assert client.get(f"/api/jobs/{created.json()['id']}").status_code == 200
+    summary = client.get("/api/admin/subscriptions", headers=auth).json()
+    assert summary["last_digest_status"] == "failed"
 
 
 def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
