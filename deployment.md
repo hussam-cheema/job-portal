@@ -269,6 +269,23 @@ The first successful admin login creates the configured admin account if it does
 
 The admin account locks after the fourth consecutive failed password attempt. Both lockout recovery and the login page's forgot-password action send a single-use reset link to `ADMIN_RECOVERY_EMAIL`. The endpoint enforces a resend cooldown plus per-IP and global hourly limits, so automation cannot flood the mailbox. The link expires after `PASSWORD_RESET_TOKEN_TTL_MINUTES` and permits choosing a new username and password without the old password. When Gmail is used for SMTP, store a Google App Password in the `smtp-password` Container App secret; never store it in GitHub or a committed `.env` file. The same SMTP account sends subscriber digests, so its App Password must remain configured after password recovery testing is complete.
 
+To test the deployed SMTP secret and locate the exact failing stage without
+printing or downloading the password, run this from Azure Cloud Shell:
+
+```bash
+az containerapp exec \
+  --name job-portal-api \
+  --resource-group job-portal-prod-rg \
+  --command "python -m app.services.smtp_diagnostic --send"
+```
+
+The diagnostic sends one labeled message to the oldest active subscriber and
+checks configuration, DNS, TCP, EHLO, TLS, authentication, envelope sender,
+recipient, and final DATA acceptance. A final SMTP `250` proves Gmail accepted
+responsibility for the message, but it cannot prove Inbox placement. If that
+passes and the message is not visible, check the recipient's Spam and All Mail,
+filters/blocked senders, and the sending account for a delayed bounce notice.
+
 For local development, `docker compose up -d mailpit` starts a test SMTP inbox. The backend container sends recovery messages to Mailpit on port `1025`; open `http://localhost:8025` to inspect them. This avoids sending real recovery messages while testing locally.
 
 ## 7. Create Azure Static Web Apps

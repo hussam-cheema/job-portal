@@ -684,6 +684,9 @@ def test_subscription_validation_template_and_new_job_alert(
     assert "/jobs/" in plain
     assert "unsubscribe" in plain.lower()
     assert "Immediate Alert Role" in delivered[0]["Subject"]
+    assert delivered[0]["List-Unsubscribe"].startswith("<")
+    assert delivered[0]["Auto-Submitted"] == "auto-generated"
+    assert delivered[0]["X-Entity-Ref-ID"] == job.json()["id"]
 
     # Editing an existing post must not produce another new-job notification.
     updated_job = client.put(

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import html
-import smtplib
-import ssl
 from datetime import datetime
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+from email.utils import formataddr, formatdate, make_msgid
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -13,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import cfg, env, site_name, site_url
 from app.logging_config import get_logger
 from app.models import EmailSubscriber, Job, SiteSetting, SubscriptionDigestRun
+from app.services.smtp_transport import address_fingerprint, deliver_smtp_message
 
 logger = get_logger("jobportal.newsletter")
 
@@ -129,45 +128,21 @@ def build_job_alert_message(
         raise RuntimeError("SMTP_FROM_EMAIL or SMTP_USERNAME must be configured")
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = from_email
+    message["From"] = formataddr((title, from_email))
     message["To"] = subscriber.subscribed_email
+    message["Reply-To"] = from_email
     message["Date"] = formatdate(localtime=False)
     message["Message-ID"] = make_msgid(domain=from_email.rpartition("@")[2] or None)
+    message["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+    message["Auto-Submitted"] = "auto-generated"
+    message["X-Entity-Ref-ID"] = str(job.id)
     message.set_content(plain)
     message.add_alternative(html_body, subtype="html")
     return message
 
 
-def _send_smtp_message(message: EmailMessage) -> None:
-    host = env("SMTP_HOST")
-    username = env("SMTP_USERNAME")
-    password = env("SMTP_PASSWORD")
-    if not host:
-        raise RuntimeError("SMTP_HOST must be configured")
-    if password and host.lower() == "smtp.gmail.com":
-        password = "".join(password.split())
-    port = int(env("SMTP_PORT", "587") or "587")
-    timeout = int(env("SMTP_TIMEOUT_SECONDS", "15") or "15")
-    use_ssl = (env("SMTP_USE_SSL", "false") or "false").lower() in {"1", "true", "yes"}
-    starttls = (env("SMTP_STARTTLS", "true") or "true").lower() in {"1", "true", "yes"}
-    authenticate = (env("SMTP_AUTH", "true") or "true").lower() in {"1", "true", "yes"}
-    context = ssl.create_default_context()
-
-    smtp_factory = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
-    kwargs = {"context": context} if use_ssl else {}
-    with smtp_factory(host, port, timeout=timeout, **kwargs) as smtp:
-        if not use_ssl:
-            smtp.ehlo()
-            if starttls:
-                smtp.starttls(context=context)
-                smtp.ehlo()
-        if authenticate:
-            if not username or not password:
-                raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured")
-            smtp.login(username, password)
-        refused = smtp.send_message(message)
-        if refused:
-            raise smtplib.SMTPRecipientsRefused(refused)
+def _send_smtp_message(message: EmailMessage):
+    return deliver_smtp_message(message)
 
 
 def send_new_job_alert(db: Session, job: Job) -> dict[str, object]:
@@ -230,10 +205,19 @@ def send_new_job_alert(db: Session, job: Job) -> dict[str, object]:
     for subscriber in subscribers:
         try:
             message = build_job_alert_message(db, subscriber, job)
-            _send_smtp_message(message)
+            receipt = _send_smtp_message(message)
             subscriber.last_digest_sent_at = datetime.utcnow()
             subscriber.updated_at = datetime.utcnow()
             run.sent_count += 1
+            logger.info(
+                "new job alert accepted job_id=%s subscriber=%s message_id=%s "
+                "smtp_code=%s smtp_response=%s",
+                job.id,
+                address_fingerprint(subscriber.subscribed_email),
+                getattr(receipt, "message_id", message.get("Message-ID", "")),
+                getattr(receipt, "response_code", "mocked"),
+                getattr(receipt, "response", "mocked"),
+            )
         except Exception as exc:
             run.failed_count += 1
             errors.append(f"{subscriber.user_uuid}: {type(exc).__name__}")
