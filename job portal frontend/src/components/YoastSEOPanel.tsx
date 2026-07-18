@@ -44,6 +44,7 @@ function light(status: string) {
 export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [busy, setBusy] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
 
   const payload = useMemo(
     () => ({
@@ -62,6 +63,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
     if (!token) return;
     const t = setTimeout(async () => {
       setBusy(true);
+      setAnalysisError("");
       try {
         const res = await fetch(`${API_BASE}/api/admin/seo/yoast/analyze`, {
           method: "POST",
@@ -71,9 +73,11 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
           },
           body: JSON.stringify(payload),
         });
-        if (res.ok) setAnalysis(await res.json());
-      } catch {
-        /* ignore */
+        if (!res.ok) throw new Error(`SEO analysis failed (${res.status})`);
+        setAnalysis(await res.json());
+      } catch (error) {
+        console.error("SEO analysis failed", error);
+        setAnalysisError("SEO analysis is temporarily unavailable.");
       } finally {
         setBusy(false);
       }
@@ -91,6 +95,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
         <strong>Yoast SEO</strong>
         {busy && <span className="text-xs text-[var(--muted)]">Analyzing…</span>}
       </div>
+      {analysisError && <p className="mb-3 text-sm text-red-500">{analysisError}</p>}
 
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <div>

@@ -62,6 +62,71 @@ const DEFAULT_BRANDING: Branding = {
   logo_url: null,
 };
 
+type ApiErrorBody = {
+  detail?: string;
+  message?: string;
+};
+
+export class ApiRequestError extends Error {
+  status?: number;
+  path: string;
+
+  constructor(message: string, path: string, status?: number, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ApiRequestError";
+    this.path = path;
+    this.status = status;
+  }
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+  fallbackMessage = "Request failed"
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, init);
+  } catch (error) {
+    throw new ApiRequestError(
+      errorMessage(error, "Unable to reach the server"),
+      path,
+      undefined,
+      { cause: error }
+    );
+  }
+
+  let body: unknown = {};
+  if (response.status !== 204) {
+    try {
+      body = await response.json();
+    } catch (error) {
+      if (response.ok) {
+        throw new ApiRequestError(
+          "The server returned an invalid response",
+          path,
+          response.status,
+          { cause: error }
+        );
+      }
+    }
+  }
+
+  if (!response.ok) {
+    const errorBody = body as ApiErrorBody;
+    throw new ApiRequestError(
+      errorBody.detail || errorBody.message || fallbackMessage,
+      path,
+      response.status
+    );
+  }
+  return body as T;
+}
+
 function buildQuery(params: JobQuery): string {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -188,24 +253,19 @@ export async function submitContact(data: {
 }
 
 export async function subscribeEmail(email: string): Promise<SubscriptionResult> {
-  const res = await fetch(`${API_BASE}/api/subscriptions`, {
+  return requestJson<SubscriptionResult>("/api/subscriptions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || "Unable to subscribe this email");
-  return body as SubscriptionResult;
+  }, "Unable to subscribe this email");
 }
 
 export async function unsubscribeEmail(token: string): Promise<SubscriptionResult> {
-  const res = await fetch(
-    `${API_BASE}/api/subscriptions/unsubscribe?token=${encodeURIComponent(token)}`,
-    { method: "POST" }
+  return requestJson<SubscriptionResult>(
+    `/api/subscriptions/unsubscribe?token=${encodeURIComponent(token)}`,
+    { method: "POST" },
+    "Unable to unsubscribe"
   );
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || "Unable to unsubscribe");
-  return body as SubscriptionResult;
 }
 
 export function fetchTaxonomy(): Promise<TaxonomyTerm[]> {
@@ -220,28 +280,26 @@ function authHeaders(token: string): HeadersInit {
 }
 
 export async function adminLogin(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || "Login failed");
-  }
-  return res.json() as Promise<{ access_token: string; username: string }>;
+  return requestJson<{ access_token: string; username: string }>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    },
+    "Login failed"
+  );
 }
 
 export async function requestAdminPasswordReset() {
-  const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(body.detail || "Unable to send the recovery email");
-  }
-  return body as { ok: boolean; message: string; retry_after_seconds: number };
+  return requestJson<{ ok: boolean; message: string; retry_after_seconds: number }>(
+    "/api/auth/forgot-password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+    "Unable to send the recovery email"
+  );
 }
 
 export async function resetAdminCredentials(
@@ -249,16 +307,15 @@ export async function resetAdminCredentials(
   username: string,
   newPassword: string
 ) {
-  const res = await fetch(`${API_BASE}/api/auth/reset-credentials`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, username, new_password: newPassword }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(body.detail || "Unable to reset credentials");
-  }
-  return body as { ok: boolean; message: string };
+  return requestJson<{ ok: boolean; message: string }>(
+    "/api/auth/reset-credentials",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, username, new_password: newPassword }),
+    },
+    "Unable to reset credentials"
+  );
 }
 
 export async function adminChangePassword(
@@ -266,36 +323,32 @@ export async function adminChangePassword(
   currentPassword: string,
   newPassword: string
 ) {
-  const res = await fetch(`${API_BASE}/api/admin/password`, {
-    method: "PUT",
-    headers: authHeaders(token),
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-  });
-  if (!res.ok) {
-    throw new Error((await res.json().catch(() => ({}))).detail || "Password change failed");
-  }
-  return res.json() as Promise<{ ok: boolean }>;
+  return requestJson<{ ok: boolean }>(
+    "/api/admin/password",
+    {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    },
+    "Password change failed"
+  );
 }
 
 export async function adminUploadLogo(token: string, file: File): Promise<Branding> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}/api/admin/settings/logo`, {
+  return requestJson<Branding>("/api/admin/settings/logo", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Upload failed");
-  return res.json();
+  }, "Upload failed");
 }
 
 export async function adminDeleteLogo(token: string): Promise<Branding> {
-  const res = await fetch(`${API_BASE}/api/admin/settings/logo`, {
+  return requestJson<Branding>("/api/admin/settings/logo", {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Remove failed");
-  return res.json();
+  }, "Remove failed");
 }
 
 export async function adminUpdateBranding(
@@ -305,17 +358,11 @@ export async function adminUpdateBranding(
     "site_title" | "site_header" | "site_description" | "footer_copyright"
   >
 ): Promise<Branding> {
-  const res = await fetch(`${API_BASE}/api/admin/settings/branding`, {
+  return requestJson<Branding>("/api/admin/settings/branding", {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    throw new Error(
-      (await res.json().catch(() => ({}))).detail || "Website settings update failed"
-    );
-  }
-  return res.json();
+  }, "Website settings update failed");
 }
 
 export async function adminAnalytics(
@@ -323,63 +370,50 @@ export async function adminAnalytics(
   month?: string
 ): Promise<AnalyticsDashboard> {
   const query = month ? `?month=${encodeURIComponent(month)}` : "";
-  const res = await fetch(`${API_BASE}/api/admin/analytics${query}`, {
+  return requestJson<AnalyticsDashboard>(`/api/admin/analytics${query}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
-  return res.json();
+  }, "Analytics load failed");
 }
 
 export async function adminRealtimeAnalytics(token: string, windowMinutes = 5) {
-  const res = await fetch(
-    `${API_BASE}/api/admin/analytics/realtime?window_minutes=${windowMinutes}`,
-    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+  return requestJson<import("./types").AnalyticsRealtime>(
+    `/api/admin/analytics/realtime?window_minutes=${windowMinutes}`,
+    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+    "Live analytics failed"
   );
-  if (!res.ok) {
-    throw new Error((await res.json().catch(() => ({}))).detail || "Live analytics failed");
-  }
-  return res.json() as Promise<import("./types").AnalyticsRealtime>;
 }
 
 export async function adminCreateJob(token: string, data: JobFormData) {
-  const res = await fetch(`${API_BASE}/api/admin/jobs`, {
+  return requestJson<JobDetail>("/api/admin/jobs", {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Create failed");
-  return res.json() as Promise<JobDetail>;
+  }, "Create failed");
 }
 
 export async function adminUpdateJob(token: string, id: string, data: Partial<JobFormData>) {
-  const res = await fetch(`${API_BASE}/api/admin/jobs/${id}`, {
+  return requestJson<JobDetail>(`/api/admin/jobs/${id}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Update failed");
-  return res.json() as Promise<JobDetail>;
+  }, "Update failed");
 }
 
 export async function adminDeleteJob(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/api/admin/jobs/${id}`, {
+  return requestJson<{ ok?: boolean }>(`/api/admin/jobs/${id}`, {
     method: "DELETE",
     headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Delete failed");
-  return res.json();
+  }, "Delete failed");
 }
 
 export async function adminFetchQnA(token: string, jobId: string): Promise<QnAFetchResult> {
   // The backend owns the configurable processing deadline. A shorter browser
   // timeout used to abort otherwise healthy 120-second requests at 60 seconds.
-  const res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}/fetch-qna`, {
+  return requestJson<QnAFetchResult>(`/api/admin/jobs/${jobId}/fetch-qna`, {
     method: "POST",
     headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "QnA fetch failed");
-  return res.json();
+  }, "QnA fetch failed");
 }
 
 export async function adminUpload(
@@ -391,13 +425,7 @@ export async function adminUpload(
   fd.append("file", file);
   if (opts?.jobId) fd.append("job_id", opts.jobId);
   if (opts?.asAttachment) fd.append("as_attachment", "true");
-  const res = await fetch(`${API_BASE}/api/admin/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Upload failed");
-  return res.json() as Promise<{
+  return requestJson<{
     id?: string;
     public_url: string;
     file_type: string;
@@ -405,18 +433,18 @@ export async function adminUpload(
     original_name?: string;
     is_inline_image: boolean;
     s3_path: string;
-  }>;
+  }>("/api/admin/upload", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  }, "Upload failed");
 }
 
 export async function adminListPages(token: string): Promise<PageItem[]> {
-  const res = await fetch(`${API_BASE}/api/admin/pages`, {
+  return requestJson<PageItem[]>("/api/admin/pages", {
     headers: authHeaders(token),
     cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error((await res.json().catch(() => ({}))).detail || "Failed to load pages");
-  }
-  return res.json();
+  }, "Failed to load pages");
 }
 
 export async function adminSavePage(
@@ -435,77 +463,75 @@ export async function adminSavePage(
     };
   }
 ) {
-  const url = data.id ? `${API_BASE}/api/admin/pages/${data.id}` : `${API_BASE}/api/admin/pages`;
+  const path = data.id ? `/api/admin/pages/${data.id}` : "/api/admin/pages";
   const method = data.id ? "PUT" : "POST";
-  const res = await fetch(url, {
+  return requestJson<PageItem>(path, {
     method,
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Page save failed");
-  return res.json() as Promise<PageItem>;
+  }, "Page save failed");
 }
 
-export async function adminSeoAction(token: string, path: string, method = "GET", body?: unknown) {
-  const res = await fetch(`${API_BASE}${path}`, {
+export async function adminSeoAction<
+  T = { message?: string; [key: string]: unknown },
+>(
+  token: string,
+  path: string,
+  method = "GET",
+  body?: unknown
+): Promise<T> {
+  return requestJson<T>(path, {
     method,
     headers: body
       ? authHeaders(token)
       : { Authorization: `Bearer ${token}` },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Request failed");
-  return res.json();
+  }, "Request failed");
 }
 
 export async function adminDeletePage(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/api/admin/pages/${id}`, {
+  return requestJson<{ ok?: boolean }>(`/api/admin/pages/${id}`, {
     method: "DELETE",
     headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Delete failed");
-  return res.json();
+  }, "Delete failed");
 }
 
 export async function adminListMessages(token: string): Promise<ContactMessage[]> {
-  const res = await fetch(`${API_BASE}/api/admin/contact`, {
-    headers: authHeaders(token),
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  return res.json();
+  try {
+    return await requestJson<ContactMessage[]>("/api/admin/contact", {
+      headers: authHeaders(token),
+      cache: "no-store",
+    }, "Failed to load messages");
+  } catch (error) {
+    console.warn("Unable to load admin messages; using an empty list", error);
+    return [];
+  }
 }
 
 export async function adminDeleteMessage(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/api/admin/contact/${id}`, {
+  return requestJson<{ ok?: boolean }>(`/api/admin/contact/${id}`, {
     method: "DELETE",
     headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error("Delete failed");
-  return res.json();
+  }, "Delete failed");
 }
 
 export async function adminListTaxonomy(token: string): Promise<TaxonomyTerm[]> {
-  const res = await fetch(`${API_BASE}/api/admin/taxonomy`, {
+  return requestJson<TaxonomyTerm[]>("/api/admin/taxonomy", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
-  return res.json();
+  }, "Taxonomy load failed");
 }
 
 export async function adminCreateTaxonomyTerm(
   token: string,
   data: { name: string; slug?: string; is_active?: boolean }
 ): Promise<TaxonomyTerm> {
-  const res = await fetch(`${API_BASE}/api/admin/taxonomy`, {
+  return requestJson<TaxonomyTerm>("/api/admin/taxonomy", {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ kind: "category", ...data }),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Create failed");
-  return res.json();
+  }, "Create failed");
 }
 
 export async function adminUpdateTaxonomyTerm(
@@ -513,62 +539,55 @@ export async function adminUpdateTaxonomyTerm(
   id: string,
   data: { name?: string; slug?: string; is_active?: boolean }
 ): Promise<TaxonomyTerm> {
-  const res = await fetch(`${API_BASE}/api/admin/taxonomy/${id}`, {
+  return requestJson<TaxonomyTerm>(`/api/admin/taxonomy/${id}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Update failed");
-  return res.json();
+  }, "Update failed");
 }
 
 export async function adminDeleteTaxonomyTerm(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/api/admin/taxonomy/${id}`, {
+  return requestJson<{ ok?: boolean }>(`/api/admin/taxonomy/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Delete failed");
-  return res.json();
+  }, "Delete failed");
 }
 
 export async function adminSubscriptionSummary(token: string): Promise<DigestAdminSummary> {
-  const res = await fetch(`${API_BASE}/api/admin/subscriptions`, {
+  return requestJson<DigestAdminSummary>("/api/admin/subscriptions", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
-  return res.json();
+  }, "Subscription summary load failed");
 }
 
 export async function adminUpdateDigestTemplate(
   token: string,
   data: { subject_template: string; body_template: string }
 ): Promise<DigestAdminSummary> {
-  const res = await fetch(`${API_BASE}/api/admin/subscriptions/template`, {
+  return requestJson<DigestAdminSummary>("/api/admin/subscriptions/template", {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Save failed");
-  return res.json();
+  }, "Save failed");
 }
 
 export async function adminSendDigest(token: string): Promise<DigestRun> {
-  const res = await fetch(`${API_BASE}/api/admin/subscriptions/send-digest`, {
+  return requestJson<DigestRun>("/api/admin/subscriptions/send-digest", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Send failed");
-  return res.json();
+  }, "Send failed");
 }
 
 export async function adminSeoDashboard(token: string): Promise<SEODashboard | null> {
-  const res = await fetch(`${API_BASE}/api/admin/seo/dashboard`, {
-    headers: authHeaders(token),
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    return await requestJson<SEODashboard>("/api/admin/seo/dashboard", {
+      headers: authHeaders(token),
+      cache: "no-store",
+    }, "SEO dashboard load failed");
+  } catch (error) {
+    console.warn("Unable to load the SEO dashboard", error);
+    return null;
+  }
 }
 
 export async function adminListJobs(token: string, page = 1): Promise<JobListResponse> {

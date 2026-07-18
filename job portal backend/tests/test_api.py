@@ -5,12 +5,14 @@ import os
 import base64
 import io
 import re
+import asyncio
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -29,6 +31,7 @@ from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app import models  # noqa: E402, F401
 from app.auth import ensure_admin_user  # noqa: E402
+from app.exceptions import unhandled_exception_handler  # noqa: E402
 
 
 @pytest.fixture()
@@ -70,6 +73,36 @@ def test_readiness(client: TestClient):
     r = client.get("/ready")
     assert r.status_code == 200
     assert r.json() == {"status": "ready", "database": "up"}
+
+
+def test_unhandled_exceptions_return_a_safe_generic_response():
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "https",
+            "server": ("testserver", 443),
+            "client": ("127.0.0.1", 1234),
+            "root_path": "",
+            "path": "/api/private-operation",
+            "raw_path": b"/api/private-operation",
+            "query_string": b"",
+            "headers": [],
+        }
+    )
+    response = asyncio.run(
+        unhandled_exception_handler(request, RuntimeError("secret database detail"))
+    )
+    payload = json.loads(response.body)
+
+    assert response.status_code == 500
+    assert payload == {
+        "detail": "Internal server error",
+        "path": "/api/private-operation",
+        "fallback": "empty",
+    }
+    assert "secret database detail" not in response.body.decode("utf-8")
+    assert Exception in app.exception_handlers
 
 
 def test_login_and_create_job(client: TestClient):
@@ -195,7 +228,7 @@ def test_watermark_changes_image_and_preserves_format():
     assert Image.open(io.BytesIO(watermarked_bytes)).format == "WEBP"
     difference = ImageChops.difference(source, watermarked)
     visibly_changed = sum(
-        1 for pixel in difference.get_flattened_data() if max(pixel) >= 16
+        1 for pixel in difference.getdata() if max(pixel) >= 16
     )
     assert visibly_changed >= int(source.width * source.height * 0.005)
 

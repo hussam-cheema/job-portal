@@ -6,11 +6,9 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
-
 from fastapi import HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
 from app.config import cfg
 from app.logging_config import get_logger
 from app.models import ContactMessage

@@ -231,9 +231,7 @@ async def log_requests(request: Request, call_next):
             status_code=500,
             content={
                 "detail": "Internal server error",
-                "fallback": empty_job_list()
-                if request.url.path.startswith("/api/jobs")
-                else empty_stats(),
+                "path": request.url.path,
             },
         )
     if response.status_code >= 400:

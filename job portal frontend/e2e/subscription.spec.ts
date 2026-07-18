@@ -11,6 +11,20 @@ test("public daily alert form validates and subscribes an email", async ({ page 
   await expect(page.getByText("Your email has been subscribed to daily job alerts.")).toBeVisible();
 });
 
+test("subscription network failures are handled and shown to the user", async ({ page }) => {
+  await page.route("**/api/subscriptions", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Subscription service is temporarily unavailable." }),
+    });
+  });
+  await page.goto("/");
+  await page.getByLabel("Email address").fill("reader@gmail.com");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  await expect(page.getByText("Subscription service is temporarily unavailable.")).toBeVisible();
+});
+
 test("unsubscribe link removes a newsletter subscription", async ({ page }) => {
   await page.goto("/unsubscribe?token=personal-token");
   await expect(page.getByText("You have been unsubscribed.")).toBeVisible();

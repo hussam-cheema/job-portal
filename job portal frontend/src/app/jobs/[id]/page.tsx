@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchJob } from "@/lib/api";
+import { JobShareButtons } from "@/components/JobShareButtons";
 import {
   formatDate,
   formatSalary,
@@ -154,6 +155,7 @@ export default async function JobDetailPage({ params }: Props) {
               )}
             </div>
           )}
+          <JobShareButtons path={`/jobs/${id}`} title={job.title} />
         </header>
 
         <div className="px-5 sm:px-8 py-7">
