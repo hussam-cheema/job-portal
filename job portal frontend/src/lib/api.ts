@@ -14,6 +14,10 @@ import type {
   TaxonomyTerm,
   SubscriptionResult,
   DigestAdminSummary,
+  BlogFilters,
+  BlogFormData,
+  BlogListResponse,
+  BlogPost,
 } from "./types";
 
 const API_BASE = (
@@ -54,6 +58,7 @@ const EMPTY_STATS: StatsResponse = {
 const DEFAULT_BRANDING: Branding = {
   site_name: "PakJobs",
   site_title: "PakJobs Jobs in Pakistan",
+  site_title_alignment: "center",
   site_header: "Latest government & private job openings in Pakistan",
   site_description:
     "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
@@ -209,6 +214,32 @@ export async function fetchBranding(): Promise<Branding> {
   return { ...DEFAULT_BRANDING, ...response };
 }
 
+export async function fetchBlogPosts(params: {
+  q?: string;
+  category?: string;
+  tag?: string;
+  page?: number;
+  page_size?: number;
+} = {}): Promise<BlogListResponse> {
+  const page = params.page || 1;
+  const pageSize = params.page_size || 12;
+  const query = new URLSearchParams();
+  Object.entries({ ...params, page, page_size: pageSize }).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  });
+  return getFreshJson<BlogListResponse>(`/api/blog?${query}`, {
+    items: [], total: 0, page, page_size: pageSize, pages: 0,
+  });
+}
+
+export function fetchBlogFilters(): Promise<BlogFilters> {
+  return getJson<BlogFilters>("/api/blog/filters", { categories: [], tags: [] });
+}
+
+export function fetchBlogPost(slug: string): Promise<BlogPost | null> {
+  return getFreshJson<BlogPost | null>(`/api/blog/${encodeURIComponent(slug)}`, null);
+}
+
 export async function trackVisit(visitorId: string, path: string): Promise<void> {
   try {
     await fetch(`${API_BASE}/api/analytics/visit`, {
@@ -354,7 +385,11 @@ export async function adminUpdateBranding(
   token: string,
   data: Pick<
     Branding,
-    "site_title" | "site_header" | "site_description" | "footer_copyright"
+    | "site_title"
+    | "site_title_alignment"
+    | "site_header"
+    | "site_description"
+    | "footer_copyright"
   >
 ): Promise<Branding> {
   return requestJson<Branding>("/api/admin/settings/branding", {
@@ -494,6 +529,42 @@ export async function adminDeletePage(token: string, id: string) {
     method: "DELETE",
     headers: authHeaders(token),
   }, "Delete failed");
+}
+
+export async function adminListBlogPosts(
+  token: string,
+  params: { q?: string; category?: string; status?: string; page?: number } = {}
+): Promise<BlogListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  });
+  const suffix = query.size ? `?${query}` : "";
+  return requestJson<BlogListResponse>(`/api/admin/blog${suffix}`, {
+    headers: authHeaders(token), cache: "no-store",
+  }, "Failed to load blog posts");
+}
+
+export function adminGetBlogPost(token: string, id: string): Promise<BlogPost> {
+  return requestJson<BlogPost>(`/api/admin/blog/${id}`, {
+    headers: authHeaders(token), cache: "no-store",
+  }, "Failed to load blog post");
+}
+
+export function adminSaveBlogPost(
+  token: string, id: string | null, data: BlogFormData
+): Promise<BlogPost> {
+  return requestJson<BlogPost>(id ? `/api/admin/blog/${id}` : "/api/admin/blog", {
+    method: id ? "PUT" : "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  }, "Blog post save failed");
+}
+
+export function adminDeleteBlogPost(token: string, id: string) {
+  return requestJson<{ ok: boolean; id: string }>(`/api/admin/blog/${id}`, {
+    method: "DELETE", headers: authHeaders(token),
+  }, "Blog post delete failed");
 }
 
 export async function adminListMessages(token: string): Promise<ContactMessage[]> {

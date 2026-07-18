@@ -20,7 +20,7 @@ from app.exceptions import (
     validation_exception_handler,
 )
 from app.logging_config import get_logger, setup_logging
-from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
+from app.routers import analytics, auth, blog, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
 from app.seed import ensure_default_pages, seed_if_empty, sync_local_core_pages_once
 from app.services.taxonomy import ensure_default_taxonomy
 from app.services.watermark import migrate_legacy_job_watermarks
@@ -101,6 +101,7 @@ app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(jobs.router, prefix="/api", tags=["jobs"])
 app.include_router(stats.router, prefix="/api", tags=["stats"])
 app.include_router(pages.router, prefix="/api", tags=["pages"])
+app.include_router(blog.router, prefix="/api", tags=["blog"])
 app.include_router(contact.router, prefix="/api", tags=["contact"])
 app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(seo.router, prefix="/api", tags=["seo"])

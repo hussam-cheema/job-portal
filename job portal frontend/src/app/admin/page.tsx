@@ -19,11 +19,17 @@ export default function AdminHome() {
           <AdminRouteLink href="/admin/pages/new" className="btn btn-primary">
             Create page
           </AdminRouteLink>
+          <AdminRouteLink href="/admin/blog/new" className="btn btn-primary">
+            Create blog post
+          </AdminRouteLink>
           <AdminRouteLink href="/admin/jobs" className="btn btn-ghost">
             Manage jobs
           </AdminRouteLink>
           <AdminRouteLink href="/admin/pages" className="btn btn-ghost">
             Manage pages
+          </AdminRouteLink>
+          <AdminRouteLink href="/admin/blog" className="btn btn-ghost">
+            Manage blog posts
           </AdminRouteLink>
           <AdminRouteLink href="/admin/messages" className="btn btn-ghost">
             Contact messages

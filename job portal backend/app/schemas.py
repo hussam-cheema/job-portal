@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -83,6 +83,7 @@ class AnalyticsDashboard(BaseModel):
 class BrandingOut(BaseModel):
     site_name: str
     site_title: str
+    site_title_alignment: Literal["beside_logo", "center", "right"]
     site_header: str
     site_description: str
     footer_copyright: str
@@ -91,6 +92,7 @@ class BrandingOut(BaseModel):
 
 class BrandingUpdateIn(BaseModel):
     site_title: str = Field(..., min_length=1, max_length=120)
+    site_title_alignment: Literal["beside_logo", "center", "right"] = "center"
     site_header: str = Field(..., min_length=1, max_length=240)
     site_description: str = Field(..., min_length=1, max_length=500)
     footer_copyright: str = Field(..., min_length=1, max_length=240)
@@ -272,6 +274,62 @@ class PageOut(BaseModel):
     is_published: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class BlogPostIn(BaseModel):
+    slug: str
+    title: str
+    excerpt: Optional[str] = None
+    content: str = ""
+    author: Optional[str] = None
+    category: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    is_published: bool = False
+    published_at: Optional[datetime] = None
+    seo: Optional[SEOFields] = None
+
+
+class BlogPostUpdate(BaseModel):
+    slug: Optional[str] = None
+    title: Optional[str] = None
+    excerpt: Optional[str] = None
+    content: Optional[str] = None
+    author: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[list[str]] = None
+    is_published: Optional[bool] = None
+    published_at: Optional[datetime] = None
+    seo: Optional[SEOFields] = None
+
+
+class BlogPostOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    slug: str
+    title: str
+    excerpt: Optional[str] = None
+    content: str
+    author: Optional[str] = None
+    category: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    is_published: bool
+    published_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class BlogPostListResponse(BaseModel):
+    items: list[BlogPostOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class BlogFiltersResponse(BaseModel):
+    categories: list[str]
+    tags: list[str]
 
 
 class ContactIn(BaseModel):

@@ -9,6 +9,8 @@ const LINKS = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/jobs", label: "Job posts" },
   { href: "/admin/jobs/new", label: "Create job" },
+  { href: "/admin/blog", label: "Blog posts" },
+  { href: "/admin/blog/new", label: "Create blog post" },
   { href: "/admin/taxonomy", label: "Tags / categories" },
   { href: "/admin/pages", label: "Pages" },
   { href: "/admin/pages/new", label: "Create page" },
@@ -48,6 +50,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (href === "/admin") return pathname === "/admin";
     if (href === "/admin/jobs") return pathname === "/admin/jobs";
     if (href === "/admin/pages") return pathname === "/admin/pages";
+    if (href === "/admin/blog") return pathname === "/admin/blog";
     return pathname === href || pathname.startsWith(href + "/");
   }
 

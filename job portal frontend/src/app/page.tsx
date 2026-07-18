@@ -50,11 +50,11 @@ export default async function HomePage({
 
   return (
     <div className="site-wrap py-10">
-      <section className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--navy-100)] max-w-3xl leading-[1.15]">
+      <section className="mb-8 text-center">
+        <h1 className="mx-auto max-w-3xl text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--navy-100)] leading-[1.15]">
           {branding.site_header}
         </h1>
-        <p className="mt-4 text-[var(--muted)] max-w-2xl text-base leading-relaxed">
+        <p className="mx-auto mt-4 max-w-2xl text-[var(--muted)] text-base leading-relaxed">
           {branding.site_description}
         </p>
       </section>

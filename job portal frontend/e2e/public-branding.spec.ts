@@ -6,6 +6,8 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
 
   await page.goto("/");
   await expect(page.locator("header").getByText("PakJobs Jobs in Pakistan", { exact: true })).toBeVisible();
+  await expect(page.locator("main h1")).toHaveCSS("text-align", "center");
+  await expect(page.locator("main h1 + p")).toHaveCSS("text-align", "center");
   await expect(
     page.getByRole("heading", {
       name: "Latest government & private job openings in Pakistan",

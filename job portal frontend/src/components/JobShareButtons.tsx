@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Props = {
   path: string;
   title: string;
+  entityLabel?: string;
 };
 
 type ShareTarget = {
@@ -44,7 +45,7 @@ function initialShareUrl(path: string): string {
   }
 }
 
-export function JobShareButtons({ path, title }: Props) {
+export function JobShareButtons({ path, title, entityLabel = "job" }: Props) {
   const [shareUrl, setShareUrl] = useState(() => initialShareUrl(path));
 
   useEffect(() => {
@@ -68,12 +69,12 @@ export function JobShareButtons({ path, title }: Props) {
   );
 
   return (
-    <section className="mt-5 border-t border-[var(--border)] pt-4" aria-labelledby="share-job-title">
+    <section className="mt-5 border-t border-[var(--border)] pt-4" aria-labelledby="share-content-title">
       <h2
-        id="share-job-title"
+        id="share-content-title"
         className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--navy-400)]"
       >
-        Share this job
+        Share this {entityLabel}
       </h2>
       <div className="mt-3 flex flex-wrap gap-2">
         {links.map((target) => (

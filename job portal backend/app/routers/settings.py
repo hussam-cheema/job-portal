@@ -31,11 +31,17 @@ def _set_setting(db: Session, key: str, value: str | None) -> None:
         db.add(SiteSetting(key=key, value=value, updated_at=datetime.utcnow()))
 
 
+def _site_title_alignment(db: Session) -> str:
+    value = _setting(db, "site_title_alignment")
+    return value if value in {"beside_logo", "center", "right"} else "center"
+
+
 def _branding_response(db: Session) -> BrandingOut:
     return BrandingOut(
         site_name=site_name(),
         site_title=_setting(db, "site_title")
         or str(cfg("site", "title", default="PakJobs Jobs in Pakistan")),
+        site_title_alignment=_site_title_alignment(db),
         site_header=_setting(db, "site_header")
         or str(
             cfg(

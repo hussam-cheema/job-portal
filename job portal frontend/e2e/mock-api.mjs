@@ -17,6 +17,7 @@ const server = createServer((request, response) => {
     return json(response, {
       site_name: "PakJobs",
       site_title: "PakJobs Jobs in Pakistan",
+      site_title_alignment: "center",
       site_header: "Latest government & private job openings in Pakistan",
       site_description: "Find current job opportunities across Pakistan.",
       footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
@@ -92,6 +93,22 @@ const server = createServer((request, response) => {
       application_email: null, source_url: null, attachments: [], qna: [], resources: [],
     });
   }
+  const blogPost = {
+    id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
+    excerpt: "A practical preparation guide for candidates in Pakistan.",
+    content: "<h2>Build a study plan</h2><p>Use the syllabus and practice consistently.</p>",
+    author: "PakistanJobs Editorial Team", category: "Career Advice",
+    tags: ["FPSC", "Exam Preparation"], is_published: true,
+    published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",
+    updated_at: "2026-07-18T12:00:00Z",
+  };
+  if (path === "/api/blog") return json(response, { items: [blogPost], total: 1, page: 1, page_size: 12, pages: 1 });
+  if (path === "/api/blog/filters") return json(response, { categories: ["Career Advice"], tags: ["FPSC", "Exam Preparation"] });
+  if (path === "/api/blog/fpsc-preparation-guide") return json(response, blogPost);
+  if (path === "/api/admin/blog") return json(response, { items: [blogPost], total: 1, page: 1, page_size: 25, pages: 1 });
+  if (path === "/api/admin/blog/blog-1") return json(response, blogPost);
+  if (path === "/api/seo/blog/blog-1") return json(response, { entity_type: "blog", entity_id: "blog-1", focus_keyword: "FPSC preparation", meta_title: "FPSC Preparation Guide", meta_description: blogPost.excerpt, meta_keywords: "FPSC, exam preparation" });
+  if (path === "/api/admin/seo/yoast/analyze") return json(response, { seo_score: 82, readability_score: 78, seo_status: "good", readability_status: "good", word_count: 10, checks: [], snippet: { title: "FPSC Preparation Guide", description: blogPost.excerpt, url: "/blog/fpsc-preparation-guide" } });
   if (path === "/api/admin/pages") {
     return json(response, [
       { id: "about", slug: "about", title: "About Us", content: "<p>About</p>", is_published: true },

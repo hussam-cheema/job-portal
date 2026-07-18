@@ -74,12 +74,24 @@ export default async function RootLayout({
               </Link>
               <Link
                 href="/"
-                className="justify-self-center whitespace-nowrap text-center text-[clamp(0.68rem,2.3vw,1rem)] font-semibold tracking-tight text-[var(--navy-100)] transition-colors hover:text-[var(--accent)]"
+                className={`${
+                  branding.site_title_alignment === "beside_logo"
+                    ? "justify-self-start text-left"
+                    : branding.site_title_alignment === "right"
+                      ? "justify-self-end text-right"
+                      : "justify-self-center text-center"
+                } min-w-0 truncate whitespace-nowrap text-[clamp(0.68rem,2.3vw,1rem)] font-semibold tracking-tight text-[var(--navy-100)] transition-colors hover:text-[var(--accent)]`}
               >
                 {branding.site_title}
               </Link>
               <nav className="flex items-center justify-self-end gap-1.5 sm:gap-2 text-sm shrink-0">
                 <AdminDashboardLink />
+                <Link href="/blog" className="theme-toggle whitespace-nowrap" title="Read the blog">
+                  <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5" />
+                  </svg>
+                  <span>Blog</span>
+                </Link>
                 <Link
                   href="/resume-builder"
                   className="theme-toggle whitespace-nowrap"
@@ -100,6 +112,26 @@ export default async function RootLayout({
                   </svg>
                   <span className="sm:hidden">Resume</span>
                   <span className="hidden sm:inline">Resume Builder</span>
+                </Link>
+                <Link
+                  href="/cover-letter"
+                  className="theme-toggle whitespace-nowrap"
+                  title="Build your cover letter"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 3.5h16v17H4zM7.5 8h9M7.5 12h9M7.5 16h5" />
+                  </svg>
+                  <span className="sm:hidden">Letter</span>
+                  <span className="hidden sm:inline">Cover Letter</span>
                 </Link>
                 <ThemeToggle />
               </nav>

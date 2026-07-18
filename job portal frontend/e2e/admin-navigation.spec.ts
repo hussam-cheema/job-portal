@@ -3,8 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 const dashboardLinks = [
   ["Create job post", "/admin/jobs/new", "Create job post"],
   ["Create page", "/admin/pages/new", "Create page"],
+  ["Create blog post", "/admin/blog/new", "Create blog post"],
   ["Manage jobs", "/admin/jobs", "Job posts"],
   ["Manage pages", "/admin/pages", "Pages"],
+  ["Manage blog posts", "/admin/blog", "Blog posts"],
   ["Contact messages", "/admin/messages", "Contact messages"],
   ["SEO monitor", "/admin/seo", "SEO command center"],
   ["Newsletter subscription", "/admin/newsletter", "Newsletter subscription"],
@@ -113,4 +115,12 @@ test("newsletter page shows subscription count and editable alert template", asy
   await expect(page.getByRole("heading", { name: "Newsletter subscription" })).toBeVisible();
   await expect(page.getByText("6", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Email subject")).toHaveValue(/New Job Alert/);
+});
+
+test("website title position is configurable from settings", async ({ page }) => {
+  await page.goto("/admin/settings");
+  await expect(page.getByRole("radiogroup", { name: "Website title position" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Center" })).toBeChecked();
+  await page.getByText("Beside logo", { exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();
 });

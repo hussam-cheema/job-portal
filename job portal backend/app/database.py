@@ -147,6 +147,7 @@ def _reset_app_tables() -> None:
         "job_attachments",
         "contact_messages",
         "pages",
+        "blog_posts",
         "jobs",
         "users",
         "password_reset_attempts",

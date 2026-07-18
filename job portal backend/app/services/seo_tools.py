@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import env, site_url
 from app.logging_config import get_logger
-from app.models import Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting
+from app.models import BlogPost, Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting
 
 logger = get_logger("jobportal.seo_tools")
 
@@ -62,6 +62,7 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/contact", "changefreq": "monthly", "priority": 0.5},
         {"loc": f"{base}/privacy", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/disclaimer", "changefreq": "yearly", "priority": 0.3},
+        {"loc": f"{base}/blog", "changefreq": "daily", "priority": 0.8},
     ]
     try:
         for job in db.execute(select(Job)).scalars().all():
@@ -84,6 +85,21 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     "lastmod": (page.updated_at or datetime.utcnow()).date().isoformat(),
                     "changefreq": "monthly",
                     "priority": 0.5,
+                }
+            )
+        now = datetime.utcnow()
+        for post in db.execute(
+            select(BlogPost).where(
+                BlogPost.is_published.is_(True),
+                (BlogPost.published_at.is_(None) | (BlogPost.published_at <= now)),
+            )
+        ).scalars().all():
+            urls.append(
+                {
+                    "loc": f"{base}/blog/{post.slug}",
+                    "lastmod": (post.updated_at or post.published_at or now).date().isoformat(),
+                    "changefreq": "weekly",
+                    "priority": 0.7,
                 }
             )
     except Exception:

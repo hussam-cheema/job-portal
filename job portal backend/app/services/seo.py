@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import cfg, site_name, site_url
 from app.logging_config import get_logger
-from app.models import Job, Page, SEOMeta, SEOMetric
+from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric
 from app.utils import strip_html
 
 logger = get_logger("jobportal.seo")
@@ -232,6 +232,87 @@ def delete_seo(db: Session, entity_type: str, entity_id: str) -> None:
         ).delete()
     except Exception:
         logger.exception("delete_seo failed %s %s", entity_type, entity_id)
+
+
+def upsert_blog_seo(
+    db: Session, post: BlogPost, seo_override: dict | None = None
+) -> SEOMeta:
+    try:
+        from app.services.yoast import analyze_yoast
+
+        existing = db.execute(
+            select(SEOMeta).where(
+                SEOMeta.entity_type == "blog", SEOMeta.entity_id == post.id
+            )
+        ).scalar_one_or_none()
+        ov = seo_override or {}
+        auto_title = f"{post.title} | {site_name()}"
+        auto_desc = (post.excerpt or strip_html(post.content or "", 160)).strip()
+        auto_desc = auto_desc or f"{post.title} — {site_name()}"
+        title = (ov.get("meta_title") or auto_title)[:300]
+        desc = (ov.get("meta_description") or auto_desc)[:500]
+        keywords = ov.get("meta_keywords") or ", ".join(
+            dict.fromkeys(
+                [post.category or "", *(post.tags or []), "Pakistan jobs", site_name()]
+            )
+        ).strip(", ")
+        focus = (ov.get("focus_keyword") or "").strip() or None
+        path = f"/blog/{post.slug}"
+        analysis = analyze_yoast(
+            title=post.title,
+            content_html=post.content or "",
+            meta_title=title,
+            meta_description=desc,
+            focus_keyword=focus,
+            slug=post.slug,
+        )
+        structured = {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "headline": post.title,
+            "description": desc,
+            "articleBody": strip_html(post.content or "", 10000),
+            "datePublished": post.published_at.isoformat() if post.published_at else None,
+            "dateModified": post.updated_at.isoformat() if post.updated_at else None,
+            "author": {"@type": "Person", "name": post.author or site_name()},
+            "mainEntityOfPage": _canonical(path),
+            "url": _canonical(path),
+            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": site_url()},
+        }
+        values = {
+            "slug": post.slug,
+            "meta_title": title,
+            "meta_description": desc,
+            "meta_keywords": keywords,
+            "focus_keyword": focus,
+            "seo_score": analysis["seo_score"],
+            "readability_score": analysis["readability_score"],
+            "analysis": analysis,
+            "og_title": title,
+            "og_description": desc,
+            "canonical_url": _canonical(path),
+            "robots": str(cfg("seo", "default_robots", default="index,follow")),
+            "structured_data": structured,
+            "h1": post.title[:300],
+            "updated_at": datetime.utcnow(),
+        }
+        if existing:
+            for key, value in values.items():
+                setattr(existing, key, value)
+            db.add(existing)
+            return existing
+        row = SEOMeta(
+            id=str(uuid4()),
+            entity_type="blog",
+            entity_id=post.id,
+            created_at=datetime.utcnow(),
+            **values,
+        )
+        db.add(row)
+        return row
+    except Exception:
+        logger.exception("upsert_blog_seo failed post_id=%s", getattr(post, "id", None))
+        raise
 
 
 def build_seo_dashboard(db: Session) -> dict[str, Any]:

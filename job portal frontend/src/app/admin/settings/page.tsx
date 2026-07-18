@@ -17,6 +17,9 @@ export default function SettingsPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [siteTitle, setSiteTitle] = useState("PakJobs Jobs in Pakistan");
+  const [siteTitleAlignment, setSiteTitleAlignment] = useState<
+    "beside_logo" | "center" | "right"
+  >("center");
   const [siteHeader, setSiteHeader] = useState(
     "Latest government & private job openings in Pakistan"
   );
@@ -37,6 +40,7 @@ export default function SettingsPage() {
     void fetchBranding().then((branding) => {
       setLogoUrl(branding.logo_url);
       setSiteTitle(branding.site_title);
+      setSiteTitleAlignment(branding.site_title_alignment);
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
@@ -52,11 +56,13 @@ export default function SettingsPage() {
     try {
       const branding = await adminUpdateBranding(token, {
         site_title: siteTitle.trim(),
+        site_title_alignment: siteTitleAlignment,
         site_header: siteHeader.trim(),
         site_description: siteDescription.trim(),
         footer_copyright: footerCopyright.trim(),
       });
       setSiteTitle(branding.site_title);
+      setSiteTitleAlignment(branding.site_title_alignment);
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
@@ -151,6 +157,35 @@ export default function SettingsPage() {
                 onChange={(event) => setSiteTitle(event.target.value)}
               />
             </div>
+            <fieldset>
+              <legend className="field-label">Website title position</legend>
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Website title position">
+                {([
+                  ["beside_logo", "Beside logo"],
+                  ["center", "Center"],
+                  ["right", "Right"],
+                ] as const).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className={`cursor-pointer rounded-lg border px-3 py-2 text-center text-sm transition-colors ${
+                      siteTitleAlignment === value
+                        ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--navy-100)]"
+                        : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--navy-500)]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="site-title-alignment"
+                      value={value}
+                      checked={siteTitleAlignment === value}
+                      onChange={() => setSiteTitleAlignment(value)}
+                      className="sr-only"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <div>
               <label className="field-label" htmlFor="site-header">Website header</label>
               <input

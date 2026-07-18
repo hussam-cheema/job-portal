@@ -194,6 +194,40 @@ export type PageItem = {
   updated_at?: string | null;
 };
 
+export type BlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt?: string | null;
+  content: string;
+  author?: string | null;
+  category?: string | null;
+  tags: string[];
+  is_published: boolean;
+  published_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type BlogListResponse = {
+  items: BlogPost[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+};
+
+export type BlogFilters = { categories: string[]; tags: string[] };
+
+export type BlogFormData = Omit<BlogPost, "id" | "created_at" | "updated_at"> & {
+  seo?: {
+    focus_keyword?: string | null;
+    meta_title?: string | null;
+    meta_description?: string | null;
+    meta_keywords?: string | null;
+  };
+};
+
 export type ContactMessage = {
   id: string;
   name: string;
@@ -237,6 +271,7 @@ export type SEODashboard = {
 export type Branding = {
   site_name: string;
   site_title: string;
+  site_title_alignment: "beside_logo" | "center" | "right";
   site_header: string;
   site_description: string;
   footer_copyright: string;

@@ -1059,3 +1059,111 @@ iframe {
     padding: 0.65rem;
   }
 }
+
+/* Cover Letter Builder - A4 document layout mirrors the supplied reference. */
+.cover-letter-preview-shell {
+  overflow: auto;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: #cbd5e1;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.cover-letter-paper {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 12mm 8mm 16mm;
+  background: #fff;
+  color: #090909;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8.7pt;
+  line-height: 1.48;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.16);
+}
+
+.cover-letter-document-header {
+  text-align: center;
+}
+
+.cover-letter-document-header h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17pt;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.cover-letter-document-header p {
+  margin: 0.8mm 0 3.5mm;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 8pt;
+  letter-spacing: 0.04em;
+}
+
+.cover-letter-contact-line {
+  display: flex;
+  min-height: 10mm;
+  align-items: center;
+  justify-content: center;
+  gap: 3mm;
+  border-top: 0.25mm solid #9b9b9b;
+  border-bottom: 0.25mm solid #9b9b9b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 7.2pt;
+  white-space: nowrap;
+}
+
+.cover-letter-contact-line i {
+  color: #d20b20;
+  font-size: 8pt;
+  font-style: normal;
+}
+
+.cover-letter-body {
+  padding: 0 10mm;
+}
+
+.cover-letter-body > p {
+  margin: 0 0 5mm;
+}
+
+.cover-letter-date {
+  margin: 6mm 0 5mm !important;
+  text-align: right;
+}
+
+.cover-letter-recipient {
+  margin-bottom: 7mm;
+}
+
+.cover-letter-recipient p {
+  margin: 0;
+}
+
+.cover-letter-signature {
+  margin-top: 1mm;
+}
+
+.cover-letter-signature p {
+  margin: 0 0 1mm;
+}
+
+.cover-letter-signature strong {
+  color: #d20b20;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12.5pt;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .cover-letter-preview-shell {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+    padding: 0.65rem;
+  }
+}

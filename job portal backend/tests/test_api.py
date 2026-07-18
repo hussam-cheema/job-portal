@@ -199,6 +199,7 @@ def test_admin_can_update_public_branding_text(client: TestClient):
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
     payload = {
         "site_title": "PakistanJobs Jobs in Pakistan",
+        "site_title_alignment": "right",
         "site_header": "Current jobs across Pakistan",
         "site_description": "A description controlled from the admin dashboard.",
         "footer_copyright": "Copyrights © {year} - PakistanJobs All rights reserved",
@@ -207,6 +208,7 @@ def test_admin_can_update_public_branding_text(client: TestClient):
 
     assert updated.status_code == 200
     assert updated.json()["site_name"] == "PakJobs"
+    assert updated.json()["site_title_alignment"] == "right"
     assert updated.json()["logo_url"] is None
     public = client.get("/api/settings/branding")
     assert public.status_code == 200
@@ -1927,3 +1929,99 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
     sitemap = client.get("/api/sitemap-data")
     assert sitemap.status_code == 200
     assert any(url["loc"].endswith(f"/jobs/{slug}") for url in sitemap.json()["urls"])
+
+
+def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    published = client.post(
+        "/api/admin/blog",
+        headers=auth,
+        json={
+            "slug": "how-to-prepare-for-fpsc",
+            "title": "How to Prepare for FPSC Jobs",
+            "excerpt": "A practical preparation guide.",
+            "content": "<h2>Preparation</h2><p>Build a focused study plan for FPSC exams.</p>",
+            "author": "PakistanJobs Editorial Team",
+            "category": "Career Advice",
+            "tags": ["FPSC", "Exam Preparation"],
+            "is_published": True,
+            "published_at": "2026-07-18T12:00:00",
+            "seo": {
+                "focus_keyword": "FPSC preparation",
+                "meta_title": "How to Prepare for FPSC Jobs",
+                "meta_description": "A focused FPSC preparation guide for candidates in Pakistan.",
+            },
+        },
+    )
+    assert published.status_code == 200, published.text
+    post = published.json()
+
+    draft = client.post(
+        "/api/admin/blog",
+        headers=auth,
+        json={
+            "slug": "private-draft",
+            "title": "Private Draft",
+            "content": "<p>Not public yet.</p>",
+            "tags": [],
+            "is_published": False,
+        },
+    )
+    assert draft.status_code == 200
+
+    public = client.get("/api/blog?q=prepare&category=Career%20Advice&tag=FPSC&page=1&page_size=1")
+    assert public.status_code == 200
+    assert public.json()["total"] == 1
+    assert public.json()["items"][0]["slug"] == post["slug"]
+    assert all(item["slug"] != "private-draft" for item in public.json()["items"])
+
+    filters = client.get("/api/blog/filters")
+    assert filters.status_code == 200
+    assert "Career Advice" in filters.json()["categories"]
+    assert "FPSC" in filters.json()["tags"]
+
+    detail = client.get(f"/api/blog/{post['slug']}")
+    assert detail.status_code == 200
+    assert detail.json()["author"] == "PakistanJobs Editorial Team"
+    assert client.get("/api/blog/private-draft").status_code == 404
+
+    seo = client.get(f"/api/seo/blog/{post['id']}")
+    assert seo.status_code == 200
+    assert seo.json()["entity_type"] == "blog"
+    assert seo.json()["focus_keyword"] == "FPSC preparation"
+    assert seo.json()["structured_data"]["@type"] == "BlogPosting"
+
+    updated = client.put(
+        f"/api/admin/blog/{post['id']}",
+        headers=auth,
+        json={"title": "FPSC Preparation Guide", "tags": ["FPSC", "Interview"]},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "FPSC Preparation Guide"
+
+    admin = client.get("/api/admin/blog?status=draft", headers=auth)
+    assert admin.status_code == 200
+    assert admin.json()["total"] == 1
+    assert admin.json()["items"][0]["slug"] == "private-draft"
+
+    sitemap = client.get("/api/sitemap-data")
+    assert any(
+        url["loc"].endswith(f"/blog/{post['slug']}")
+        for url in sitemap.json()["urls"]
+    )
+
+    deleted = client.delete(f"/api/admin/blog/{post['id']}", headers=auth)
+    assert deleted.status_code == 200
+    assert client.get(f"/api/seo/blog/{post['id']}").json() is None
+    assert client.get(f"/api/blog/{post['slug']}").status_code == 404
+
+
+def test_blog_admin_routes_require_authentication(client: TestClient):
+    assert client.get("/api/admin/blog").status_code == 401
+    assert client.post(
+        "/api/admin/blog",
+        json={"slug": "blocked", "title": "Blocked", "content": "", "tags": []},
+    ).status_code == 401

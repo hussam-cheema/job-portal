@@ -113,6 +113,25 @@ class Page(Base):
     )
 
 
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(400), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    author: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
+    tags: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class ContactMessage(Base):
     __tablename__ = "contact_messages"
 
@@ -129,7 +148,7 @@ class SEOMeta(Base):
     __tablename__ = "seo_meta"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # job | page
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # job | page | blog
     entity_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     slug: Mapped[Optional[str]] = mapped_column(String(400), nullable=True, index=True)
     meta_title: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)

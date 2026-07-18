@@ -6,9 +6,10 @@ type Props = {
   total: number;
   query: Record<string, string | undefined>;
   basePath?: string;
+  itemLabel?: string;
 };
 
-export function Pagination({ page, pages, total, query, basePath = "/" }: Props) {
+export function Pagination({ page, pages, total, query, basePath = "/", itemLabel = "job" }: Props) {
   const hrefFor = (p: number) => {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([k, v]) => {
@@ -21,7 +22,7 @@ export function Pagination({ page, pages, total, query, basePath = "/" }: Props)
   return (
     <div className="px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[var(--border)] text-sm">
       <span className="text-[var(--muted)]">
-        {total} job{total === 1 ? "" : "s"}
+        {total} {itemLabel}{total === 1 ? "" : "s"}
         {pages > 1 ? ` · Page ${page} of ${pages}` : ""}
       </span>
       {pages > 1 && (
