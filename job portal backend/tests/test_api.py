@@ -1959,6 +1959,17 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
     assert published.status_code == 200, published.text
     post = published.json()
 
+    admin_detail = client.get(f"/api/admin/blog/{post['id']}", headers=auth)
+    assert admin_detail.status_code == 200
+    assert admin_detail.json()["title"] == "How to Prepare for FPSC Jobs"
+    assert admin_detail.json()["excerpt"] == "A practical preparation guide."
+    assert admin_detail.json()["content"] == (
+        "<h2>Preparation</h2><p>Build a focused study plan for FPSC exams.</p>"
+    )
+    assert admin_detail.json()["author"] == "PakistanJobs Editorial Team"
+    assert admin_detail.json()["category"] == "Career Advice"
+    assert admin_detail.json()["tags"] == ["FPSC", "Exam Preparation"]
+
     draft = client.post(
         "/api/admin/blog",
         headers=auth,

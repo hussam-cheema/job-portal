@@ -19,6 +19,7 @@ import type {
   BlogListResponse,
   BlogPost,
 } from "./types";
+import { removeAdminSession } from "./adminSession";
 
 const API_BASE = (
   process.env.INTERNAL_API_URL ||
@@ -122,6 +123,18 @@ async function requestJson<T>(
 
   if (!response.ok) {
     const errorBody = body as ApiErrorBody;
+    const requestHeaders = new Headers(init.headers);
+    const isAuthenticatedAdminRequest = Boolean(
+      requestHeaders.get("Authorization") && path.startsWith("/api/admin/")
+    );
+    if (response.status === 401 && isAuthenticatedAdminRequest) {
+      removeAdminSession();
+      throw new ApiRequestError(
+        "Your admin session expired. Please sign in again.",
+        path,
+        response.status
+      );
+    }
     throw new ApiRequestError(
       errorBody.detail || errorBody.message || fallbackMessage,
       path,

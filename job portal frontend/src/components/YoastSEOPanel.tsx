@@ -61,6 +61,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
   useEffect(() => {
     const token = getAdminToken();
     if (!token) return;
+    const controller = new AbortController();
     const t = setTimeout(async () => {
       setBusy(true);
       setAnalysisError("");
@@ -72,17 +73,22 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error(`SEO analysis failed (${res.status})`);
         setAnalysis(await res.json());
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("SEO analysis failed", error);
         setAnalysisError("SEO analysis is temporarily unavailable.");
       } finally {
         setBusy(false);
       }
     }, 400);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
   }, [payload]);
 
   function set<K extends keyof YoastSEOValue>(key: K, v: string) {

@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { AdminShell } from "@/components/AdminShell";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { TagInput } from "@/components/TagInput";
 import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
-import { API_BASE, adminGetBlogPost, adminSaveBlogPost } from "@/lib/api";
+import { API_BASE, adminGetBlogPost, adminSaveBlogPost, adminUpload } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 
 function slugify(value: string) {
@@ -27,37 +27,62 @@ export default function AdminBlogFormPage() {
   const router = useRouter();
   const isNew = !params?.id || params.id === "new";
   const postId = isNew ? null : String(params.id);
-  const { token } = useAdminAuth();
+  const { token, ready } = useAdminAuth();
   const [form, setForm] = useState({
     title: "", slug: "", excerpt: "", content: "", author: "", category: "",
     tags: [] as string[], is_published: false, published_at: "",
   });
   const [seo, setSeo] = useState<YoastSEOValue>({ focus_keyword: "", meta_title: "", meta_description: "", meta_keywords: "" });
   const [slugTouched, setSlugTouched] = useState(false);
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    if (!token || !postId) { setLoading(false); return; }
+    if (!ready) return;
+    if (!postId) { setLoading(false); return; }
+    if (!token) { setLoading(false); return; }
     let cancelled = false;
-    Promise.all([
-      adminGetBlogPost(token, postId),
-      fetch(`${API_BASE}/api/seo/blog/${postId}`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null),
-    ]).then(([post, meta]) => {
-      if (cancelled) return;
-      setForm({
-        title: post.title, slug: post.slug, excerpt: post.excerpt || "", content: post.content,
-        author: post.author || "", category: post.category || "", tags: post.tags || [],
-        is_published: post.is_published, published_at: toDateTimeInput(post.published_at),
-      });
-      setSlugTouched(true);
-      if (meta) setSeo({ focus_keyword: meta.focus_keyword || "", meta_title: meta.meta_title || "", meta_description: meta.meta_description || "", meta_keywords: meta.meta_keywords || "" });
-    }).catch((e) => !cancelled && setError(e instanceof Error ? e.message : "Failed to load blog post"))
-      .finally(() => !cancelled && setLoading(false));
+    async function loadPost() {
+      try {
+        // The post is authoritative for the editor. Do not make pre-filling wait
+        // for the optional SEO request, which may be cold or temporarily fail.
+        const post = await adminGetBlogPost(token as string, postId as string);
+        if (cancelled) return;
+        setForm({
+          title: post.title, slug: post.slug, excerpt: post.excerpt || "", content: post.content,
+          author: post.author || "", category: post.category || "", tags: post.tags || [],
+          is_published: post.is_published, published_at: toDateTimeInput(post.published_at),
+        });
+        setSlugTouched(true);
+        setLoading(false);
+
+        try {
+          const response = await fetch(`${API_BASE}/api/seo/blog/${postId}`, { cache: "no-store" });
+          const meta = response.ok ? await response.json() : null;
+          if (!cancelled && meta) {
+            setSeo({ focus_keyword: meta.focus_keyword || "", meta_title: meta.meta_title || "", meta_description: meta.meta_description || "", meta_keywords: meta.meta_keywords || "" });
+          }
+        } catch {
+          // The editor remains usable when the optional SEO record is unavailable.
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load blog post");
+          setLoading(false);
+        }
+      }
+    }
+    void loadPost();
     return () => { cancelled = true; };
-  }, [postId, token]);
+  }, [postId, ready, token]);
+
+  const uploadImage = useCallback(async (file: File) => {
+    if (!token) throw new Error("Your admin session expired. Please sign in again.");
+    const uploaded = await adminUpload(token, file);
+    return uploaded.public_url;
+  }, [token]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -91,7 +116,7 @@ export default function AdminBlogFormPage() {
       <div><label className="field-label">Excerpt</label><textarea className="input min-h-24" value={form.excerpt} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} maxLength={600} placeholder="A concise summary shown in the blog listing" /></div>
       <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label">Author</label><input className="input" value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} /></div><div><label className="field-label">Category</label><input className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Career Advice" /></div></div>
       <div><label className="field-label">Tags</label><TagInput values={form.tags} onChange={(tags) => setForm({ ...form, tags })} placeholder="Type a tag and press Enter" /></div>
-      <div><label className="field-label">Article content</label><RichTextEditor key={`blog-${postId || "new"}`} value={form.content} onChange={(content) => setForm({ ...form, content })} placeholder="Write the blog post…" /></div>
+      <div><label className="field-label">Article content</label><RichTextEditor key={`blog-${postId || "new"}`} value={form.content} onChange={(content) => setForm((previous) => ({ ...previous, content }))} onUploadImage={uploadImage} placeholder="Write the blog post…" /></div>
       <div className="grid gap-4 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm text-[var(--navy-200)]"><input type="checkbox" checked={form.is_published} onChange={(e) => setForm({ ...form, is_published: e.target.checked })} /> Published</label><div><label className="field-label">Publish date and time</label><input type="datetime-local" className="input" value={form.published_at} onChange={(e) => setForm({ ...form, published_at: e.target.value })} /></div></div>
       <YoastSEOPanel title={form.title} content={form.content} slug={`blog/${form.slug}`} value={seo} onChange={setSeo} />
       <div className="flex gap-2 border-t border-[var(--border)] pt-5"><button className="btn btn-primary" disabled={saving}>{saving ? "Saving…" : "Save post"}</button><AdminRouteLink href="/admin/blog" className="btn btn-ghost">Cancel</AdminRouteLink></div>

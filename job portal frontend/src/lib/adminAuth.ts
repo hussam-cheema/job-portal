@@ -1,30 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  ADMIN_AUTH_EVENT,
+  ADMIN_TOKEN_KEY,
+  ADMIN_USER_KEY,
+  readAdminToken,
+  removeAdminSession,
+  writeAdminSession,
+} from "./adminSession";
 
-const TOKEN_KEY = "pakjobs-admin-token";
-const USER_KEY = "pakjobs-admin-user";
-export const AUTH_EVENT = "pakjobs-auth-change";
+export const AUTH_EVENT = ADMIN_AUTH_EVENT;
 
 export function getAdminToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return readAdminToken();
 }
 
 export function setAdminSession(token: string, username: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(USER_KEY, username);
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(AUTH_EVENT));
-  }
+  writeAdminSession(token, username);
 }
 
 export function clearAdminSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(AUTH_EVENT));
-  }
+  removeAdminSession();
 }
 
 export function useAdminAuth() {
@@ -33,12 +31,12 @@ export function useAdminAuth() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setToken(localStorage.getItem(TOKEN_KEY));
-    setUsername(localStorage.getItem(USER_KEY));
+    setToken(localStorage.getItem(ADMIN_TOKEN_KEY));
+    setUsername(localStorage.getItem(ADMIN_USER_KEY));
     setReady(true);
     const sync = () => {
-      setToken(localStorage.getItem(TOKEN_KEY));
-      setUsername(localStorage.getItem(USER_KEY));
+      setToken(localStorage.getItem(ADMIN_TOKEN_KEY));
+      setUsername(localStorage.getItem(ADMIN_USER_KEY));
     };
     window.addEventListener(AUTH_EVENT, sync);
     window.addEventListener("storage", sync);

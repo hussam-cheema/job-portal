@@ -43,32 +43,38 @@ export default async function BlogPage({ searchParams }: Props) {
       </form>
 
       {result.items.length ? (
-        <div className="card-panel overflow-hidden">
-          <div className="grid gap-px bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-4">
+          <div className="grid gap-4">
             {result.items.map((post) => (
-              <article key={post.id} className="flex min-h-64 flex-col bg-[var(--panel)] p-5 sm:p-6">
-                <div className="flex flex-wrap gap-2 text-xs text-[var(--muted)]">
-                  <span>{formatDate(post.published_at || post.created_at)}</span>
-                  {post.category && <span>· {post.category}</span>}
-                </div>
-                <h2 className="mt-3 text-xl font-semibold leading-snug text-[var(--navy-100)]">
-                  <Link href={`/blog/${post.slug}`} className="hover:text-[var(--accent)]">{post.title}</Link>
-                </h2>
-                <p className="mt-3 line-clamp-4 text-sm leading-6 text-[var(--navy-300)]">
-                  {post.excerpt || stripHtml(post.content).slice(0, 220)}
-                </p>
-                {post.tags.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {post.tags.slice(0, 4).map((tag) => <span key={tag} className="tag tag-blue">{tag}</span>)}
+              <article key={post.id} data-testid="blog-card" className="blog-list-card card-panel group p-5 sm:p-7">
+                <div className="grid min-w-0 gap-5 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-center">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)] sm:block">
+                    <time className="font-medium text-[var(--navy-300)]">{formatDate(post.published_at || post.created_at)}</time>
+                    {post.category && <div className="mt-0 sm:mt-3"><span className="tag tag-blue">{post.category}</span></div>}
                   </div>
-                )}
-                <Link href={`/blog/${post.slug}`} className="mt-auto pt-5 text-sm font-semibold text-[var(--accent)]">
-                  Read article →
-                </Link>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-semibold leading-snug text-[var(--navy-100)] sm:text-2xl">
+                      <Link href={`/blog/${post.slug}`} className="break-words transition-colors group-hover:text-[var(--accent)]">{post.title}</Link>
+                    </h2>
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--navy-300)]">
+                      {post.excerpt || stripHtml(post.content).slice(0, 260)}
+                    </p>
+                    {post.tags.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {post.tags.slice(0, 5).map((tag) => <span key={tag} className="tag tag-blue">{tag}</span>)}
+                      </div>
+                    )}
+                  </div>
+                  <Link href={`/blog/${post.slug}`} className="btn btn-ghost w-fit whitespace-nowrap text-sm font-semibold group-hover:border-[var(--accent)] group-hover:text-[var(--accent)]">
+                    Read article →
+                  </Link>
+                </div>
               </article>
             ))}
           </div>
-          <Pagination page={result.page} pages={result.pages} total={result.total} query={query} basePath="/blog" itemLabel="post" />
+          <div className="card-panel">
+            <Pagination page={result.page} pages={result.pages} total={result.total} query={query} basePath="/blog" itemLabel="post" />
+          </div>
         </div>
       ) : (
         <div className="card-panel p-8 text-center text-[var(--muted)]">

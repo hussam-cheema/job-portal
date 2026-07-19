@@ -4,6 +4,7 @@ const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Content-Type": "application/json",
   });
   response.end(JSON.stringify(value));
@@ -12,6 +13,10 @@ const json = (response, value, status = 200) => {
 const server = createServer((request, response) => {
   if (request.method === "OPTIONS") return json(response, {});
   const path = new URL(request.url || "/", "http://127.0.0.1:4010").pathname;
+  const authorization = request.headers.authorization || "";
+  if (path.startsWith("/api/admin/blog") && authorization === "Bearer expired-e2e-token") {
+    return json(response, { detail: "Invalid token" }, 401);
+  }
   if (path === "/ready") return json(response, { status: "ready" });
   if (path === "/api/settings/branding") {
     return json(response, {
@@ -96,7 +101,7 @@ const server = createServer((request, response) => {
   const blogPost = {
     id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
     excerpt: "A practical preparation guide for candidates in Pakistan.",
-    content: "<h2>Build a study plan</h2><p>Use the syllabus and practice consistently.</p>",
+    content: "<h2>Build a study plan</h2><p>Use the syllabus and practice consistently.</p><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><tbody><tr><td>Wide legacy table content</td><td>Second column</td></tr></tbody></table>",
     author: "PakistanJobs Editorial Team", category: "Career Advice",
     tags: ["FPSC", "Exam Preparation"], is_published: true,
     published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",
@@ -106,6 +111,9 @@ const server = createServer((request, response) => {
   if (path === "/api/blog/filters") return json(response, { categories: ["Career Advice"], tags: ["FPSC", "Exam Preparation"] });
   if (path === "/api/blog/fpsc-preparation-guide") return json(response, blogPost);
   if (path === "/api/admin/blog") return json(response, { items: [blogPost], total: 1, page: 1, page_size: 25, pages: 1 });
+  if (path === "/api/admin/blog/blog-1" && request.method === "PUT") {
+    return json(response, { ...blogPost, updated_at: new Date().toISOString() });
+  }
   if (path === "/api/admin/blog/blog-1") return json(response, blogPost);
   if (path === "/api/seo/blog/blog-1") return json(response, { entity_type: "blog", entity_id: "blog-1", focus_keyword: "FPSC preparation", meta_title: "FPSC Preparation Guide", meta_description: blogPost.excerpt, meta_keywords: "FPSC, exam preparation" });
   if (path === "/api/admin/seo/yoast/analyze") return json(response, { seo_score: 82, readability_score: 78, seo_status: "good", readability_status: "good", word_count: 10, checks: [], snippet: { title: "FPSC Preparation Guide", description: blogPost.excerpt, url: "/blog/fpsc-preparation-guide" } });
