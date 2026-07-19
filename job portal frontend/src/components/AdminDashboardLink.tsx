@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AUTH_EVENT, getAdminToken } from "@/lib/adminAuth";
+import { UiIcon } from "@/components/UiIcon";
 
 /** Shows Dashboard link only when an admin session token exists. */
 export function AdminDashboardLink() {
@@ -24,8 +25,9 @@ export function AdminDashboardLink() {
   if (!loggedIn) return null;
 
   return (
-    <Link href="/admin" className="theme-toggle" title="Admin dashboard">
-      Dashboard
+    <Link href="/admin" className="site-action" title="Admin dashboard">
+      <span className="site-action-icon"><UiIcon name="dashboard" /></span>
+      <span className="site-action-label">Dashboard</span>
     </Link>
   );
 }

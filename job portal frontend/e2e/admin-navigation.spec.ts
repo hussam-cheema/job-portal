@@ -124,3 +124,33 @@ test("website title position is configurable from settings", async ({ page }) =>
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();
 });
+
+test("modern header and admin workspace keep their responsive layout", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/admin/jobs");
+
+  const header = page.locator(".site-header");
+  const headerActions = page.locator(".site-actions");
+  const sidebar = page.locator(".admin-nav");
+  const content = page.locator(".admin-content");
+  await expect(header).toBeVisible();
+  await expect(headerActions).toHaveCSS("display", "flex");
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(13);
+
+  const headerBox = await header.boundingBox();
+  const sidebarBox = await sidebar.boundingBox();
+  const contentBox = await content.boundingBox();
+  expect(headerBox?.height).toBeLessThan(100);
+  expect(sidebarBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect((contentBox?.x || 0)).toBeGreaterThan((sidebarBox?.x || 0) + (sidebarBox?.width || 0));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Open admin menu" })).toBeVisible();
+  await expect(sidebar).toBeHidden();
+  await page.getByRole("button", { name: "Open admin menu" }).click();
+  await expect(sidebar).toBeVisible();
+  await expect(page.locator("body")).toHaveCSS("overflow-x", "hidden");
+});

@@ -101,7 +101,7 @@ const server = createServer((request, response) => {
   const blogPost = {
     id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
     excerpt: "A practical preparation guide for candidates in Pakistan.",
-    content: "<h2>Build a study plan</h2><p>Use the syllabus and practice consistently.</p><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><tbody><tr><td>Wide legacy table content</td><td>Second column</td></tr></tbody></table>",
+    content: "<h2>Build a study plan</h2><p><span data-testid=\"pasted-rich-text\" style=\"background-color: rgb(255, 255, 255); color: rgb(0, 0, 0)\">Use the syllabus and practice consistently.</span></p><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><tbody><tr><td>Wide legacy table content</td><td>Second column</td></tr></tbody></table>",
     author: "PakistanJobs Editorial Team", category: "Career Advice",
     tags: ["FPSC", "Exam Preparation"], is_published: true,
     published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",

@@ -2,48 +2,51 @@
 
 import { AdminShell } from "@/components/AdminShell";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
+import { UiIcon, type UiIconName } from "@/components/UiIcon";
+
+const ACTIONS: Array<{ href: string; label: string; description: string; icon: UiIconName; primary?: boolean }> = [
+  { href: "/admin/jobs/new", label: "Create job post", description: "Publish a new opportunity", icon: "briefcase", primary: true },
+  { href: "/admin/blog/new", label: "Create blog post", description: "Write an SEO-ready article", icon: "blog", primary: true },
+  { href: "/admin/pages/new", label: "Create page", description: "Add a public CMS page", icon: "page", primary: true },
+  { href: "/admin/jobs", label: "Manage jobs", description: "Review, edit or remove jobs", icon: "briefcase" },
+  { href: "/admin/blog", label: "Manage blog posts", description: "Organize published articles", icon: "article" },
+  { href: "/admin/pages", label: "Manage pages", description: "Maintain website content", icon: "page" },
+  { href: "/admin/messages", label: "Contact messages", description: "Read audience enquiries", icon: "mail" },
+  { href: "/admin/analytics", label: "Site analytics", description: "Track real-time visitors", icon: "analytics" },
+  { href: "/admin/seo", label: "SEO monitor", description: "Improve search visibility", icon: "search" },
+  { href: "/admin/newsletter", label: "Newsletter subscription", description: "Manage job-alert subscribers", icon: "letter" },
+  { href: "/admin/taxonomy", label: "Tags / categories", description: "Keep taxonomy consistent", icon: "tags" },
+  { href: "/admin/settings", label: "Settings", description: "Branding and account options", icon: "settings" },
+];
 
 export default function AdminHome() {
   return (
     <AdminShell>
-      <div className="card-panel p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-[var(--navy-100)]">Dashboard</h2>
-        <p className="text-sm text-[var(--muted)]">
-          Create and manage job posts manually. Fetch YouTube QnA per job. Edit CMS pages and
-          review contact messages.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <AdminRouteLink href="/admin/jobs/new" className="btn btn-primary">
-            Create job post
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/pages/new" className="btn btn-primary">
-            Create page
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/blog/new" className="btn btn-primary">
-            Create blog post
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/jobs" className="btn btn-ghost">
-            Manage jobs
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/pages" className="btn btn-ghost">
-            Manage pages
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/blog" className="btn btn-ghost">
-            Manage blog posts
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/messages" className="btn btn-ghost">
-            Contact messages
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/seo" className="btn btn-ghost">
-            SEO monitor
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/newsletter" className="btn btn-ghost">
-            Newsletter subscription
-          </AdminRouteLink>
-          <AdminRouteLink href="/admin/taxonomy" className="btn btn-ghost">
-            Tags / categories
-          </AdminRouteLink>
-        </div>
+      <div className="admin-dashboard-home space-y-6">
+        <section className="admin-welcome">
+          <div>
+            <span className="admin-welcome-kicker"><span /> Control center</span>
+            <h2>Dashboard</h2>
+            <p>Create content, monitor growth and manage the complete PakistanJobs experience.</p>
+          </div>
+          <div className="admin-welcome-art" aria-hidden="true"><UiIcon name="dashboard" /></div>
+        </section>
+
+        <section>
+          <div className="admin-section-heading">
+            <div><p>Everything in one place</p><h3>Quick actions</h3></div>
+            <span>{ACTIONS.length} tools</span>
+          </div>
+          <div className="admin-action-grid">
+            {ACTIONS.map((action) => (
+              <AdminRouteLink key={action.href} href={action.href} aria-label={action.label} className={`admin-action-card${action.primary ? " admin-action-primary" : ""}`}>
+                <span className="admin-action-icon"><UiIcon name={action.icon} /></span>
+                <span className="admin-action-copy"><strong>{action.label}</strong><small>{action.description}</small></span>
+                <span className="admin-action-arrow" aria-hidden="true">→</span>
+              </AdminRouteLink>
+            ))}
+          </div>
+        </section>
       </div>
     </AdminShell>
   );

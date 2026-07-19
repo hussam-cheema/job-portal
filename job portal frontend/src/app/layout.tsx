@@ -7,6 +7,7 @@ import { SocialFooterIcons } from "@/components/SocialFooterIcons";
 import { VisitTracker } from "@/components/VisitTracker";
 import { ClientChunkRecovery } from "@/components/ClientChunkRecovery";
 import { ClientErrorReporter } from "@/components/ClientErrorReporter";
+import { UiIcon } from "@/components/UiIcon";
 import { fetchBranding } from "@/lib/api";
 import "./globals.css";
 
@@ -54,20 +55,20 @@ export default async function RootLayout({
         <ClientChunkRecovery />
         <ClientErrorReporter />
         <div className="min-h-screen flex flex-col">
-          <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
-            <div className="site-wrap min-h-14 py-2 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-4">
-              <Link href="/" className="group shrink-0" aria-label={`${branding.site_name} home`}>
+          <header className="site-header">
+            <div className="site-wrap site-header-inner">
+              <Link href="/" className="site-logo group" aria-label={`${branding.site_name} home`}>
                 {branding.logo_url ? (
                   <Image
                     src={branding.logo_url}
                     alt={`${branding.site_name} logo`}
-                    width={32}
-                    height={32}
+                    width={42}
+                    height={42}
                     unoptimized
-                    className="h-8 w-8 shrink-0 rounded object-contain"
+                    className="h-10 w-10 shrink-0 rounded-xl object-contain"
                   />
                 ) : (
-                  <span className="logo-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#5b8def] to-[#2f4f9a] text-sm font-bold shadow-md shadow-blue-900/30">
+                  <span className="logo-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d9cff] to-[#3658b8] text-sm font-extrabold shadow-lg shadow-blue-900/30">
                     PJ
                   </span>
                 )}
@@ -80,58 +81,31 @@ export default async function RootLayout({
                     : branding.site_title_alignment === "right"
                       ? "justify-self-end text-right"
                       : "justify-self-center text-center"
-                } min-w-0 truncate whitespace-nowrap text-[clamp(0.68rem,2.3vw,1rem)] font-semibold tracking-tight text-[var(--navy-100)] transition-colors hover:text-[var(--accent)]`}
+                } site-title min-w-0 truncate whitespace-nowrap`}
               >
                 {branding.site_title}
               </Link>
-              <nav className="flex items-center justify-self-end gap-1.5 sm:gap-2 text-sm shrink-0">
+              <nav className="site-actions" aria-label="Primary navigation">
                 <AdminDashboardLink />
-                <Link href="/blog" className="theme-toggle whitespace-nowrap" title="Read the blog">
-                  <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5" />
-                  </svg>
-                  <span>Blog</span>
+                <Link href="/blog" className="site-action" title="Read the blog">
+                  <span className="site-action-icon"><UiIcon name="blog" /></span>
+                  <span className="site-action-label">Blog</span>
                 </Link>
                 <Link
                   href="/resume-builder"
-                  className="theme-toggle whitespace-nowrap"
+                  className="site-action"
                   title="Build your resume"
                 >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M6 2.75h8l4 4V21.25H6z" />
-                    <path d="M14 2.75v4h4M9 11h6M9 15h6M9 18h4" />
-                  </svg>
-                  <span className="sm:hidden">Resume</span>
-                  <span className="hidden sm:inline">Resume Builder</span>
+                  <span className="site-action-icon"><UiIcon name="resume" /></span>
+                  <span className="site-action-label"><span className="sm:hidden">Resume</span><span className="hidden sm:inline">Resume Builder</span></span>
                 </Link>
                 <Link
                   href="/cover-letter"
-                  className="theme-toggle whitespace-nowrap"
+                  className="site-action"
                   title="Build your cover letter"
                 >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M4 3.5h16v17H4zM7.5 8h9M7.5 12h9M7.5 16h5" />
-                  </svg>
-                  <span className="sm:hidden">Letter</span>
-                  <span className="hidden sm:inline">Cover Letter</span>
+                  <span className="site-action-icon"><UiIcon name="letter" /></span>
+                  <span className="site-action-label"><span className="sm:hidden">Letter</span><span className="hidden sm:inline">Cover Letter</span></span>
                 </Link>
                 <ThemeToggle />
               </nav>

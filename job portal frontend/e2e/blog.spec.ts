@@ -36,6 +36,11 @@ test("blog navigation, filters, article, and share links work", async ({ page })
   });
   expect(layout.contentRight).toBeLessThanOrEqual(layout.articleRight + 1);
   expect(layout.overflowWrap).toBe("anywhere");
+
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  const pastedText = page.locator('[data-testid="pasted-rich-text"]');
+  await expect(pastedText).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(pastedText).not.toHaveCSS("color", "rgb(0, 0, 0)");
 });
 
 test("admin can access the blog list and rich editor with Yoast", async ({ page }) => {

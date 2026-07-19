@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { UiIcon } from "@/components/UiIcon";
 
 type Theme = "dark" | "light";
 
@@ -39,8 +40,8 @@ export function ThemeToggle() {
 
   if (!ready) {
     return (
-      <button type="button" className="theme-toggle" aria-label="Toggle theme" disabled>
-        ··
+      <button type="button" className="site-action" aria-label="Toggle theme" disabled>
+        <span className="site-action-icon"><UiIcon name="sun" /></span>
       </button>
     );
   }
@@ -48,12 +49,13 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="site-action"
       onClick={toggle}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       title={theme === "dark" ? "Light mode" : "Dark mode"}
     >
-      {theme === "dark" ? "☀ Light" : "☾ Dark"}
+      <span className="site-action-icon"><UiIcon name={theme === "dark" ? "sun" : "moon"} /></span>
+      <span className="site-action-label">{theme === "dark" ? "Light" : "Dark"}</span>
     </button>
   );
 }

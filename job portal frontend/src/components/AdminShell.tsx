@@ -4,21 +4,22 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAdminAuth } from "@/lib/adminAuth";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
+import { UiIcon, type UiIconName } from "@/components/UiIcon";
 
-const LINKS = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/jobs", label: "Job posts" },
-  { href: "/admin/jobs/new", label: "Create job" },
-  { href: "/admin/blog", label: "Blog posts" },
-  { href: "/admin/blog/new", label: "Create blog post" },
-  { href: "/admin/taxonomy", label: "Tags / categories" },
-  { href: "/admin/pages", label: "Pages" },
-  { href: "/admin/pages/new", label: "Create page" },
-  { href: "/admin/messages", label: "Messages" },
-  { href: "/admin/analytics", label: "Site analytics" },
-  { href: "/admin/seo", label: "SEO monitor" },
-  { href: "/admin/newsletter", label: "Newsletter subscription" },
-  { href: "/admin/settings", label: "Settings" },
+const LINKS: Array<{ href: string; label: string; icon: UiIconName; group: string }> = [
+  { href: "/admin", label: "Dashboard", icon: "dashboard", group: "Overview" },
+  { href: "/admin/jobs", label: "Job posts", icon: "briefcase", group: "Publishing" },
+  { href: "/admin/jobs/new", label: "Create job", icon: "plus", group: "Publishing" },
+  { href: "/admin/blog", label: "Blog posts", icon: "blog", group: "Publishing" },
+  { href: "/admin/blog/new", label: "Create blog post", icon: "plus", group: "Publishing" },
+  { href: "/admin/taxonomy", label: "Tags / categories", icon: "tags", group: "Content" },
+  { href: "/admin/pages", label: "Pages", icon: "page", group: "Content" },
+  { href: "/admin/pages/new", label: "Create page", icon: "plus", group: "Content" },
+  { href: "/admin/messages", label: "Messages", icon: "mail", group: "Audience" },
+  { href: "/admin/analytics", label: "Site analytics", icon: "analytics", group: "Audience" },
+  { href: "/admin/seo", label: "SEO monitor", icon: "search", group: "Growth" },
+  { href: "/admin/newsletter", label: "Newsletter subscription", icon: "letter", group: "Growth" },
+  { href: "/admin/settings", label: "Settings", icon: "settings", group: "System" },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -61,27 +62,31 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="site-wrap py-4 sm:py-8">
-      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start justify-between gap-3 w-full sm:w-auto">
+    <div className="site-wrap admin-layout py-5 sm:py-8">
+      <div className="admin-topbar">
+        <div className="flex items-center justify-between gap-3 w-full sm:w-auto">
           <div>
-            <h1 className="text-xl sm:text-2xl font-semibold text-[var(--navy-100)]">Admin panel</h1>
-            <p className="text-sm text-[var(--muted)]">Signed in as {username || "admin"}</p>
+            <p className="admin-eyebrow">Content workspace</p>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--navy-100)]">Admin panel</h1>
+              <span className="admin-user-chip"><span aria-hidden="true" />{username || "admin"}</span>
+            </div>
           </div>
           <button
             type="button"
-            className="admin-menu-toggle btn btn-ghost shrink-0"
+            className="admin-menu-toggle admin-icon-button shrink-0"
             onClick={toggleNav}
             aria-expanded={navOpen}
             aria-controls="admin-side-nav"
             aria-label={navOpen ? "Close admin menu" : "Open admin menu"}
           >
-            {navOpen ? "Close" : "Menu"}
+            <UiIcon name={navOpen ? "close" : "menu"} />
+            <span className="sr-only">{navOpen ? "Close" : "Menu"}</span>
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="admin-topbar-actions">
           <AdminRouteLink href="/" className="btn btn-ghost">
-            View site
+            <UiIcon name="external" className="h-4 w-4" /> View site
           </AdminRouteLink>
           <button
             type="button"
@@ -91,7 +96,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               router.push("/login");
             }}
           >
-            Logout
+            <UiIcon name="logout" className="h-4 w-4" /> Logout
           </button>
         </div>
       </div>
@@ -101,15 +106,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           id="admin-side-nav"
           className={`admin-nav${navOpen ? " admin-nav-open" : ""}`}
         >
-          {LINKS.map((l) => (
-            <AdminRouteLink
-              key={l.href}
-              href={l.href}
-              className={isActive(l.href) ? "active" : ""}
-              onClick={() => setNavOpen(false)}
-            >
-              {l.label}
-            </AdminRouteLink>
+          <div className="admin-nav-heading">
+            <span className="admin-nav-mark"><UiIcon name="dashboard" /></span>
+            <span><strong>Workspace</strong><small>Manage PakistanJobs</small></span>
+          </div>
+          {[...new Set(LINKS.map((link) => link.group))].map((group) => (
+            <div className="admin-nav-section" key={group}>
+              <p className="admin-nav-section-title">{group}</p>
+              {LINKS.filter((link) => link.group === group).map((l) => (
+                <AdminRouteLink
+                  key={l.href}
+                  href={l.href}
+                  className={isActive(l.href) ? "active" : ""}
+                  onClick={() => setNavOpen(false)}
+                >
+                  <span className="admin-nav-icon"><UiIcon name={l.icon} /></span>
+                  <span>{l.label}</span>
+                </AdminRouteLink>
+              ))}
+            </div>
           ))}
         </aside>
         <div className="admin-content min-w-0">{children}</div>
