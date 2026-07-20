@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { useA4PreviewScale } from "@/hooks/useA4PreviewScale";
 
 type Education = {
   school: string;
@@ -36,7 +37,7 @@ type Activity = {
   achievements: string;
 };
 
-const inputClass = "input";
+const inputClass = "builder-input";
 
 const emptyEducation = (): Education => ({
   school: "",
@@ -92,14 +93,19 @@ function ResumeSection({ title, children }: { title: string; children: React.Rea
 
 function RemoveButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button type="button" className="btn btn-ghost text-red-400" onClick={onClick}>
+    <button type="button" className="builder-remove-button" onClick={onClick}>
       Remove {label}
     </button>
   );
 }
 
 export function ResumeBuilder() {
-  const previewRef = useRef<HTMLDivElement>(null);
+  const {
+    documentRef: previewRef,
+    documentStyle,
+    shellRef,
+    stageStyle,
+  } = useA4PreviewScale();
   const [personal, setPersonal] = useState({
     fullName: "",
     address: "",
@@ -140,15 +146,20 @@ export function ResumeBuilder() {
 
   async function downloadPdf() {
     if (!previewRef.current) return;
+    const preview = previewRef.current;
+    const previewTransform = preview.style.transform;
     setDownloading(true);
     setDownloadError(null);
     try {
+      // The live preview is scaled only to fit the browser panel. Capture the
+      // original A4 document so the downloaded PDF keeps its full resolution.
+      preview.style.transform = "none";
       await document.fonts.ready;
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
       ]);
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(preview, {
         backgroundColor: "#ffffff",
         scale: 2.4,
         useCORS: true,
@@ -180,13 +191,14 @@ export function ResumeBuilder() {
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "The PDF could not be created.");
     } finally {
+      preview.style.transform = previewTransform;
       setDownloading(false);
     }
   }
 
   return (
-    <div className="site-wrap py-10">
-      <div className="mb-8 max-w-3xl">
+    <div className="career-builder site-wrap py-10">
+      <div className="builder-intro mb-8 max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
           Free career tool
         </p>
@@ -199,9 +211,9 @@ export function ResumeBuilder() {
         </p>
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
-        <div className="space-y-5">
-          <section className="card-panel p-5">
+      <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
+        <div className="builder-form-stack space-y-5">
+          <section className="builder-form-card">
             <h2 className="text-lg font-semibold text-[var(--navy-100)]">Contact information</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Full name" value={personal.fullName} placeholder="Mary Leannon" onChange={(value) => setPersonal((item) => ({ ...item, fullName: value }))} />
@@ -211,7 +223,7 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="card-panel p-5">
+          <section className="builder-form-card">
             <EditorHeading title="Education" onAdd={() => setEducation((items) => [...items, emptyEducation()])} />
             <div className="mt-4 space-y-5">
               {education.map((item, index) => (
@@ -233,7 +245,7 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="card-panel p-5">
+          <section className="builder-form-card">
             <EditorHeading title="Experience" onAdd={() => setExperience((items) => [...items, emptyExperience()])} />
             <div className="mt-4 space-y-5">
               {experience.map((item, index) => (
@@ -254,7 +266,7 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="card-panel p-5">
+          <section className="builder-form-card">
             <EditorHeading title="University projects" onAdd={() => setProjects((items) => [...items, emptyProject()])} />
             <div className="mt-4 space-y-5">
               {projects.map((item, index) => (
@@ -276,7 +288,7 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="card-panel p-5">
+          <section className="builder-form-card">
             <EditorHeading title="Activities" onAdd={() => setActivities((items) => [...items, emptyActivity()])} />
             <div className="mt-4 space-y-5">
               {activities.map((item, index) => (
@@ -297,7 +309,7 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="card-panel p-5">
+          <section className="builder-form-card">
             <h2 className="text-lg font-semibold text-[var(--navy-100)]">Additional information</h2>
             <div className="mt-4 grid gap-4">
               <Field label="Language skills" value={additional.languages} onChange={(value) => setAdditional((item) => ({ ...item, languages: value }))} />
@@ -308,15 +320,16 @@ export function ResumeBuilder() {
           </section>
         </div>
 
-        <aside className="xl:sticky xl:top-20">
-          <div className="mb-3 flex items-center justify-between gap-3">
+        <aside className="builder-preview-panel xl:sticky xl:top-20">
+          <div className="builder-preview-heading mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="font-semibold text-[var(--navy-100)]">A4 resume preview</h2>
               <p className="text-xs text-[var(--muted)]">The downloaded PDF uses this exact layout.</p>
             </div>
           </div>
-          <div className="resume-preview-shell">
-            <div ref={previewRef} className="resume-paper" data-testid="resume-preview">
+          <div ref={shellRef} className="resume-preview-shell" data-testid="resume-preview-shell">
+            <div className="document-preview-stage" style={stageStyle}>
+              <div ref={previewRef} className="resume-paper" style={documentStyle} data-testid="resume-preview">
               <header className="resume-header">
                 <h1>{personal.fullName || "YOUR NAME"}</h1>
                 <p>
@@ -417,17 +430,28 @@ export function ResumeBuilder() {
                   <p><strong>Interests/Hobbies:</strong> {additional.interests || "[Include any interests or hobbies that demonstrate relevant skills or qualities, or provide insight into your personality.]"}</p>
                 </div>
               </ResumeSection>
+              </div>
             </div>
           </div>
 
           {downloadError && <p className="field-error mt-3">{downloadError}</p>}
           <button
             type="button"
-            className="btn btn-primary mt-4 w-full py-3 text-base"
+            className="download-pdf-button mt-4 w-full"
             onClick={downloadPdf}
             disabled={downloading}
+            aria-label="Download Resume as PDF"
           >
-            {downloading ? "Creating PDF…" : "Download Resume as PDF"}
+            <span className="download-pdf-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="download-pdf-copy">
+              <strong>{downloading ? "Creating your PDF…" : "Download Resume as PDF"}</strong>
+              <small>Print-ready A4 document</small>
+            </span>
+            <span className="download-pdf-arrow" aria-hidden="true">→</span>
           </button>
         </aside>
       </div>
@@ -439,7 +463,9 @@ function EditorHeading({ title, onAdd }: { title: string; onAdd: () => void }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-lg font-semibold text-[var(--navy-100)]">{title}</h2>
-      <button type="button" className="btn btn-ghost" onClick={onAdd}>+ Add another</button>
+      <button type="button" className="builder-add-button" onClick={onAdd}>
+        <span aria-hidden="true">+</span> Add another
+      </button>
     </div>
   );
 }
@@ -459,7 +485,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="field-label">{label}</span>
+      <span className="builder-field-label">{label}</span>
       <input className={inputClass} type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
@@ -468,8 +494,8 @@ function Field({
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="mt-3 block">
-      <span className="field-label">{label}</span>
-      <textarea className={`${inputClass} min-h-28 resize-y`} value={value} onChange={(event) => onChange(event.target.value)} />
+      <span className="builder-field-label">{label}</span>
+      <textarea className={`${inputClass} builder-textarea min-h-28 resize-y`} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

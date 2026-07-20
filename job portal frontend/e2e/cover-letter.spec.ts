@@ -47,8 +47,28 @@ test("Cover Letter follows Resume Builder and downloads the populated A4 letter 
   await expect(preview).toContainText("I am applying for the Senior Software Engineer position.");
   await expect(preview).toContainText("Mary Leannon");
 
+  const previewFitsWithoutScrolling = await page
+    .getByTestId("cover-letter-preview-shell")
+    .evaluate((shell) => {
+      const paper = shell.querySelector<HTMLElement>("[data-testid='cover-letter-preview']");
+      if (!paper) return false;
+      const shellBox = shell.getBoundingClientRect();
+      const paperBox = paper.getBoundingClientRect();
+      const style = window.getComputedStyle(shell);
+      return (
+        style.overflowX === "hidden" &&
+        style.overflowY === "hidden" &&
+        paperBox.width <= shellBox.width &&
+        paperBox.height <= shellBox.height
+      );
+    });
+  expect(previewFitsWithoutScrolling).toBe(true);
+
+  const downloadButton = page.getByRole("button", { name: "Download Cover Letter as PDF" });
+  await expect(downloadButton.locator("svg")).toBeVisible();
+
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download Cover Letter as PDF" }).click();
+  await downloadButton.click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("mary-leannon-cover-letter.pdf");
   const path = await download.path();

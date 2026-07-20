@@ -42,6 +42,13 @@ On startup: creates tables, seeds admin user + sample jobs/pages when empty.
 Uploads are stored in Cloudflare R2. Configure the `R2_*` variables from `.env.example`, including
 a public R2 custom domain in `R2_PUBLIC_BASE_URL`.
 
+Production can also archive filtered backend logs to the private R2 bucket.
+Set `APP_ENV=production` and `R2_LOGS_ENABLED=true` (the repository CI/CD does
+this automatically). Logs are stored under `production-logs/YYYY-MM-DD/`,
+rotate at 100 MiB, retain the current day plus yesterday, and contain only
+server lifecycle records and errors/tracebacks. Local development leaves this
+disabled by default.
+
 ## Main endpoints
 
 | Method | Path | Description |

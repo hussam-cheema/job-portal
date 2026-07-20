@@ -45,8 +45,28 @@ test("Resume Builder is in the header and downloads the populated A4 resume as a
   await expect(preview).toContainText("University of Idaho");
   await expect(preview).toContainText("Data Analyst");
 
+  const previewFitsWithoutScrolling = await page
+    .getByTestId("resume-preview-shell")
+    .evaluate((shell) => {
+      const paper = shell.querySelector<HTMLElement>("[data-testid='resume-preview']");
+      if (!paper) return false;
+      const shellBox = shell.getBoundingClientRect();
+      const paperBox = paper.getBoundingClientRect();
+      const style = window.getComputedStyle(shell);
+      return (
+        style.overflowX === "hidden" &&
+        style.overflowY === "hidden" &&
+        paperBox.width <= shellBox.width &&
+        paperBox.height <= shellBox.height
+      );
+    });
+  expect(previewFitsWithoutScrolling).toBe(true);
+
+  const downloadButton = page.getByRole("button", { name: "Download Resume as PDF" });
+  await expect(downloadButton.locator("svg")).toBeVisible();
+
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download Resume as PDF" }).click();
+  await downloadButton.click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("mary-leannon-resume.pdf");
   if (process.env.RESUME_PDF_OUTPUT) {

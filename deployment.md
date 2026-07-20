@@ -91,6 +91,13 @@ R2_ACCESS_KEY_ID=<r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
 R2_BUCKET_NAME=job-portal-prod
 R2_PUBLIC_BASE_URL=https://files.example.com
+
+# Production-only backend error/lifecycle log archive in the same private R2 bucket.
+APP_ENV=production
+R2_LOGS_ENABLED=true
+R2_LOG_PREFIX=production-logs
+R2_LOG_MAX_BYTES=104857600
+R2_LOG_RETENTION_DAYS=2
 ```
 
 `R2_ENDPOINT` normally remains unset because the backend derives `https://<account-id>.r2.cloudflarestorage.com`. The R2 API endpoint is not the public object URL.
@@ -253,6 +260,12 @@ R2_SECRET_ACCESS_KEY=secretref:r2-secret-access-key
 R2_BUCKET_NAME=job-portal-prod
 R2_PUBLIC_BASE_URL=https://files.example.com
 
+APP_ENV=production
+R2_LOGS_ENABLED=true
+R2_LOG_PREFIX=production-logs
+R2_LOG_MAX_BYTES=104857600
+R2_LOG_RETENTION_DAYS=2
+
 SEED_ON_STARTUP=false
 RESET_DB_SCHEMA=false
 LOG_LEVEL=INFO
@@ -262,6 +275,42 @@ QWEN3_EMBEDDING_MODEL_MOUNT_PATH=/models
 QWEN3_EMBEDDING_REQUIRE_PERSISTENT_STORAGE=true
 QWEN3_EMBEDDING_THREADS=1
 ```
+
+### Production error logs in R2
+
+GitHub Actions applies the production logging variables above automatically on
+every backend deployment. The handler reuses the existing private R2 API
+credentials and bucket; no additional Cloudflare token or public URL is needed.
+
+Objects use this layout (Pakistan Standard Time):
+
+```text
+production-logs/
+  2026-07-19/
+    backend-<container-instance>-0001.log
+  2026-07-20/
+    backend-<container-instance>-0001.log
+    backend-<container-instance>-0002.log
+```
+
+- A new date folder is selected at midnight PKT.
+- A new file is selected before the current file can exceed 100 MiB.
+- Startup removes log objects older than yesterday, leaving only yesterday and
+  the current day. Cleanup is restricted to `R2_LOG_PREFIX`, so uploaded job
+  images and attachments cannot be deleted by log retention.
+- Only application `ERROR`/`CRITICAL` records and the explicitly marked
+  `server starting`, `server running`, and graceful `server stopped` lifecycle
+  records are archived. Tracebacks produced with `logger.exception(...)` are
+  stored in full. Ordinary requests, successful status messages, warnings, and
+  dependency debug output remain excluded.
+- Local Docker does not upload logs because `APP_ENV=production` and
+  `R2_LOGS_ENABLED=true` are both required.
+
+R2 is object storage and does not support appending. The backend therefore
+maintains a private ephemeral spool and overwrites only the active log object
+after each accepted event. Upload failures never terminate an API request; the
+spool is retried on the next accepted event and handler diagnostics go to
+standard error.
 
 Add any YouTube or LLM API keys as Container App secrets only when those features are enabled. The local backend `.env` is not copied into the production container.
 

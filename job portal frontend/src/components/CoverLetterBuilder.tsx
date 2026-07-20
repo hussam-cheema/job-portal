@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { useA4PreviewScale } from "@/hooks/useA4PreviewScale";
 
 type CoverLetterData = {
   documentTitle: string;
@@ -53,7 +54,12 @@ function formatLetterDate(value: string) {
 }
 
 export function CoverLetterBuilder() {
-  const previewRef = useRef<HTMLDivElement>(null);
+  const {
+    documentRef: previewRef,
+    documentStyle,
+    shellRef,
+    stageStyle,
+  } = useA4PreviewScale();
   const [data, setData] = useState(initialData);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -64,15 +70,20 @@ export function CoverLetterBuilder() {
 
   async function downloadPdf() {
     if (!previewRef.current) return;
+    const preview = previewRef.current;
+    const previewTransform = preview.style.transform;
     setDownloading(true);
     setDownloadError(null);
     try {
+      // The live preview is scaled only to fit the browser panel. Capture the
+      // original A4 document so the downloaded PDF keeps its full resolution.
+      preview.style.transform = "none";
       await document.fonts.ready;
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
       ]);
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(preview, {
         backgroundColor: "#ffffff",
         scale: 2.4,
         useCORS: true,
@@ -98,13 +109,14 @@ export function CoverLetterBuilder() {
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "The PDF could not be created.");
     } finally {
+      preview.style.transform = previewTransform;
       setDownloading(false);
     }
   }
 
   return (
-    <div className="site-wrap py-10">
-      <div className="mb-8 max-w-3xl">
+    <div className="career-builder site-wrap py-10">
+      <div className="builder-intro mb-8 max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
           Free career tool
         </p>
@@ -117,8 +129,8 @@ export function CoverLetterBuilder() {
         </p>
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
-        <div className="space-y-5">
+      <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
+        <div className="builder-form-stack space-y-5">
           <FormSection title="Document heading">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Cover letter title" value={data.documentTitle} placeholder="Google Cover Letter" onChange={(value) => update("documentTitle", value)} />
@@ -158,13 +170,14 @@ export function CoverLetterBuilder() {
           </FormSection>
         </div>
 
-        <aside className="xl:sticky xl:top-20">
-          <div className="mb-3">
+        <aside className="builder-preview-panel xl:sticky xl:top-20">
+          <div className="builder-preview-heading mb-3">
             <h2 className="font-semibold text-[var(--navy-100)]">A4 cover letter preview</h2>
             <p className="text-xs text-[var(--muted)]">The downloaded PDF uses this exact layout.</p>
           </div>
-          <div className="cover-letter-preview-shell">
-            <div ref={previewRef} className="cover-letter-paper" data-testid="cover-letter-preview">
+          <div ref={shellRef} className="cover-letter-preview-shell" data-testid="cover-letter-preview-shell">
+            <div className="document-preview-stage" style={stageStyle}>
+              <div ref={previewRef} className="cover-letter-paper" style={documentStyle} data-testid="cover-letter-preview">
               <header className="cover-letter-document-header">
                 <h1>{data.documentTitle || "GOOGLE COVER LETTER"}</h1>
                 <p>{data.subtitle || "by CV Genius"}</p>
@@ -207,16 +220,27 @@ export function CoverLetterBuilder() {
                   <strong>{data.fullName || "(YOUR NAME)"}</strong>
                 </div>
               </div>
+              </div>
             </div>
           </div>
           {downloadError && <p className="field-error mt-3">{downloadError}</p>}
           <button
             type="button"
-            className="btn btn-primary mt-4 w-full py-3 text-base"
+            className="download-pdf-button mt-4 w-full"
             onClick={downloadPdf}
             disabled={downloading}
+            aria-label="Download Cover Letter as PDF"
           >
-            {downloading ? "Creating PDF…" : "Download Cover Letter as PDF"}
+            <span className="download-pdf-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="download-pdf-copy">
+              <strong>{downloading ? "Creating your PDF…" : "Download Cover Letter as PDF"}</strong>
+              <small>Print-ready A4 document</small>
+            </span>
+            <span className="download-pdf-arrow" aria-hidden="true">→</span>
           </button>
         </aside>
       </div>
@@ -226,7 +250,7 @@ export function CoverLetterBuilder() {
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="card-panel p-5">
+    <section className="builder-form-card">
       <h2 className="text-lg font-semibold text-[var(--navy-100)]">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
@@ -248,9 +272,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="field-label">{label}</span>
+      <span className="builder-field-label">{label}</span>
       <input
-        className="input"
+        className="builder-input"
         type={type}
         value={value}
         placeholder={placeholder}
@@ -273,9 +297,9 @@ function TextArea({
 }) {
   return (
     <label className="block">
-      <span className="field-label">{label}</span>
+      <span className="builder-field-label">{label}</span>
       <textarea
-        className="input resize-y"
+        className="builder-input builder-textarea resize-y"
         rows={rows}
         value={value}
         onChange={(event) => onChange(event.target.value)}

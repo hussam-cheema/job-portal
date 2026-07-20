@@ -19,7 +19,7 @@ from app.exceptions import (
     unhandled_exception_handler,
     validation_exception_handler,
 )
-from app.logging_config import get_logger, setup_logging
+from app.logging_config import flush_production_logs, get_logger, setup_logging
 from app.routers import analytics, auth, blog, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
 from app.seed import ensure_default_pages, seed_if_empty, sync_local_core_pages_once
 from app.services.taxonomy import ensure_default_taxonomy
@@ -31,7 +31,7 @@ logger = get_logger("jobportal.main")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    logger.info("startup begin")
+    logger.info("server starting", extra={"r2_lifecycle": True})
     try:
         init_db()
         logger.info("database ready")
@@ -68,9 +68,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.info("seed skipped (SEED_ON_STARTUP=false)")
 
-    logger.info("startup complete")
-    yield
-    logger.info("shutdown")
+    logger.info("server running", extra={"r2_lifecycle": True})
+    try:
+        yield
+    finally:
+        logger.info("server stopped", extra={"r2_lifecycle": True})
+        flush_production_logs()
 
 
 app = FastAPI(
