@@ -20,7 +20,7 @@ export default async function BlogPage({ searchParams }: Props) {
   return (
     <div className="site-wrap py-8 sm:py-12">
       <header className="mb-7">
-        <p className="eyebrow">PakistanJobs Blog</p>
+        <p className="eyebrow">Pakistan Jobs Market Blog</p>
         <h1 className="mt-2 text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--navy-100)]">
           Career guidance and job updates
         </h1>

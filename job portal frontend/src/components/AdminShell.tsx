@@ -108,7 +108,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         >
           <div className="admin-nav-heading">
             <span className="admin-nav-mark"><UiIcon name="dashboard" /></span>
-            <span><strong>Workspace</strong><small>Manage PakistanJobs</small></span>
+            <span><strong>Workspace</strong><small>Manage Pakistan Jobs Market</small></span>
           </div>
           {[...new Set(LINKS.map((link) => link.group))].map((group) => (
             <div className="admin-nav-section" key={group}>

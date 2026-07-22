@@ -108,6 +108,19 @@ test("job form only offers predefined categories", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remove Lahore" })).toBeVisible();
 });
 
+test("existing R2 images load inside the job editor through the media proxy", async ({ page }) => {
+  await page.goto("/admin/jobs/closed-role");
+  const image = page.locator(".ql-editor img").first();
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute(
+    "src",
+    "http://127.0.0.1:4010/api/media/r2/job-portal/closed-role/images/notice.png",
+  );
+  await expect
+    .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+});
+
 test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
   await page.goto("/admin/seo");
   await expect(page.getByText("Daily job alert subscriptions")).toHaveCount(0);
@@ -122,15 +135,15 @@ test("website title position is configurable from settings", async ({ page }) =>
   await expect(page.getByRole("radiogroup", { name: "Website title position" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Center" })).toBeChecked();
   await expect(page.getByRole("heading", { name: "Homepage SEO" })).toBeVisible();
-  await expect(page.getByLabel("Focus keyphrase")).toHaveValue("Pakistan jobs");
+  await expect(page.getByLabel("Focus keyphrase")).toHaveValue("jobs in Pakistan");
   await expect(page.getByLabel("SEO title")).toHaveValue(
-    "Pakistan Jobs — Latest Government & Private Jobs",
+    "Jobs in Pakistan 2026 | Pakistan Jobs Market",
   );
   await expect(page.getByLabel("Meta description")).toHaveValue(
-    "Find current job opportunities across Pakistan.",
+    "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
   );
   await expect(page.getByLabel("Meta keywords")).toHaveValue(
-    "Pakistan jobs, government jobs, private jobs",
+    "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
   );
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();

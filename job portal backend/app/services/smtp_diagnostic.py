@@ -53,7 +53,7 @@ def main() -> int:
     settings = load_smtp_settings()
     now = datetime.now(timezone.utc)
     message = EmailMessage()
-    message["Subject"] = f"PakistanJobs SMTP diagnostic — {now.isoformat()}"
+    message["Subject"] = f"Pakistan Jobs Market SMTP diagnostic — {now.isoformat()}"
     message["From"] = settings.from_email
     message["To"] = recipient
     message["Date"] = format_datetime(now)
@@ -62,7 +62,7 @@ def main() -> int:
     )
     message["Auto-Submitted"] = "auto-generated"
     message.set_content(
-        "This message was sent by the PakistanJobs production SMTP diagnostic.\n\n"
+        "This message was sent by the Pakistan Jobs Market production SMTP diagnostic.\n\n"
         "If it is not in Inbox, check Spam, All Mail, filters, blocked senders, and "
         "the sender account for a bounce notice."
     )

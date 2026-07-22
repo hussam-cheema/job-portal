@@ -95,6 +95,7 @@ class BrandingOut(BaseModel):
 
 
 class BrandingUpdateIn(BaseModel):
+    site_name: str = Field(..., min_length=1, max_length=120)
     site_title: str = Field(..., min_length=1, max_length=120)
     site_title_alignment: Literal["beside_logo", "center", "right"] = "center"
     site_header: str = Field(..., min_length=1, max_length=240)

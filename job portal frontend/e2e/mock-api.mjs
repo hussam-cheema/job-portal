@@ -33,17 +33,17 @@ const server = createServer((request, response) => {
   if (path === "/ready") return json(response, { status: "ready" });
   if (path === "/api/settings/branding") {
     return json(response, {
-      site_name: "PakJobs",
-      site_title: "PakJobs Jobs in Pakistan",
+      site_name: "Pakistan Jobs Market",
+      site_title: "Pakistan Jobs Market",
       site_title_alignment: "center",
       site_header: "Latest government & private job openings in Pakistan",
-      site_description: "Find current job opportunities across Pakistan.",
-      footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
-      homepage_focus_keyword: "Pakistan jobs",
-      homepage_meta_title: "Pakistan Jobs — Latest Government & Private Jobs",
-      homepage_meta_description: "Find current job opportunities across Pakistan.",
-      homepage_meta_keywords: "Pakistan jobs, government jobs, private jobs",
-      logo_url: null,
+      site_description: "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools.",
+      footer_copyright: "Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
+      homepage_focus_keyword: "jobs in Pakistan",
+      homepage_meta_title: "Jobs in Pakistan 2026 | Pakistan Jobs Market",
+      homepage_meta_description: "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
+      homepage_meta_keywords: "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
+      logo_url: "/pakistan-jobs-market-logo.png",
     });
   }
   if (path === "/api/filters") {
@@ -119,7 +119,7 @@ const server = createServer((request, response) => {
     id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
     excerpt: "A practical preparation guide for candidates in Pakistan.",
     content: "<h2>Build a study plan</h2><p><span data-testid=\"pasted-rich-text\" style=\"background-color: rgb(255, 255, 255); color: rgb(0, 0, 0)\">Use the syllabus and practice consistently.</span></p><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><tbody><tr><td>Wide legacy table content</td><td>Second column</td></tr></tbody></table>",
-    author: "PakistanJobs Editorial Team", category: "Career Advice",
+    author: "Pakistan Jobs Market Editorial Team", category: "Career Advice",
     tags: ["FPSC", "Exam Preparation"], is_published: true,
     published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",
     updated_at: "2026-07-18T12:00:00Z",

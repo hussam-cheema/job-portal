@@ -57,20 +57,20 @@ const EMPTY_STATS: StatsResponse = {
 };
 
 const DEFAULT_BRANDING: Branding = {
-  site_name: "PakJobs",
-  site_title: "PakJobs Jobs in Pakistan",
+  site_name: "Pakistan Jobs Market",
+  site_title: "Pakistan Jobs Market",
   site_title_alignment: "center",
   site_header: "Latest government & private job openings in Pakistan",
   site_description:
-    "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
-  footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
-  homepage_focus_keyword: "Pakistan jobs",
-  homepage_meta_title: "PakJobs — Jobs in Pakistan",
+    "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools.",
+  footer_copyright: "Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
+  homepage_focus_keyword: "jobs in Pakistan",
+  homepage_meta_title: "Jobs in Pakistan 2026 | Pakistan Jobs Market",
   homepage_meta_description:
-    "Browse current government and private job openings across Pakistan.",
+    "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
   homepage_meta_keywords:
-    "Pakistan jobs, government jobs, private jobs, FPSC, PPSC, careers Pakistan",
-  logo_url: null,
+    "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
+  logo_url: "/pakistan-jobs-market-logo.png",
 };
 
 type ApiErrorBody = {
@@ -184,7 +184,6 @@ async function getFreshJson<T>(path: string, fallback: T): Promise<T> {
     try {
       const res = await fetch(`${API_BASE}${path}`, {
         cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
         signal: AbortSignal.timeout(15000),
       });
       if (res.ok) return (await res.json()) as T;

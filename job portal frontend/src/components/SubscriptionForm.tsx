@@ -38,7 +38,7 @@ export function SubscriptionForm() {
             Subscribe to get new Job alerts
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Receive an email whenever a new PakistanJobs listing is published.
+            Receive an email whenever a new Pakistan Jobs Market listing is published.
           </p>
         </div>
         <form onSubmit={submit} noValidate>

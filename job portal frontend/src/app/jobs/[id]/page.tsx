@@ -25,9 +25,9 @@ function externalHref(value: string) {
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const job = await fetchJob(id);
-  if (!job) return { title: "Job — PakJobs" };
+  if (!job) return { title: "Job | Pakistan Jobs Market" };
   return {
-    title: `${job.title} — PakJobs`,
+    title: `${job.title} | Pakistan Jobs Market`,
     description:
       stripHtml(job.description).slice(0, 160) ||
       `${job.title} at ${job.company || job.source || "—"}`,

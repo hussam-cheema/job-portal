@@ -11,30 +11,37 @@ import { UiIcon } from "@/components/UiIcon";
 import { fetchBranding } from "@/lib/api";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
-  title: {
-    default: "PakJobs — Jobs in Pakistan",
-    template: "%s | PakJobs",
-  },
-  description:
-    "Modern job portal for Pakistan — government and private openings with commonly asked interview QnA.",
-  keywords: [
-    "Pakistan jobs",
-    "government jobs",
-    "private jobs",
-    "FPSC",
-    "PPSC",
-    "careers Pakistan",
-  ],
-  openGraph: {
-    title: "PakJobs — Jobs in Pakistan",
-    description: "Browse government and private job openings across Pakistan.",
-    type: "website",
-    siteName: "PakJobs",
-  },
-  robots: { index: true, follow: true },
-};
+function parseKeywords(value: string): string[] {
+  return value
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await fetchBranding();
+  const title = branding.homepage_meta_title || branding.site_title;
+  const description = branding.homepage_meta_description || branding.site_description;
+  const logo = branding.logo_url || "/pakistan-jobs-market-logo.png";
+
+  return {
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+    title: {
+      default: title,
+      template: `%s | ${branding.site_name}`,
+    },
+    description,
+    keywords: parseKeywords(branding.homepage_meta_keywords),
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      siteName: branding.site_name,
+      images: [{ url: logo, alt: `${branding.site_name} logo` }],
+    },
+    robots: { index: true, follow: true },
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -58,20 +65,14 @@ export default async function RootLayout({
           <header className="site-header">
             <div className="site-wrap site-header-inner">
               <Link href="/" className="site-logo group" aria-label={`${branding.site_name} home`}>
-                {branding.logo_url ? (
-                  <Image
-                    src={branding.logo_url}
-                    alt={`${branding.site_name} logo`}
-                    width={42}
-                    height={42}
-                    unoptimized
-                    className="h-10 w-10 shrink-0 rounded-xl object-contain"
-                  />
-                ) : (
-                  <span className="logo-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d9cff] to-[#3658b8] text-sm font-extrabold shadow-lg shadow-blue-900/30">
-                    PJ
-                  </span>
-                )}
+                <Image
+                  src={branding.logo_url || "/pakistan-jobs-market-logo.png"}
+                  alt={`${branding.site_name} logo`}
+                  width={42}
+                  height={42}
+                  unoptimized
+                  className="h-10 w-10 shrink-0 rounded-xl object-contain"
+                />
               </Link>
               <Link
                 href="/"

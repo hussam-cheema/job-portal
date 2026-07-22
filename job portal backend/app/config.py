@@ -47,7 +47,7 @@ def site_url() -> str:
 
 
 def site_name() -> str:
-    return env("SITE_NAME") or str(cfg("site", "name", default="PakJobs"))
+    return env("SITE_NAME") or str(cfg("site", "name", default="Pakistan Jobs Market"))
 
 
 def watermark_text() -> str:

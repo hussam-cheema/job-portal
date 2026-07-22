@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
   const { tag } = await params;
   const label = labelFromSlug(tag);
   return {
-    title: `${label} jobs — PakJobs`,
+    title: `${label} Jobs in Pakistan | Pakistan Jobs Market`,
     description: `Browse Pakistan job openings tagged ${label}.`,
   };
 }

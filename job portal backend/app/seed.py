@@ -17,43 +17,277 @@ from app.utils import slugify
 
 logger = get_logger("jobportal.seed")
 
-DISCLAIMER_HTML = (
-    "<p><strong>PakistanJobs</strong> aggregates job advertisements from Pakistan's leading "
-    "newspapers, including <em>Daily Jang</em>, <em>Express</em>, <em>Nawa-i-Waqt</em>, "
-    "<em>The News</em>, <em>Dawn</em>, <em>The Nation</em>, and others, as well as from the "
-    "careers and jobs pages of government institutions and private companies. Our goal is to "
-    "support job seekers across cities such as Karachi, Lahore, Rawalpindi, Islamabad, Peshawar, "
-    "and beyond by bringing together newspaper listings and both private- and public-sector job "
-    "postings in one place. This service is offered in good faith as a public resource, and we "
-    "are not responsible for any advertisement that is inaccurate, misrepresented, or misleading.</p>"
-)
+HOMEPAGE_BRANDING = {
+    "site_name": "Pakistan Jobs Market",
+    "site_title": "Pakistan Jobs Market",
+    "site_header": "Latest government & private job openings in Pakistan",
+    "site_description": (
+        "Discover current government and private jobs across Pakistan, search opportunities "
+        "by city and category, get instant job alerts, and use practical career tools."
+    ),
+    "footer_copyright": (
+        "Copyrights © {year} - Pakistan Jobs Market. All rights reserved."
+    ),
+    "homepage_focus_keyword": "jobs in Pakistan",
+    "homepage_meta_title": "Jobs in Pakistan 2026 | Pakistan Jobs Market",
+    "homepage_meta_description": (
+        "Find latest government and private jobs in Pakistan by city and category. Explore "
+        "curated listings, deadlines, job alerts, resume tools and career guides."
+    ),
+    "homepage_meta_keywords": (
+        "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs "
+        "Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market"
+    ),
+    "logo_url": "/pakistan-jobs-market-logo.png",
+}
+
+ABOUT_HTML = """
+<p><strong>Pakistan Jobs Market</strong> is an independent online job discovery platform created
+for people looking for current employment opportunities across Pakistan. Our purpose is simple:
+to make it easier to find useful government, private-sector, newspaper and company career
+announcements in one searchable place.</p>
+
+<h2>Helping people find jobs in Pakistan</h2>
+<p>Searching for work often means checking many newspaper pages, recruitment portals, public
+service commission notices and employer career websites. Pakistan Jobs Market organizes selected
+opportunities so visitors can browse latest jobs in Pakistan by city, job type and category. Our
+coverage may include roles in Karachi, Lahore, Islamabad, Rawalpindi, Peshawar, Quetta, Faisalabad,
+Multan and other cities, as well as nationwide vacancies.</p>
+<p>Listings may include government jobs, private jobs, public-sector vacancies, banking jobs,
+education jobs, technology roles, healthcare opportunities and other career categories. Where the
+source provides them, we present important details such as the employer, publication date,
+application deadline, education, experience, location and original application or reference URL.</p>
+
+<h2>What Pakistan Jobs Market offers</h2>
+<ul>
+  <li><strong>Organized job listings:</strong> filters for cities, categories and government or
+  private employment help visitors narrow their search.</li>
+  <li><strong>Application deadlines:</strong> prominent deadline information and an Applications
+  Closed notice help visitors identify active opportunities.</li>
+  <li><strong>Job alerts:</strong> visitors can subscribe to receive an email when a new job is
+  published and can unsubscribe whenever they choose.</li>
+  <li><strong>Career resources:</strong> the blog, resume builder and cover-letter builder offer
+  practical tools for applicants.</li>
+  <li><strong>Interview Q&amp;A:</strong> some job pages may contain questions and answers extracted
+  from relevant public video transcripts or comments to support further research.</li>
+</ul>
+
+<h2>Our editorial approach</h2>
+<p>We aim to publish clear, useful and source-attributed information. Job advertisements may be
+collected from publicly accessible employer career pages, government institutions, public service
+commissions and established Pakistani newspapers. We may summarize or format an advertisement for
+readability, while linking to a reference or application source where one is available.</p>
+<p>Pakistan Jobs Market is not a recruitment agency and does not accept applications on behalf of
+employers. Candidates should always read the official advertisement, confirm eligibility,
+deadlines and application instructions, and verify any fee directly with the recruiting
+organization before applying.</p>
+
+<h2>Accuracy, corrections and responsible use</h2>
+<p>Recruitment notices can change, be extended, withdrawn or corrected after publication. Although
+we work to keep information helpful and current, we cannot guarantee that every third-party detail
+is complete or error-free. If you identify an outdated deadline, broken source link or inaccurate
+detail, please use our Contact Us page and include the relevant page URL so it can be reviewed.</p>
+<p>We also encourage safe job searching. Never share banking passwords, one-time codes or
+unnecessary sensitive information with an unverified person. Be cautious of anyone promising a job
+in exchange for an unofficial payment.</p>
+
+<h2>Our commitment</h2>
+<p>Pakistan Jobs Market is designed to be accessible to students, fresh graduates, experienced
+professionals and public-sector candidates throughout the country. We will continue improving the
+quality of listings, search tools and career guidance so that visitors can spend less time finding
+opportunities and more time preparing strong applications.</p>
+""".strip()
+
+PRIVACY_HTML = """
+<p><strong>Pakistan Jobs Market</strong> respects the privacy of visitors, subscribers and people
+who contact us. This Privacy Policy explains what information may be collected when you use this
+website, why it is used, how it may be protected and the choices available to you.</p>
+
+<h2>Information we may collect</h2>
+<p>You can browse public job listings and career content without creating an account. Depending on
+the feature you use, we may collect the following limited information:</p>
+<ul>
+  <li><strong>Subscription information:</strong> the email address you voluntarily submit for job
+  alerts, together with subscription status and operational timestamps.</li>
+  <li><strong>Contact information:</strong> your name, email address, subject and message when you
+  send an enquiry, correction or feedback through the Contact Us form.</li>
+  <li><strong>Technical information:</strong> IP address, browser and device information, requested
+  pages, timestamps, referral data and error records that may be processed in server logs,
+  security monitoring or aggregate analytics.</li>
+  <li><strong>Preference information:</strong> browser-stored choices such as light or dark theme.</li>
+</ul>
+
+<h2>How information is used</h2>
+<p>We use information only for legitimate website operations, including delivering requested job
+alerts, responding to messages, preventing abuse, diagnosing errors, protecting the service,
+understanding aggregate usage and improving content and performance. We do not ask visitors to
+submit a CV or sensitive financial credentials in order to browse the website.</p>
+
+<h2>Email alerts and unsubscribe choices</h2>
+<p>If you subscribe to job alerts, Pakistan Jobs Market uses the submitted address to send messages
+about newly published jobs. Each alert includes an unsubscribe option. Using that option removes
+the active subscription record so future alerts are not sent. Transactional messages already in
+delivery may not be recalled.</p>
+
+<h2>Cookies, analytics and advertising</h2>
+<p>The website or its service providers may use cookies, local storage or similar technologies for
+essential preferences, security, audience measurement and performance. Pakistan Jobs Market may
+use Google services such as Search Console or analytics tools to understand aggregate search and
+website performance.</p>
+<p>If advertising is enabled, third-party advertising providers such as Google AdSense may use
+cookies or similar identifiers to deliver and measure ads in accordance with their own policies.
+Google and its partners may use information about visits to this and other websites to provide
+relevant advertising where permitted. Visitors can manage browser cookies and, where available,
+Google advertising preferences; disabling cookies may affect some features.</p>
+
+<h2>Service providers and third-party links</h2>
+<p>We may rely on hosting, database, object-storage, email-delivery, security and analytics
+providers to operate the service. These providers process limited information for the services
+they supply. Job listings and articles can link to employer, government, newspaper, social media
+or other external websites. Pakistan Jobs Market does not control their content or privacy
+practices, so visitors should review the policy of each external service before submitting data.</p>
+
+<h2>Data retention and security</h2>
+<p>Information is retained only for as long as reasonably needed for its purpose, legal obligations,
+security, dispute resolution or service continuity. Operational error logs are retained for a
+short, configured period. We use reasonable administrative and technical safeguards, but no
+internet transmission or storage system can be guaranteed completely secure.</p>
+
+<h2>Your choices and requests</h2>
+<p>You may unsubscribe from job alerts at any time. You may also contact us to request correction or
+deletion of personal information you previously submitted, subject to identity verification and
+any legitimate retention requirements. Browser settings can be used to control cookies and local
+storage.</p>
+
+<h2>Children's privacy</h2>
+<p>This service is intended for general job seekers and is not designed to knowingly collect
+personal information from children below the age at which they may consent to online data
+processing. A parent or guardian who believes a child submitted personal information may contact
+us for review.</p>
+
+<h2>Policy updates and contact</h2>
+<p>We may update this Privacy Policy when features, providers or legal requirements change. The
+latest published version applies from the date it appears on this page. Questions or privacy
+requests can be sent through the Pakistan Jobs Market Contact Us page.</p>
+""".strip()
+
+DISCLAIMER_HTML = """
+<p><strong>Pakistan Jobs Market</strong> aggregates and organizes job advertisements from public
+sources in good faith as an informational resource for job seekers. Sources may include Pakistani
+newspapers such as <em>Daily Jang</em>, <em>Express</em>, <em>Nawa-i-Waqt</em>, <em>The News</em>,
+<em>Dawn</em> and <em>The Nation</em>, as well as government institutions, public service
+commissions and private-company career pages.</p>
+
+<h2>Not an employer or recruitment agency</h2>
+<p>Pakistan Jobs Market is not the employer, recruiting organization, testing authority or
+newspaper behind third-party vacancies. Unless a page expressly states otherwise, we do not
+participate in selection, shortlisting, testing, interviews, appointments or payment collection.
+Submitting a message or subscribing to alerts is not a job application and does not create an
+employment or agency relationship.</p>
+
+<h2>Verify every job advertisement</h2>
+<p>Information may be summarized, reformatted or transcribed from a public advertisement. A source
+can later change a deadline, eligibility rule, number of posts, fee, test schedule or application
+procedure. Before applying, users must confirm all details through the official advertisement,
+employer website or authorized recruitment body. If this website and the official source differ,
+the official source controls.</p>
+<p>We do not warrant that every listing is complete, current, continuously available or free from
+typing, transcription or source errors. Pakistan Jobs Market is not responsible for an inaccurate,
+misrepresented, expired, withdrawn or misleading third-party advertisement.</p>
+
+<h2>Applications, payments and recruitment fraud</h2>
+<p>Use only the official application channel and payment method stated by the recruiting body.
+Pakistan Jobs Market does not guarantee employment and does not authorize individuals to request
+money, passwords, one-time codes or banking credentials in its name. Treat unsolicited job offers,
+unofficial fees and promises of guaranteed appointment with caution. Users are responsible for
+assessing the authenticity and suitability of an opportunity before sharing information or making
+any payment.</p>
+
+<h2>External links and third-party content</h2>
+<p>Reference, application, newspaper, video and employer links are provided for convenience. We do
+not control external websites and cannot guarantee their availability, safety, accuracy, products,
+services or privacy practices. Opening a third-party link is at the visitor's discretion.</p>
+
+<h2>Interview Q&amp;A and automated assistance</h2>
+<p>Some job pages may display interview questions and answers extracted or organized with automated
+tools from publicly available video transcripts or comments. Such material may contain opinions,
+outdated statements, language errors or incomplete context. It is supplementary study material,
+not official recruitment guidance, and should be checked against authoritative sources.</p>
+
+<h2>Career tools and editorial content</h2>
+<p>Blog articles, resume templates, cover-letter tools and other career resources are general
+information only. They do not constitute legal, financial, immigration, education or professional
+advice and do not guarantee an interview, selection or employment outcome. Users remain
+responsible for reviewing and adapting generated documents before use.</p>
+
+<h2>Copyright, corrections and availability</h2>
+<p>Advertisements, logos and source materials may belong to their respective owners and are used
+for identification and informational reference. Rights holders or users may contact us with a
+specific page URL to request review of an attribution, correction or removal. We may change,
+suspend or remove content or features without notice.</p>
+
+<h2>Limitation of responsibility</h2>
+<p>To the maximum extent permitted by applicable law, use of Pakistan Jobs Market is at the user's
+own risk. We are not liable for losses arising from reliance on a listing, missed deadlines,
+external websites, communications with third parties, application decisions, fees, fraud or use of
+career resources. If you do not agree with this disclaimer, please discontinue use of the service.</p>
+""".strip()
+
+DEFAULT_PAGE_SEO = {
+    "about": {
+        "focus_keyword": "Pakistan Jobs Market",
+        "meta_title": "About Pakistan Jobs Market | Jobs in Pakistan",
+        "meta_description": (
+            "Learn how Pakistan Jobs Market helps job seekers discover government, private, "
+            "newspaper and company career opportunities across Pakistan."
+        ),
+        "meta_keywords": (
+            "about Pakistan Jobs Market, jobs in Pakistan, Pakistan job portal, government jobs, "
+            "private jobs, newspaper jobs, career resources"
+        ),
+    },
+    "privacy": {
+        "focus_keyword": "Pakistan Jobs Market privacy policy",
+        "meta_title": "Privacy Policy | Pakistan Jobs Market",
+        "meta_description": (
+            "Read how Pakistan Jobs Market collects, uses, protects and retains contact, "
+            "subscription, analytics and technical information."
+        ),
+        "meta_keywords": (
+            "Pakistan Jobs Market privacy policy, data protection, cookies, analytics, "
+            "newsletter privacy, job alerts privacy"
+        ),
+    },
+    "disclaimer": {
+        "focus_keyword": "Pakistan Jobs Market disclaimer",
+        "meta_title": "Job Listing Disclaimer | Pakistan Jobs Market",
+        "meta_description": (
+            "Understand sourcing, verification limits, application risks and user responsibilities "
+            "for job listings published on Pakistan Jobs Market."
+        ),
+        "meta_keywords": (
+            "Pakistan Jobs Market disclaimer, job listing disclaimer, newspaper jobs disclaimer, "
+            "government jobs disclaimer, recruitment fraud warning"
+        ),
+    },
+}
 
 DEFAULT_PAGES = [
     (
         "about",
         "About Us",
-        "<p><strong>PakistanJobs</strong> is a modern job portal for Pakistan. Browse curated "
-        "government and private openings with city, skills, and category tags.</p>"
-        "<p>Job pages include commonly asked questions and answers sourced from closely matched "
-        "YouTube videos when verified Q&amp;A is available.</p>"
-        "<p>Whether you are preparing for private-sector roles or public-sector competitive exams, "
-        "PakistanJobs helps you discover opportunities faster.</p>",
+        ABOUT_HTML,
     ),
     (
         "privacy",
         "Privacy Policy",
-        "<p>PakistanJobs displays publicly available job advertisements collected from third-party "
-        "sources, including newspapers, company sites, and government portals.</p>"
-        "<p>We do not sell personal data. If you contact us, we use your message only to respond. "
-        "Server logs may include standard technical data for security and reliability.</p>"
-        "<p>Job listings may include employer contact details published by the source. Use those "
-        "details only for legitimate applications.</p>",
+        PRIVACY_HTML,
     ),
     (
         "contact",
         "Contact Us",
         "<p>Questions, partnership ideas, or corrections to a listing? Send a message below. "
-        "PakistanJobs does not process job applications.</p>",
+        "Pakistan Jobs Market does not process job applications.</p>",
     ),
     ("disclaimer", "Disclaimer", DISCLAIMER_HTML),
 ]
@@ -76,7 +310,7 @@ def ensure_default_pages(db) -> list[Page]:
             updated_at=datetime.utcnow(),
         )
         db.add(page)
-        upsert_page_seo(db, page)
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO.get(slug))
         created.append(page)
     return created
 
@@ -99,7 +333,7 @@ def sync_local_core_pages_once(db) -> list[Page]:
         page.content = content
         page.is_published = True
         page.updated_at = datetime.utcnow()
-        upsert_page_seo(db, page)
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO.get(slug))
         changed.append(page)
     db.add(
         SiteSetting(
@@ -108,6 +342,51 @@ def sync_local_core_pages_once(db) -> list[Page]:
             updated_at=datetime.utcnow(),
         )
     )
+    db.flush()
+    return changed
+
+
+def sync_core_page_content_v2(db) -> list[Page]:
+    """Install the requested long-form core content and SEO once on every environment."""
+    marker_key = "core_pages_seo_content_v2"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    defaults = {slug: (title, content) for slug, title, content in DEFAULT_PAGES}
+    changed: list[Page] = []
+    for slug in ("about", "privacy", "disclaimer"):
+        title, content = defaults[slug]
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO[slug])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
+def sync_homepage_branding_seo_v1(db) -> list[str]:
+    """Apply the new public brand and homepage SEO once, without overwriting future edits."""
+    marker_key = "homepage_branding_seo_v1"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    changed: list[str] = []
+    for key, value in HOMEPAGE_BRANDING.items():
+        row = db.get(SiteSetting, key)
+        if row:
+            row.value = value
+            row.updated_at = datetime.utcnow()
+        else:
+            db.add(SiteSetting(key=key, value=value, updated_at=datetime.utcnow()))
+        changed.append(key)
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
     db.flush()
     return changed
 
@@ -164,6 +443,8 @@ def seed_if_empty() -> None:
 
         ensure_default_pages(db)
         sync_local_core_pages_once(db)
+        sync_core_page_content_v2(db)
+        sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 
         count = db.execute(select(func.count()).select_from(Job)).scalar() or 0

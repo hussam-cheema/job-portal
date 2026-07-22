@@ -27,7 +27,7 @@ export default function AdminHome() {
           <div>
             <span className="admin-welcome-kicker"><span /> Control center</span>
             <h2>Dashboard</h2>
-            <p>Create content, monitor growth and manage the complete PakistanJobs experience.</p>
+            <p>Create content, monitor growth and manage the complete Pakistan Jobs Market experience.</p>
           </div>
           <div className="admin-welcome-art" aria-hidden="true"><UiIcon name="dashboard" /></div>
         </section>

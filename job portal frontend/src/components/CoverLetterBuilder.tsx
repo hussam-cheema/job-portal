@@ -125,7 +125,7 @@ export function CoverLetterBuilder() {
         </h1>
         <p className="mt-3 text-[var(--muted)]">
           Enter your information, review the live A4 letter, and download the finished PDF. Your
-          information remains in this browser and is not submitted to PakistanJobs.
+          information remains in this browser and is not submitted to Pakistan Jobs Market.
         </p>
       </div>
 

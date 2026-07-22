@@ -5,16 +5,17 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/");
-  await expect(page).toHaveTitle("Pakistan Jobs — Latest Government & Private Jobs");
+  await expect(page).toHaveTitle("Jobs in Pakistan 2026 | Pakistan Jobs Market");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    "Find current job opportunities across Pakistan.",
+    "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
   );
   await expect(page.locator('meta[name="keywords"]')).toHaveAttribute(
     "content",
-    /Pakistan jobs.*government jobs.*private jobs/,
+    /jobs in Pakistan.*government jobs Pakistan.*private jobs Pakistan/,
   );
-  await expect(page.locator("header").getByText("PakJobs Jobs in Pakistan", { exact: true })).toBeVisible();
+  await expect(page.locator("header").getByText("Pakistan Jobs Market", { exact: true })).toBeVisible();
+  await expect(page.locator("header img")).toHaveAttribute("src", /pakistan-jobs-market-logo\.png/);
   await expect(page.locator("main h1")).toHaveCSS("text-align", "center");
   await expect(page.locator("main h1 + p")).toHaveCSS("text-align", "center");
   await expect(
@@ -25,7 +26,7 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
   ).toBeVisible();
   await expect(page.getByText("Pakistan jobs", { exact: true })).toHaveCount(0);
   await expect(page.locator("footer")).toContainText(
-    `Copyrights © ${new Date().getFullYear()} - PakistanJobs All rights reserved`
+    `Copyrights © ${new Date().getFullYear()} - Pakistan Jobs Market. All rights reserved.`
   );
   await expect(page.locator("footer").getByRole("link", { name: "Disclaimer" })).toHaveAttribute(
     "href",

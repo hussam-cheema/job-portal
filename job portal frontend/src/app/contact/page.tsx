@@ -18,7 +18,7 @@ function isValidEmail(email: string): boolean {
 export default function ContactPage() {
   const [pageTitle, setPageTitle] = useState("Contact Us");
   const [pageContent, setPageContent] = useState(
-    "<p>Questions, partnership ideas, or corrections to a listing? Send a message below. PakistanJobs does not process job applications.</p>"
+    "<p>Questions, partnership ideas, or corrections to a listing? Send a message below. Pakistan Jobs Market does not process job applications.</p>"
   );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

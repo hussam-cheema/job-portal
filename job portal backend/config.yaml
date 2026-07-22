@@ -1,12 +1,12 @@
 # Job Portal Configuration (manual admin posting)
 
 site:
-  name: "PakJobs"
-  title: "PakJobs Jobs in Pakistan"
+  name: "Pakistan Jobs Market"
+  title: "Pakistan Jobs Market"
   header: "Latest government & private job openings in Pakistan"
-  url: "https://pakjobs.example.com"  # used for SEO + image watermark text
-  description: "Hover a job for a summary, then open the full page for complete details and available interview Q&A."
-  footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved"
+  url: "https://pakistanjobsmarket.com"  # used for SEO + image watermark text
+  description: "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools."
+  footer_copyright: "Copyrights © {year} - Pakistan Jobs Market. All rights reserved."
 
 database:
   echo: false
@@ -26,7 +26,7 @@ r2:
 
 watermark:
   enabled: true
-  text: "PakistanJobs"
+  text: "Pakistan Jobs Market"
   color: "#FF0000"
   opacity: 0.32
   position: "center"
@@ -140,7 +140,7 @@ seo:
   default_robots: "index,follow"
   auto_generate: true
   twitter_card: "summary_large_image"
-  organization_name: "PakJobs"
+  organization_name: "Pakistan Jobs Market"
   organization_logo: ""
 
 logging:

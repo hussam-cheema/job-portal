@@ -17,7 +17,7 @@ export default function SettingsPage() {
   const { token } = useAdminAuth();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [siteTitle, setSiteTitle] = useState("PakJobs Jobs in Pakistan");
+  const [siteTitle, setSiteTitle] = useState("Pakistan Jobs Market");
   const [siteTitleAlignment, setSiteTitleAlignment] = useState<
     "beside_logo" | "center" | "right"
   >("center");
@@ -25,16 +25,16 @@ export default function SettingsPage() {
     "Latest government & private job openings in Pakistan"
   );
   const [siteDescription, setSiteDescription] = useState(
-    "Hover a job for a summary, then open the full page for complete details and available interview Q&A."
+    "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools."
   );
   const [footerCopyright, setFooterCopyright] = useState(
-    "Copyrights © {year} - PakistanJobs All rights reserved"
+    "Copyrights © {year} - Pakistan Jobs Market. All rights reserved."
   );
   const [homepageSeo, setHomepageSeo] = useState<YoastSEOValue>({
-    focus_keyword: "Pakistan jobs",
-    meta_title: "PakJobs — Jobs in Pakistan",
-    meta_description: "Browse current government and private job openings across Pakistan.",
-    meta_keywords: "Pakistan jobs, government jobs, private jobs",
+    focus_keyword: "jobs in Pakistan",
+    meta_title: "Jobs in Pakistan 2026 | Pakistan Jobs Market",
+    meta_description: "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
+    meta_keywords: "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
   });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

@@ -21,7 +21,13 @@ from app.exceptions import (
 )
 from app.logging_config import flush_production_logs, get_logger, setup_logging
 from app.routers import analytics, auth, blog, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
-from app.seed import ensure_default_pages, seed_if_empty, sync_local_core_pages_once
+from app.seed import (
+    ensure_default_pages,
+    seed_if_empty,
+    sync_core_page_content_v2,
+    sync_homepage_branding_seo_v1,
+    sync_local_core_pages_once,
+)
 from app.services.taxonomy import ensure_default_taxonomy
 from app.services.watermark import migrate_legacy_job_watermarks
 
@@ -41,6 +47,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         try:
             created = ensure_default_pages(db)
             locally_synced = sync_local_core_pages_once(db)
+            content_synced = sync_core_page_content_v2(db)
+            branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             watermarks_upgraded = migrate_legacy_job_watermarks(db)
             db.commit()
@@ -48,6 +56,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info("core CMS pages created count=%s", len(created))
             if locally_synced:
                 logger.info("local CMS pages synchronized count=%s", len(locally_synced))
+            if content_synced:
+                logger.info("core CMS content and SEO upgraded count=%s", len(content_synced))
+            if branding_synced:
+                logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))
             if taxonomy_created:
                 logger.info("taxonomy terms created count=%s", len(taxonomy_created))
             if watermarks_upgraded:

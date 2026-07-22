@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Contact Us | PakJobs — Pakistan Job Portal",
+  title: "Contact Pakistan Jobs Market | Support & Corrections",
   description:
-    "Contact PakJobs for questions, partnerships, or listing corrections. Pakistan jobs support.",
+    "Contact Pakistan Jobs Market for job-listing corrections, partnerships, privacy questions, technical support, or general feedback.",
+  keywords: [
+    "contact Pakistan Jobs Market",
+    "Pakistan jobs support",
+    "job listing correction Pakistan",
+  ],
   robots: { index: true, follow: true },
 };
 

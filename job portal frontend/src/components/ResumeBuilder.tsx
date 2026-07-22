@@ -207,7 +207,7 @@ export function ResumeBuilder() {
         </h1>
         <p className="mt-3 text-[var(--muted)]">
           Enter your information, review the live A4 preview, and download a professional PDF.
-          Your information stays in this browser and is not submitted to PakistanJobs.
+          Your information stays in this browser and is not submitted to Pakistan Jobs Market.
         </p>
       </div>
 

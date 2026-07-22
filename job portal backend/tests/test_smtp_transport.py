@@ -9,7 +9,7 @@ import pytest
 def _message() -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = "SMTP transport test"
-    message["From"] = "PakistanJobs <sender@example.test>"
+    message["From"] = "Pakistan Jobs Market <sender@example.test>"
     message["To"] = "reader@example.test"
     message["Message-ID"] = "<transport-test@example.test>"
     message.set_content("Test body")

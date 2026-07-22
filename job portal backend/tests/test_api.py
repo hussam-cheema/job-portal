@@ -150,7 +150,7 @@ def test_admin_pages_self_heal_core_pages(client: TestClient):
     assert response.status_code == 200
     pages = {page["slug"]: page for page in response.json()}
     assert {"about", "contact", "privacy", "disclaimer"}.issubset(pages)
-    assert "PakistanJobs" in pages["disclaimer"]["content"]
+    assert "Pakistan Jobs Market" in pages["disclaimer"]["content"]
     assert "Daily Jang" in pages["disclaimer"]["content"]
 
 
@@ -192,28 +192,110 @@ def test_local_core_pages_receive_production_snapshot_once(monkeypatch: pytest.M
         Base.metadata.drop_all(bind=engine)
 
 
+def test_core_page_and_homepage_seo_defaults_sync_once():
+    from datetime import datetime
+    from app.models import Page, SEOMeta, SiteSetting
+    from app.seed import (
+        ABOUT_HTML,
+        DEFAULT_PAGE_SEO,
+        DISCLAIMER_HTML,
+        HOMEPAGE_BRANDING,
+        PRIVACY_HTML,
+        sync_core_page_content_v2,
+        sync_homepage_branding_seo_v1,
+    )
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        for slug, title in (
+            ("about", "About Us"),
+            ("privacy", "Privacy Policy"),
+            ("disclaimer", "Disclaimer"),
+        ):
+            session.add(
+                Page(
+                    id=f"page-{slug}",
+                    slug=slug,
+                    title=title,
+                    content="<p>stale content</p>",
+                    is_published=True,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+            )
+        session.add(
+            SiteSetting(
+                key="site_title",
+                value="Old title",
+                updated_at=datetime.utcnow(),
+            )
+        )
+        session.commit()
+
+        assert len(sync_core_page_content_v2(session)) == 3
+        assert len(sync_homepage_branding_seo_v1(session)) == len(HOMEPAGE_BRANDING)
+        session.commit()
+
+        expected_content = {
+            "about": ABOUT_HTML,
+            "privacy": PRIVACY_HTML,
+            "disclaimer": DISCLAIMER_HTML,
+        }
+        for page in session.query(Page).all():
+            assert page.content == expected_content[page.slug]
+            seo = (
+                session.query(SEOMeta)
+                .filter(
+                    SEOMeta.entity_type == "page",
+                    SEOMeta.entity_id == page.id,
+                )
+                .one()
+            )
+            expected_seo = DEFAULT_PAGE_SEO[page.slug]
+            assert seo.focus_keyword == expected_seo["focus_keyword"]
+            assert seo.meta_title == expected_seo["meta_title"]
+            assert seo.meta_description == expected_seo["meta_description"]
+            assert seo.meta_keywords == expected_seo["meta_keywords"]
+
+        for key, value in HOMEPAGE_BRANDING.items():
+            assert session.get(SiteSetting, key).value == value
+
+        assert sync_core_page_content_v2(session) == []
+        assert sync_homepage_branding_seo_v1(session) == []
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
 def test_admin_can_update_public_branding_text(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
     )
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
     payload = {
-        "site_title": "PakistanJobs Jobs in Pakistan",
+        "site_name": "Pakistan Jobs Market",
+        "site_title": "Pakistan Jobs Market Careers",
         "site_title_alignment": "right",
         "site_header": "Current jobs across Pakistan",
         "site_description": "A description controlled from the admin dashboard.",
-        "footer_copyright": "Copyrights © {year} - PakistanJobs All rights reserved",
+        "footer_copyright": "Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
         "homepage_focus_keyword": "latest jobs in Pakistan",
-        "homepage_meta_title": "Latest Jobs in Pakistan | PakistanJobs",
+        "homepage_meta_title": "Latest Jobs in Pakistan | Pakistan Jobs Market",
         "homepage_meta_description": "Find current government and private jobs across Pakistan.",
         "homepage_meta_keywords": "Pakistan jobs, latest jobs, government jobs",
     }
     updated = client.put("/api/admin/settings/branding", headers=auth, json=payload)
 
     assert updated.status_code == 200
-    assert updated.json()["site_name"] == "PakJobs"
+    assert updated.json()["site_name"] == "Pakistan Jobs Market"
     assert updated.json()["site_title_alignment"] == "right"
-    assert updated.json()["logo_url"] is None
+    assert updated.json()["logo_url"] == "/pakistan-jobs-market-logo.png"
     public = client.get("/api/settings/branding")
     assert public.status_code == 200
     for key, value in payload.items():

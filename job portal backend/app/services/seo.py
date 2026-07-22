@@ -155,7 +155,7 @@ def upsert_page_seo(db: Session, page: Page, seo_override: dict | None = None) -
         auto_desc = strip_html(page.content or "", 160) or f"{page.title} — {site_name()}"
         path = (
             f"/p/{page.slug}"
-            if page.slug not in {"about", "contact", "privacy"}
+            if page.slug not in {"about", "contact", "privacy", "disclaimer"}
             else f"/{page.slug}"
         )
         title = (ov.get("meta_title") or auto_title)[:300]

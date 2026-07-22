@@ -53,7 +53,7 @@ def apply_watermark(
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        text = watermark_text() or "PakistanJobs"
+        text = watermark_text() or "Pakistan Jobs Market"
         opacity = watermark_opacity()
         alpha = max(0, min(255, int(float(opacity) * 255)))
         color = str(cfg("watermark", "color", default="#FF0000"))

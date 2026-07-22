@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactQuill, { Quill } from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
+import {
+  restoreStoredJobDescriptionImages,
+  rewriteJobDescriptionImages,
+} from "@/lib/media";
 
 export type QuillEditorProps = {
   value: string;
@@ -238,6 +242,13 @@ export function QuillEditor({
     [openImagePicker]
   );
 
+  // Existing R2 URLs are intentionally preserved in form state/database, but
+  // displayed through the same reliable backend media proxy as public posts.
+  const editorValue = useMemo(
+    () => rewriteJobDescriptionImages(value || ""),
+    [value],
+  );
+
   const formats = [
     "header",
     "size",
@@ -324,10 +335,12 @@ export function QuillEditor({
       <ReactQuill
         ref={quillRef}
         theme="snow"
-        value={value || ""}
+        value={editorValue}
         onChange={(html) => {
           const empty = !html || html === "<p><br></p>" || html === "<p></p>";
-          onChange(empty ? "" : html);
+          onChange(
+            empty ? "" : restoreStoredJobDescriptionImages(html, value || ""),
+          );
         }}
         modules={modules}
         formats={formats}

@@ -38,13 +38,13 @@ def _site_title_alignment(db: Session) -> str:
 
 def _branding_response(db: Session) -> BrandingOut:
     site_title = _setting(db, "site_title") or str(
-        cfg("site", "title", default="PakJobs Jobs in Pakistan")
+        cfg("site", "title", default="Pakistan Jobs Market")
     )
     site_description = _setting(db, "site_description") or str(
         cfg("site", "description", default="Jobs in Pakistan")
     )
     return BrandingOut(
-        site_name=site_name(),
+        site_name=_setting(db, "site_name") or site_name(),
         site_title=site_title,
         site_title_alignment=_site_title_alignment(db),
         site_header=_setting(db, "site_header")
@@ -61,17 +61,17 @@ def _branding_response(db: Session) -> BrandingOut:
             cfg(
                 "site",
                 "footer_copyright",
-                default="Copyrights © {year} - PakistanJobs All rights reserved",
+                default="Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
             )
         ),
         homepage_focus_keyword=_setting(db, "homepage_focus_keyword")
-        or "Pakistan jobs",
+        or "jobs in Pakistan",
         homepage_meta_title=_setting(db, "homepage_meta_title") or site_title,
         homepage_meta_description=_setting(db, "homepage_meta_description")
         or site_description,
         homepage_meta_keywords=_setting(db, "homepage_meta_keywords")
-        or "Pakistan jobs, government jobs, private jobs, FPSC, PPSC, careers Pakistan",
-        logo_url=_setting(db, "logo_url"),
+        or "jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, FPSC jobs, PPSC jobs",
+        logo_url=_setting(db, "logo_url") or "/pakistan-jobs-market-logo.png",
     )
 
 
