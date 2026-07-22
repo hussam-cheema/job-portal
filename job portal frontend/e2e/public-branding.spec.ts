@@ -5,6 +5,15 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/");
+  await expect(page).toHaveTitle("Pakistan Jobs — Latest Government & Private Jobs");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "Find current job opportunities across Pakistan.",
+  );
+  await expect(page.locator('meta[name="keywords"]')).toHaveAttribute(
+    "content",
+    /Pakistan jobs.*government jobs.*private jobs/,
+  );
   await expect(page.locator("header").getByText("PakJobs Jobs in Pakistan", { exact: true })).toBeVisible();
   await expect(page.locator("main h1")).toHaveCSS("text-align", "center");
   await expect(page.locator("main h1 + p")).toHaveCSS("text-align", "center");
@@ -23,4 +32,17 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
     "/disclaimer"
   );
   expect(pageErrors).toEqual([]);
+});
+
+test("job description R2 images render through the public API media route", async ({ page }) => {
+  await page.goto("/jobs/closed-role");
+  const image = page.getByRole("img", { name: "R2 job image" });
+
+  await expect(image).toHaveAttribute(
+    "src",
+    "http://127.0.0.1:4010/api/media/r2/job-portal/closed-role/images/notice.png",
+  );
+  await expect
+    .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
+    .toBeGreaterThan(0);
 });

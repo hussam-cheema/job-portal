@@ -37,10 +37,15 @@ def _site_title_alignment(db: Session) -> str:
 
 
 def _branding_response(db: Session) -> BrandingOut:
+    site_title = _setting(db, "site_title") or str(
+        cfg("site", "title", default="PakJobs Jobs in Pakistan")
+    )
+    site_description = _setting(db, "site_description") or str(
+        cfg("site", "description", default="Jobs in Pakistan")
+    )
     return BrandingOut(
         site_name=site_name(),
-        site_title=_setting(db, "site_title")
-        or str(cfg("site", "title", default="PakJobs Jobs in Pakistan")),
+        site_title=site_title,
         site_title_alignment=_site_title_alignment(db),
         site_header=_setting(db, "site_header")
         or str(
@@ -50,8 +55,7 @@ def _branding_response(db: Session) -> BrandingOut:
                 default="Latest government & private job openings in Pakistan",
             )
         ),
-        site_description=_setting(db, "site_description")
-        or str(cfg("site", "description", default="Jobs in Pakistan")),
+        site_description=site_description,
         footer_copyright=_setting(db, "footer_copyright")
         or str(
             cfg(
@@ -60,6 +64,13 @@ def _branding_response(db: Session) -> BrandingOut:
                 default="Copyrights © {year} - PakistanJobs All rights reserved",
             )
         ),
+        homepage_focus_keyword=_setting(db, "homepage_focus_keyword")
+        or "Pakistan jobs",
+        homepage_meta_title=_setting(db, "homepage_meta_title") or site_title,
+        homepage_meta_description=_setting(db, "homepage_meta_description")
+        or site_description,
+        homepage_meta_keywords=_setting(db, "homepage_meta_keywords")
+        or "Pakistan jobs, government jobs, private jobs, FPSC, PPSC, careers Pakistan",
         logo_url=_setting(db, "logo_url"),
     )
 
@@ -80,8 +91,9 @@ def update_branding(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ):
-    for key, value in payload.model_dump().items():
-        _set_setting(db, key, value.strip())
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            _set_setting(db, key, value.strip())
     db.commit()
     return _branding_response(db)
 

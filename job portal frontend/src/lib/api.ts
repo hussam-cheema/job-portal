@@ -64,6 +64,12 @@ const DEFAULT_BRANDING: Branding = {
   site_description:
     "Hover a job for a summary, then open the full page for complete details and available interview Q&A.",
   footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
+  homepage_focus_keyword: "Pakistan jobs",
+  homepage_meta_title: "PakJobs — Jobs in Pakistan",
+  homepage_meta_description:
+    "Browse current government and private job openings across Pakistan.",
+  homepage_meta_keywords:
+    "Pakistan jobs, government jobs, private jobs, FPSC, PPSC, careers Pakistan",
   logo_url: null,
 };
 
@@ -403,6 +409,10 @@ export async function adminUpdateBranding(
     | "site_header"
     | "site_description"
     | "footer_copyright"
+    | "homepage_focus_keyword"
+    | "homepage_meta_title"
+    | "homepage_meta_description"
+    | "homepage_meta_keywords"
   >
 ): Promise<Branding> {
   return requestJson<Branding>("/api/admin/settings/branding", {

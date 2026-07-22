@@ -125,6 +125,24 @@ export function QuillEditor({
     editor.setSelection(index + 1, 0, "silent");
   }, []);
 
+  const uploadAndInsertImage = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith("image/")) {
+        throw new Error("Please choose an image file");
+      }
+      let url = onUploadImageRef.current
+        ? await onUploadImageRef.current(file)
+        : await fileToDataUrl(file);
+      if (!url) throw new Error("Empty image result");
+      if (url.startsWith("/")) {
+        const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        url = `${base.replace(/\/$/, "")}${url}`;
+      }
+      insertImage(url);
+    },
+    [insertImage]
+  );
+
   const insertAttachmentLink = useCallback((url: string, name: string) => {
     const editor = quillRef.current?.getEditor?.();
     if (!editor) return;
@@ -157,6 +175,53 @@ export function QuillEditor({
     }, 50);
     return () => window.clearTimeout(id);
   }, [mounted, openImagePicker, value]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const editor = quillRef.current?.getEditor?.();
+    const root = (editor as unknown as { root?: HTMLElement } | undefined)?.root;
+    if (!root) return;
+
+    const uploadFiles = (files: File[]) => {
+      void (async () => {
+        for (const file of files) {
+          try {
+            await uploadAndInsertImage(file);
+          } catch (err) {
+            console.error(err);
+            alert(err instanceof Error ? err.message : "Image upload failed");
+          }
+        }
+      })();
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.items || [])
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      uploadFiles(files);
+    };
+    const onDrop = (event: DragEvent) => {
+      const files = Array.from(event.dataTransfer?.files || []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      uploadFiles(files);
+    };
+
+    // Capture before Quill can insert a temporary blob/data source itself.
+    root.addEventListener("paste", onPaste, true);
+    root.addEventListener("drop", onDrop, true);
+    return () => {
+      root.removeEventListener("paste", onPaste, true);
+      root.removeEventListener("drop", onDrop, true);
+    };
+  }, [mounted, uploadAndInsertImage]);
 
   const modules = useMemo(
     () => ({
@@ -198,24 +263,8 @@ export function QuillEditor({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      alert("Please choose an image file");
-      return;
-    }
     try {
-      let url: string;
-      if (onUploadImageRef.current) {
-        url = await onUploadImageRef.current(file);
-      } else {
-        url = await fileToDataUrl(file);
-      }
-      if (!url) throw new Error("Empty image result");
-      // Prefer absolute URLs for relative API paths
-      if (url.startsWith("/")) {
-        const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        url = `${base.replace(/\/$/, "")}${url}`;
-      }
-      insertImage(url);
+      await uploadAndInsertImage(file);
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : "Image upload failed");

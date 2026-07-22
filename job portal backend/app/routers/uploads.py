@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ from app.database import get_db
 from app.logging_config import get_logger
 from app.models import Job, JobAttachment, User
 from app.schemas import JobAttachmentOut, UploadOut
-from app.services.storage import resolve_local_path, upload_bytes
+from app.services.storage import read_public_image_key, resolve_local_path, upload_bytes
 from app.services.watermark import WATERMARK_VERSION, apply_watermark
 
 router = APIRouter()
@@ -157,6 +157,30 @@ def delete_attachment(
         db.rollback()
         logger.exception("delete_attachment failed")
         raise HTTPException(status_code=500, detail="Delete failed") from None
+
+
+@router.get("/media/r2/{object_key:path}")
+def serve_r2_image(object_key: str):
+    """Serve an R2-backed inline image through the API with immutable caching."""
+    try:
+        max_mb = float(cfg("r2", "max_image_mb", default=8) or 8)
+        stored = read_public_image_key(
+            object_key,
+            max_bytes=int(max_mb * 1024 * 1024),
+        )
+        return Response(
+            content=bytes(stored["data"]),
+            media_type=str(stored.get("content_type") or "application/octet-stream"),
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Image not found") from exc
+    except Exception:
+        logger.exception("serve_r2_image failed key=%s", object_key)
+        raise HTTPException(status_code=502, detail="Failed to load image") from None
 
 
 @router.get("/media/{file_path:path}")

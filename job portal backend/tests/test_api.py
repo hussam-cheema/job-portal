@@ -203,6 +203,10 @@ def test_admin_can_update_public_branding_text(client: TestClient):
         "site_header": "Current jobs across Pakistan",
         "site_description": "A description controlled from the admin dashboard.",
         "footer_copyright": "Copyrights © {year} - PakistanJobs All rights reserved",
+        "homepage_focus_keyword": "latest jobs in Pakistan",
+        "homepage_meta_title": "Latest Jobs in Pakistan | PakistanJobs",
+        "homepage_meta_description": "Find current government and private jobs across Pakistan.",
+        "homepage_meta_keywords": "Pakistan jobs, latest jobs, government jobs",
     }
     updated = client.put("/api/admin/settings/branding", headers=auth, json=payload)
 
@@ -422,6 +426,7 @@ def test_admin_upload_watermarks_each_of_two_images(
         }
 
     monkeypatch.setattr(uploads_router, "upload_bytes", fake_upload)
+    source_images: list[Image.Image] = []
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
     )
@@ -429,6 +434,7 @@ def test_admin_upload_watermarks_each_of_two_images(
 
     for color, filename in (("white", "first.png"), ("black", "second.png")):
         image = Image.new("RGB", (1000, 700), color)
+        source_images.append(image.copy())
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         response = client.post(
@@ -439,10 +445,84 @@ def test_admin_upload_watermarks_each_of_two_images(
         assert response.status_code == 200
 
     assert len(stored) == 2
-    for upload in stored:
+    for source, upload in zip(source_images, stored, strict=True):
         assert upload["metadata"] == {"watermark-version": "2"}
         rendered = Image.open(io.BytesIO(upload["data"])).convert("RGB")
         assert rendered.size == (1000, 700)
+        assert ImageChops.difference(source, rendered).getbbox() is not None
+
+
+def test_job_rejects_temporary_clipboard_image_url(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    response = client.post(
+        "/api/admin/jobs",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        json={
+            "title": "Temporary clipboard image",
+            "description": (
+                '<p>Image upload is still pending.</p>'
+                '<img src="blob:https://example.test/temporary-image">'
+            ),
+            "published_date": "2026-07-22T00:00:00",
+            "job_type": "private",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "still local to the browser" in response.json()["detail"]
+
+
+def test_public_r2_image_proxy_returns_cached_image(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.routers import uploads as uploads_router
+
+    image = Image.new("RGB", (2, 2), "blue")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    expected = buffer.getvalue()
+    loaded: dict[str, object] = {}
+
+    def fake_read(object_key: str, *, max_bytes: int):
+        loaded["object_key"] = object_key
+        loaded["max_bytes"] = max_bytes
+        return {
+            "data": expected,
+            "content_type": "image/png",
+            "key": object_key,
+        }
+
+    monkeypatch.setattr(uploads_router, "read_public_image_key", fake_read)
+    response = client.get(
+        "/api/media/r2/job-portal/job-1/images/inline-image.png"
+    )
+
+    assert response.status_code == 200
+    assert response.content == expected
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert loaded["object_key"] == "job-portal/job-1/images/inline-image.png"
+    assert int(loaded["max_bytes"]) > len(expected)
+
+
+def test_public_r2_image_reader_rejects_non_image_keys_before_contacting_r2(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import storage
+
+    r2_client = MagicMock()
+    monkeypatch.setattr(storage, "_r2_client", lambda: r2_client)
+
+    with pytest.raises(ValueError, match="Invalid public image key"):
+        storage.read_public_image_key(
+            "job-portal/job-1/attachments/private-document.pdf",
+            max_bytes=1024,
+        )
+
+    r2_client.get_object.assert_not_called()
 
 
 def test_contact(client: TestClient):

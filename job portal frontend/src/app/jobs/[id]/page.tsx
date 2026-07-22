@@ -12,6 +12,7 @@ import {
   tagColorClass,
 } from "@/lib/format";
 import { toSeoSlug } from "@/lib/slug";
+import { rewriteJobDescriptionImages } from "@/lib/media";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -165,7 +166,9 @@ export default async function JobDetailPage({ params }: Props) {
           <div
             className="prose-job text-[0.95rem]"
             dangerouslySetInnerHTML={{
-              __html: job.description || "<p>No description provided.</p>",
+              __html: rewriteJobDescriptionImages(
+                job.description || "<p>No description provided.</p>"
+              ),
             }}
           />
 

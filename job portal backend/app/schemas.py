@@ -87,6 +87,10 @@ class BrandingOut(BaseModel):
     site_header: str
     site_description: str
     footer_copyright: str
+    homepage_focus_keyword: str
+    homepage_meta_title: str
+    homepage_meta_description: str
+    homepage_meta_keywords: str
     logo_url: Optional[str] = None
 
 
@@ -96,6 +100,11 @@ class BrandingUpdateIn(BaseModel):
     site_header: str = Field(..., min_length=1, max_length=240)
     site_description: str = Field(..., min_length=1, max_length=500)
     footer_copyright: str = Field(..., min_length=1, max_length=240)
+    # Optional for rolling-deployment compatibility with older frontend builds.
+    homepage_focus_keyword: Optional[str] = Field(default=None, max_length=160)
+    homepage_meta_title: Optional[str] = Field(default=None, max_length=70)
+    homepage_meta_description: Optional[str] = Field(default=None, max_length=200)
+    homepage_meta_keywords: Optional[str] = Field(default=None, max_length=500)
 
 
 class JobQnAOut(BaseModel):

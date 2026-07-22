@@ -121,6 +121,17 @@ test("website title position is configurable from settings", async ({ page }) =>
   await page.goto("/admin/settings");
   await expect(page.getByRole("radiogroup", { name: "Website title position" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Center" })).toBeChecked();
+  await expect(page.getByRole("heading", { name: "Homepage SEO" })).toBeVisible();
+  await expect(page.getByLabel("Focus keyphrase")).toHaveValue("Pakistan jobs");
+  await expect(page.getByLabel("SEO title")).toHaveValue(
+    "Pakistan Jobs — Latest Government & Private Jobs",
+  );
+  await expect(page.getByLabel("Meta description")).toHaveValue(
+    "Find current job opportunities across Pakistan.",
+  );
+  await expect(page.getByLabel("Meta keywords")).toHaveValue(
+    "Pakistan jobs, government jobs, private jobs",
+  );
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();
 });

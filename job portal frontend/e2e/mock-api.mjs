@@ -17,6 +17,19 @@ const server = createServer((request, response) => {
   if (path.startsWith("/api/admin/blog") && authorization === "Bearer expired-e2e-token") {
     return json(response, { detail: "Invalid token" }, 401);
   }
+  if (path.startsWith("/api/media/r2/")) {
+    const onePixelPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    response.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "Content-Type": "image/png",
+    });
+    response.end(onePixelPng);
+    return;
+  }
   if (path === "/ready") return json(response, { status: "ready" });
   if (path === "/api/settings/branding") {
     return json(response, {
@@ -26,6 +39,10 @@ const server = createServer((request, response) => {
       site_header: "Latest government & private job openings in Pakistan",
       site_description: "Find current job opportunities across Pakistan.",
       footer_copyright: "Copyrights © {year} - PakistanJobs All rights reserved",
+      homepage_focus_keyword: "Pakistan jobs",
+      homepage_meta_title: "Pakistan Jobs — Latest Government & Private Jobs",
+      homepage_meta_description: "Find current job opportunities across Pakistan.",
+      homepage_meta_keywords: "Pakistan jobs, government jobs, private jobs",
       logo_url: null,
     });
   }
@@ -87,7 +104,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/closed-role") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
-      description: "<p>A nationwide job with a passed deadline.</p>", published_date: "2026-07-01T00:00:00Z",
+      description: '<p>A nationwide job with a passed deadline.</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",

@@ -275,6 +275,10 @@ export type Branding = {
   site_header: string;
   site_description: string;
   footer_copyright: string;
+  homepage_focus_keyword: string;
+  homepage_meta_title: string;
+  homepage_meta_description: string;
+  homepage_meta_keywords: string;
   logo_url: string | null;
 };
 

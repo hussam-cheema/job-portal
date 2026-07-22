@@ -175,6 +175,41 @@ def read_public_object(
     }
 
 
+def read_public_image_key(
+    object_key: str,
+    *,
+    max_bytes: int,
+) -> dict[str, object]:
+    """Read a public job-description image from R2 by object key.
+
+    The public media endpoint uses this helper as a delivery fallback when a
+    browser cannot load the bucket's public hostname directly.  Only image
+    objects inside this application's prefix are accepted; attachments and
+    arbitrary R2 keys remain inaccessible through the endpoint.
+    """
+    key = unquote(object_key).lstrip("/")
+    prefix = f"{_prefix()}/"
+    suffix = Path(key).suffix.lower()
+    allowed_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+    if (
+        not key.startswith(prefix)
+        or ".." in Path(key).parts
+        or suffix not in allowed_extensions
+        or ("/images/" not in key and "/branding/" not in key)
+    ):
+        raise ValueError("Invalid public image key")
+
+    response = _r2_client().get_object(Bucket=_bucket(), Key=key)
+    data = response["Body"].read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError("Stored image exceeds the configured image size limit")
+    return {
+        "data": data,
+        "content_type": response.get("ContentType") or mimetypes.guess_type(key)[0],
+        "key": key,
+    }
+
+
 def resolve_local_path(object_path: str) -> Optional[Path]:
     """Local media serving is disabled when using R2-only storage."""
     return None

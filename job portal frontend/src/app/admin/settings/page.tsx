@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
+import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
 import { useAdminAuth } from "@/lib/adminAuth";
 import {
   adminChangePassword,
@@ -29,6 +30,12 @@ export default function SettingsPage() {
   const [footerCopyright, setFooterCopyright] = useState(
     "Copyrights © {year} - PakistanJobs All rights reserved"
   );
+  const [homepageSeo, setHomepageSeo] = useState<YoastSEOValue>({
+    focus_keyword: "Pakistan jobs",
+    meta_title: "PakJobs — Jobs in Pakistan",
+    meta_description: "Browse current government and private job openings across Pakistan.",
+    meta_keywords: "Pakistan jobs, government jobs, private jobs",
+  });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -44,6 +51,12 @@ export default function SettingsPage() {
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
+      setHomepageSeo({
+        focus_keyword: branding.homepage_focus_keyword,
+        meta_title: branding.homepage_meta_title,
+        meta_description: branding.homepage_meta_description,
+        meta_keywords: branding.homepage_meta_keywords,
+      });
     });
   }, []);
 
@@ -60,13 +73,23 @@ export default function SettingsPage() {
         site_header: siteHeader.trim(),
         site_description: siteDescription.trim(),
         footer_copyright: footerCopyright.trim(),
+        homepage_focus_keyword: homepageSeo.focus_keyword.trim(),
+        homepage_meta_title: homepageSeo.meta_title.trim(),
+        homepage_meta_description: homepageSeo.meta_description.trim(),
+        homepage_meta_keywords: homepageSeo.meta_keywords.trim(),
       });
       setSiteTitle(branding.site_title);
       setSiteTitleAlignment(branding.site_title_alignment);
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
-      setMessage("Website text and footer updated.");
+      setHomepageSeo({
+        focus_keyword: branding.homepage_focus_keyword,
+        meta_title: branding.homepage_meta_title,
+        meta_description: branding.homepage_meta_description,
+        meta_keywords: branding.homepage_meta_keywords,
+      });
+      setMessage("Website text, homepage SEO, and footer updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Website settings update failed");
     } finally {
@@ -219,9 +242,24 @@ export default function SettingsPage() {
                 onChange={(event) => setFooterCopyright(event.target.value)}
               />
             </div>
+            <div className="lg:col-span-2">
+              <div className="mb-3 border-t border-[var(--border)] pt-5">
+                <h3 className="font-semibold text-[var(--navy-100)]">Homepage SEO</h3>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Controls the Google result and social preview for the website homepage.
+                </p>
+              </div>
+              <YoastSEOPanel
+                title={siteTitle}
+                content={`${siteHeader}\n\n${siteDescription}`}
+                slug=""
+                value={homepageSeo}
+                onChange={setHomepageSeo}
+              />
+            </div>
           </div>
           <button type="submit" className="btn btn-primary mt-5" disabled={busy}>
-            Save website text
+            Save website settings
           </button>
         </form>
 

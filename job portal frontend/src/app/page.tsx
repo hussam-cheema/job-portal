@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { fetchBranding, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
 import type { Branding, FiltersResponse, JobListResponse, StatsResponse } from "@/lib/types";
@@ -8,6 +9,43 @@ import { Pagination } from "@/components/Pagination";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+function homepageKeywords(branding: Branding) {
+  return Array.from(
+    new Set(
+      `${branding.homepage_focus_keyword},${branding.homepage_meta_keywords}`
+        .split(",")
+        .map((keyword) => keyword.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await fetchBranding();
+  const title = branding.homepage_meta_title.trim() || branding.site_title;
+  const description =
+    branding.homepage_meta_description.trim() || branding.site_description;
+
+  return {
+    title: { absolute: title },
+    description,
+    keywords: homepageKeywords(branding),
+    alternates: { canonical: "/" },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: "/",
+      siteName: branding.site_name,
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
+  };
+}
 
 function pick(sp: Record<string, string | string[] | undefined>, key: string) {
   const v = sp[key];

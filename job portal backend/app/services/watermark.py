@@ -133,6 +133,10 @@ def process_description_images(description: str, job_id: str) -> str:
 
     def replace(match: re.Match[str]) -> str:
         src = html.unescape(match.group("src"))
+        if src.lower().startswith(("blob:", "file:")):
+            raise ValueError(
+                "A pasted image is still local to the browser. Wait for its upload to finish."
+            )
         data_match = _DATA_IMAGE_RE.match(src)
         filename: str
         if data_match:

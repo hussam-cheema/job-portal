@@ -108,6 +108,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
           <label className="field-label">Focus keyphrase</label>
           <input
             className="input"
+            aria-label="Focus keyphrase"
             value={value.focus_keyword}
             onChange={(e) => set("focus_keyword", e.target.value)}
             placeholder="e.g. software engineer jobs pakistan"
@@ -117,6 +118,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
           <label className="field-label">Meta keywords</label>
           <input
             className="input"
+            aria-label="Meta keywords"
             value={value.meta_keywords}
             onChange={(e) => set("meta_keywords", e.target.value)}
             placeholder="comma, separated, keywords"
@@ -127,6 +129,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
         <label className="field-label">SEO title</label>
         <input
           className="input"
+          aria-label="SEO title"
           value={value.meta_title}
           onChange={(e) => set("meta_title", e.target.value)}
           placeholder={title || "SEO title"}
@@ -137,6 +140,7 @@ export function YoastSEOPanel({ title, content, slug, value, onChange }: Props) 
         <label className="field-label">Meta description</label>
         <textarea
           className="input min-h-[80px]"
+          aria-label="Meta description"
           value={value.meta_description}
           onChange={(e) => set("meta_description", e.target.value)}
           placeholder="Write a compelling meta description (120–160 chars)"
