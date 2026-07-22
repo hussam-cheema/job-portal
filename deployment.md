@@ -186,6 +186,7 @@ DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=5
 DB_POOL_TIMEOUT=30
 DB_POOL_RECYCLE=300
+DB_STORAGE_LIMIT_GB=32
 
 JWT_SECRET=secretref:jwt-secret
 ADMIN_USERNAME=admin
@@ -201,6 +202,16 @@ R2_ACCESS_KEY_ID=secretref:r2-access-key-id
 R2_SECRET_ACCESS_KEY=secretref:r2-secret-access-key
 R2_BUCKET_NAME=job-portal-prod
 R2_PUBLIC_BASE_URL=https://files.example.com
+R2_STORAGE_LIMIT_GB=10
+
+BACKEND_CPU_LIMIT_CORES=0.5
+BACKEND_MEMORY_LIMIT_MB=1024
+BACKEND_MIN_REPLICAS=0
+BACKEND_MAX_REPLICAS=2
+FRONTEND_PLAN=Free
+FRONTEND_APP_LIMIT_MB=250
+FRONTEND_BANDWIDTH_LIMIT_GB=100
+INFRA_MONTHLY_BUDGET_USD=25
 
 SEED_ON_STARTUP=false
 RESET_DB_SCHEMA=false
@@ -208,6 +219,8 @@ LOG_LEVEL=INFO
 ```
 
 Add any YouTube or LLM API keys as Container App secrets only when those features are enabled. The local backend `.env` is not copied into the production container.
+
+The admin **Infrastructure analytics** page collects R2 object bytes, PostgreSQL database size, backend replica CPU/RAM, and connection-pool utilization directly. `R2_STORAGE_LIMIT_GB` is a cost-control budget because R2 storage is elastic; `DB_STORAGE_LIMIT_GB` must match the PostgreSQL provisioned storage. For a complete monthly cost view, periodically copy the current Azure Cost Management estimates into `DB_MONTHLY_COST_USD`, `BACKEND_MONTHLY_COST_USD`, and `FRONTEND_MONTHLY_COST_USD`. Unset costs are shown as unconfigured instead of being guessed.
 
 The first successful admin login creates the configured admin account if it does not already exist, so production does not require startup seed data.
 

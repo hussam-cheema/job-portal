@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from app.services import storage
+from app.services import infrastructure
 
 
 def _configure_r2(monkeypatch):
@@ -48,3 +49,25 @@ def test_upload_bytes_puts_object_in_r2(monkeypatch):
     assert call["Bucket"] == "job-files"
     assert call["Body"] == b"hello"
     assert call["ContentType"] == "text/plain"
+
+
+def test_r2_usage_sums_paginated_objects(monkeypatch):
+    _configure_r2(monkeypatch)
+    monkeypatch.setenv("R2_STORAGE_LIMIT_GB", "1")
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Size": 100}, {"Size": 200}]},
+        {"Contents": [{"Size": 300}]},
+    ]
+    client = MagicMock()
+    client.get_paginator.return_value = paginator
+    monkeypatch.setattr(storage, "_r2_client", lambda: client)
+    infrastructure._r2_cache.clear()
+
+    metric = infrastructure._r2_storage(force_refresh=True)
+
+    assert metric.used_bytes == 600
+    assert metric.total_bytes == 1024**3
+    assert metric.object_count == 3
+    assert metric.status == "healthy"
+    paginator.paginate.assert_called_once_with(Bucket="job-files", Prefix="job-portal/")

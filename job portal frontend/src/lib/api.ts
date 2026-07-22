@@ -11,6 +11,7 @@ import type {
   QnAFetchResult,
   SEODashboard,
   StatsResponse,
+  InfrastructureDashboard,
 } from "./types";
 
 const API_BASE = (
@@ -211,6 +212,21 @@ export async function adminAnalytics(
     cache: "no-store",
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Load failed");
+  return res.json();
+}
+
+export async function adminInfrastructure(
+  token: string,
+  refresh = false
+): Promise<InfrastructureDashboard> {
+  const query = refresh ? "?refresh=true" : "";
+  const res = await fetch(`${API_BASE}/api/admin/infrastructure${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => ({}))).detail || "Infrastructure metrics could not be loaded");
+  }
   return res.json();
 }
 

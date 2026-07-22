@@ -31,6 +31,9 @@ export default function AdminHome() {
           <Link href="/admin/seo" className="btn btn-ghost">
             SEO monitor
           </Link>
+          <Link href="/admin/infrastructure" className="btn btn-ghost">
+            Infrastructure analytics
+          </Link>
         </div>
       </div>
     </AdminShell>

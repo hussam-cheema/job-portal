@@ -20,7 +20,18 @@ from app.exceptions import (
     validation_exception_handler,
 )
 from app.logging_config import get_logger, setup_logging
-from app.routers import analytics, auth, contact, jobs, pages, seo, settings, stats, uploads
+from app.routers import (
+    analytics,
+    auth,
+    contact,
+    infrastructure,
+    jobs,
+    pages,
+    seo,
+    settings,
+    stats,
+    uploads,
+)
 from app.seed import seed_if_empty
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
@@ -82,6 +93,7 @@ app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(seo.router, prefix="/api", tags=["seo"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
+app.include_router(infrastructure.router, prefix="/api", tags=["infrastructure"])
 
 
 @app.get("/sitemap.xml", tags=["seo"], response_class=None)

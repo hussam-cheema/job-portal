@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminLogin } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
@@ -13,9 +13,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (ready && token) {
-    router.replace("/admin");
-  }
+  useEffect(() => {
+    if (ready && token) router.replace("/admin");
+  }, [ready, router, token]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

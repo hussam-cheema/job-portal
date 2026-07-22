@@ -100,7 +100,14 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --image "${{ steps.image.outputs.tags }}" \
             --cpu 0.5 \
-            --memory 1.0Gi
+            --memory 1.0Gi \
+            --min-replicas 0 \
+            --max-replicas 2 \
+            --set-env-vars \
+              BACKEND_CPU_LIMIT_CORES=0.5 \
+              BACKEND_MEMORY_LIMIT_MB=1024 \
+              BACKEND_MIN_REPLICAS=0 \
+              BACKEND_MAX_REPLICAS=2
 
           az containerapp ingress update \
             --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \

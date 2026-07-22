@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/admin/pages/new", label: "Create page" },
   { href: "/admin/messages", label: "Messages" },
   { href: "/admin/analytics", label: "Site analytics" },
+  { href: "/admin/infrastructure", label: "Infrastructure analytics" },
   { href: "/admin/seo", label: "SEO monitor" },
   { href: "/admin/settings", label: "Settings" },
 ];
@@ -28,12 +29,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     setNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (ready && !token && pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [pathname, ready, router, token]);
+
   if (!ready) {
     return <div className="site-wrap py-10 text-[var(--muted)]">Loading…</div>;
   }
 
   if (!token && pathname !== "/login") {
-    if (typeof window !== "undefined") router.replace("/login");
     return <div className="site-wrap py-10 text-[var(--muted)]">Redirecting to login…</div>;
   }
 
