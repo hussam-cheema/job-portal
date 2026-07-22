@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from io import BytesIO
 
 from app.services import storage
+from app.services import infrastructure
 
 
 def _configure_r2(monkeypatch):
@@ -81,3 +82,25 @@ def test_read_public_object_only_reads_owned_r2_urls(monkeypatch):
         )
         is None
     )
+
+
+def test_r2_usage_sums_paginated_objects(monkeypatch):
+    _configure_r2(monkeypatch)
+    monkeypatch.setenv("R2_STORAGE_LIMIT_GB", "1")
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Size": 100}, {"Size": 200}]},
+        {"Contents": [{"Size": 300}]},
+    ]
+    client = MagicMock()
+    client.get_paginator.return_value = paginator
+    monkeypatch.setattr(storage, "_r2_client", lambda: client)
+    infrastructure._r2_cache.clear()
+
+    metric = infrastructure._r2_storage(force_refresh=True)
+
+    assert metric.used_bytes == 600
+    assert metric.total_bytes == 1024**3
+    assert metric.object_count == 3
+    assert metric.status == "healthy"
+    paginator.paginate.assert_called_once_with(Bucket="job-files", Prefix="job-portal/")

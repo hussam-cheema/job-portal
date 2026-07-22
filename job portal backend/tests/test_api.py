@@ -1283,6 +1283,31 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     assert monthly.json()["page_views"] == 1
 
 
+def test_infrastructure_analytics_requires_admin_and_reports_capacity(client: TestClient):
+    assert client.get("/api/admin/infrastructure").status_code == 401
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    response = client.get(
+        "/api/admin/infrastructure?refresh=true",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {item["id"] for item in data["storage"]} == {"r2", "database"}
+    assert {item["id"] for item in data["compute"]} == {"backend", "frontend"}
+    assert next(item for item in data["storage"] if item["id"] == "database")[
+        "used_bytes"
+    ] > 0
+    assert next(item for item in data["compute"] if item["id"] == "frontend")[
+        "runtime_model"
+    ] == "Provider managed"
+    assert data["costs"]["monthly_budget_usd"] == 25.0
+    assert data["refresh_after_seconds"] == 30
+
+
 def test_analytics_ignores_browser_location_hints(client: TestClient):
     response = client.post(
         "/api/analytics/visit",

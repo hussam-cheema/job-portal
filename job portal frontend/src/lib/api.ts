@@ -18,6 +18,7 @@ import type {
   BlogFormData,
   BlogListResponse,
   BlogPost,
+  InfrastructureDashboard,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
 
@@ -438,6 +439,21 @@ export async function adminRealtimeAnalytics(token: string, windowMinutes = 5) {
     { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
     "Live analytics failed"
   );
+}
+
+export async function adminInfrastructure(
+  token: string,
+  refresh = false
+): Promise<InfrastructureDashboard> {
+  const query = refresh ? "?refresh=true" : "";
+  const res = await fetch(`${API_BASE}/api/admin/infrastructure${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => ({}))).detail || "Infrastructure metrics could not be loaded");
+  }
+  return res.json();
 }
 
 export async function adminCreateJob(token: string, data: JobFormData) {

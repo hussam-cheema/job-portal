@@ -155,6 +155,25 @@ const server = createServer((request, response) => {
       page_views: 0, daily: [], locations: [],
     });
   }
+  if (path === "/api/admin/infrastructure") {
+    return json(response, {
+      collected_at: new Date().toISOString(), refresh_after_seconds: 30,
+      storage: [
+        { id: "r2", name: "Object storage", provider: "Cloudflare R2", used_bytes: 1048576, total_bytes: 10737418240, utilization_percent: 0.01, object_count: 12, status: "healthy", source: "mock", detail: "R2 test usage." },
+        { id: "database", name: "Database storage", provider: "Azure PostgreSQL", used_bytes: 2097152, total_bytes: 34359738368, utilization_percent: 0.01, object_count: null, status: "healthy", source: "mock", detail: "Database test usage." },
+      ],
+      compute: [
+        { id: "backend", name: "Backend API", provider: "Azure Container Apps", runtime_model: "Dedicated per replica", cpu_used_percent: 4, cpu_allocated_cores: 0.5, memory_used_bytes: 134217728, memory_allocated_bytes: 1073741824, memory_used_percent: 12.5, min_replicas: 0, max_replicas: 2, uptime_seconds: 300, status: "healthy", detail: "Backend test usage." },
+        { id: "frontend", name: "Frontend", provider: "Azure Static Web Apps", runtime_model: "Provider managed", cpu_used_percent: null, cpu_allocated_cores: null, memory_used_bytes: null, memory_allocated_bytes: null, memory_used_percent: null, min_replicas: null, max_replicas: null, uptime_seconds: null, status: "managed", detail: "Provider managed." },
+      ],
+      database_connections: { used: 1, total: 10, utilization_percent: 10, status: "healthy", detail: "Connection test usage." },
+      quotas: [
+        { id: "frontend_assets", name: "Frontend app size", provider: "Azure Static Web Apps Free", used: null, total: 250, unit: "MB", utilization_percent: null, status: "unknown", detail: "Provider quota." },
+      ],
+      costs: { currency: "USD", monthly_budget_usd: 25, tracked_monthly_estimate_usd: 0, budget_utilization_percent: 0, unconfigured_services: 2, detail: "Test estimate.", items: [] },
+      alerts: [{ severity: "healthy", title: "All measured resources are within target", detail: "No measured resource crossed the warning threshold." }],
+    });
+  }
   if (path === "/api/admin/seo/dashboard") {
     return json(response, {
       on_page: {}, off_page: {}, performance: {}, jobs_with_seo: 0, pages_with_seo: 0,

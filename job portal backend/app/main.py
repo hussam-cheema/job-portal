@@ -20,7 +20,21 @@ from app.exceptions import (
     validation_exception_handler,
 )
 from app.logging_config import flush_production_logs, get_logger, setup_logging
-from app.routers import analytics, auth, blog, contact, jobs, pages, seo, settings, stats, subscriptions, taxonomy, uploads
+from app.routers import (
+    analytics,
+    auth,
+    blog,
+    contact,
+    infrastructure,
+    jobs,
+    pages,
+    seo,
+    settings,
+    stats,
+    subscriptions,
+    taxonomy,
+    uploads,
+)
 from app.seed import (
     ensure_default_pages,
     seed_if_empty,
@@ -124,6 +138,7 @@ app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(taxonomy.router, prefix="/api", tags=["taxonomy"])
 app.include_router(subscriptions.router, prefix="/api", tags=["subscriptions"])
+app.include_router(infrastructure.router, prefix="/api", tags=["infrastructure"])
 
 
 @app.get("/sitemap.xml", tags=["seo"], response_class=None)

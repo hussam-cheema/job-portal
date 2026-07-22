@@ -13,6 +13,7 @@ const ACTIONS: Array<{ href: string; label: string; description: string; icon: U
   { href: "/admin/pages", label: "Manage pages", description: "Maintain website content", icon: "page" },
   { href: "/admin/messages", label: "Contact messages", description: "Read audience enquiries", icon: "mail" },
   { href: "/admin/analytics", label: "Site analytics", description: "Track real-time visitors", icon: "analytics" },
+  { href: "/admin/infrastructure", label: "Infrastructure analytics", description: "Monitor capacity and cloud costs", icon: "analytics" },
   { href: "/admin/seo", label: "SEO monitor", description: "Improve search visibility", icon: "search" },
   { href: "/admin/newsletter", label: "Newsletter subscription", description: "Manage job-alert subscribers", icon: "letter" },
   { href: "/admin/taxonomy", label: "Tags / categories", description: "Keep taxonomy consistent", icon: "tags" },

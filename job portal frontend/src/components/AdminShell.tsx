@@ -17,6 +17,7 @@ const LINKS: Array<{ href: string; label: string; icon: UiIconName; group: strin
   { href: "/admin/pages/new", label: "Create page", icon: "plus", group: "Content" },
   { href: "/admin/messages", label: "Messages", icon: "mail", group: "Audience" },
   { href: "/admin/analytics", label: "Site analytics", icon: "analytics", group: "Audience" },
+  { href: "/admin/infrastructure", label: "Infrastructure analytics", icon: "analytics", group: "System" },
   { href: "/admin/seo", label: "SEO monitor", icon: "search", group: "Growth" },
   { href: "/admin/newsletter", label: "Newsletter subscription", icon: "letter", group: "Growth" },
   { href: "/admin/settings", label: "Settings", icon: "settings", group: "System" },

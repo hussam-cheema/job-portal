@@ -307,3 +307,79 @@ export type AnalyticsRealtime = {
     last_seen: string;
   }>;
 };
+
+export type InfrastructureStorageMetric = {
+  id: string;
+  name: string;
+  provider: string;
+  used_bytes: number | null;
+  total_bytes: number | null;
+  utilization_percent: number | null;
+  object_count: number | null;
+  status: string;
+  source: string;
+  detail: string;
+};
+
+export type InfrastructureComputeMetric = {
+  id: string;
+  name: string;
+  provider: string;
+  runtime_model: string;
+  cpu_used_percent: number | null;
+  cpu_allocated_cores: number | null;
+  memory_used_bytes: number | null;
+  memory_allocated_bytes: number | null;
+  memory_used_percent: number | null;
+  min_replicas: number | null;
+  max_replicas: number | null;
+  uptime_seconds: number | null;
+  status: string;
+  detail: string;
+};
+
+export type InfrastructureDashboard = {
+  collected_at: string;
+  refresh_after_seconds: number;
+  storage: InfrastructureStorageMetric[];
+  compute: InfrastructureComputeMetric[];
+  database_connections: {
+    used: number | null;
+    total: number | null;
+    utilization_percent: number | null;
+    status: string;
+    detail: string;
+  };
+  quotas: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    used: number | null;
+    total: number;
+    unit: string;
+    utilization_percent: number | null;
+    status: string;
+    detail: string;
+  }>;
+  costs: {
+    currency: string;
+    monthly_budget_usd: number;
+    tracked_monthly_estimate_usd: number;
+    budget_utilization_percent: number;
+    unconfigured_services: number;
+    detail: string;
+    items: Array<{
+      id: string;
+      name: string;
+      provider: string;
+      monthly_estimate_usd: number | null;
+      configured: boolean;
+      detail: string;
+    }>;
+  };
+  alerts: Array<{
+    severity: string;
+    title: string;
+    detail: string;
+  }>;
+};

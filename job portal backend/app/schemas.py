@@ -80,6 +80,92 @@ class AnalyticsDashboard(BaseModel):
     locations: list[AnalyticsLocation] = Field(default_factory=list)
 
 
+class InfrastructureStorageMetric(BaseModel):
+    id: str
+    name: str
+    provider: str
+    used_bytes: Optional[int] = None
+    total_bytes: Optional[int] = None
+    utilization_percent: Optional[float] = None
+    object_count: Optional[int] = None
+    status: str
+    source: str
+    detail: str
+
+
+class InfrastructureComputeMetric(BaseModel):
+    id: str
+    name: str
+    provider: str
+    runtime_model: str
+    cpu_used_percent: Optional[float] = None
+    cpu_allocated_cores: Optional[float] = None
+    memory_used_bytes: Optional[int] = None
+    memory_allocated_bytes: Optional[int] = None
+    memory_used_percent: Optional[float] = None
+    min_replicas: Optional[int] = None
+    max_replicas: Optional[int] = None
+    uptime_seconds: Optional[int] = None
+    status: str
+    detail: str
+
+
+class InfrastructureConnectionMetric(BaseModel):
+    used: Optional[int] = None
+    total: Optional[int] = None
+    utilization_percent: Optional[float] = None
+    status: str
+    detail: str
+
+
+class InfrastructureQuotaMetric(BaseModel):
+    id: str
+    name: str
+    provider: str
+    used: Optional[float] = None
+    total: float
+    unit: str
+    utilization_percent: Optional[float] = None
+    status: str
+    detail: str
+
+
+class InfrastructureCostItem(BaseModel):
+    id: str
+    name: str
+    provider: str
+    monthly_estimate_usd: Optional[float] = None
+    configured: bool
+    detail: str
+
+
+class InfrastructureCostSummary(BaseModel):
+    currency: str = "USD"
+    monthly_budget_usd: float
+    tracked_monthly_estimate_usd: float
+    budget_utilization_percent: float
+    unconfigured_services: int
+    items: list[InfrastructureCostItem] = Field(default_factory=list)
+    detail: str
+
+
+class InfrastructureAlert(BaseModel):
+    severity: str
+    title: str
+    detail: str
+
+
+class InfrastructureDashboard(BaseModel):
+    collected_at: datetime
+    refresh_after_seconds: int
+    storage: list[InfrastructureStorageMetric] = Field(default_factory=list)
+    compute: list[InfrastructureComputeMetric] = Field(default_factory=list)
+    database_connections: InfrastructureConnectionMetric
+    quotas: list[InfrastructureQuotaMetric] = Field(default_factory=list)
+    costs: InfrastructureCostSummary
+    alerts: list[InfrastructureAlert] = Field(default_factory=list)
+
+
 class BrandingOut(BaseModel):
     site_name: str
     site_title: str
