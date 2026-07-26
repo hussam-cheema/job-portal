@@ -26,6 +26,11 @@ test("Cover Letter follows Resume Builder and downloads the populated A4 letter 
 
   await page.goto("/cover-letter");
   await expect(page.getByRole("heading", { name: "Cover Letter", exact: true })).toBeVisible();
+  const signatureName = page
+    .getByTestId("cover-letter-preview")
+    .locator(".cover-letter-signature strong");
+  await expect(signatureName).toHaveText("(YOUR NAME)");
+  await expect(signatureName).toHaveCSS("color", "rgb(0, 0, 0)");
   await page.getByLabel("Cover letter title").fill("Google Cover Letter");
   await page.getByLabel("Subtitle").fill("by CV Genius");
   await page.getByLabel("Full name").fill("Mary Leannon");
@@ -46,6 +51,7 @@ test("Cover Letter follows Resume Builder and downloads the populated A4 letter 
   await expect(preview).toContainText("Dear Morgan,");
   await expect(preview).toContainText("I am applying for the Senior Software Engineer position.");
   await expect(preview).toContainText("Mary Leannon");
+  await expect(signatureName).toHaveCSS("color", "rgb(0, 0, 0)");
 
   const previewFitsWithoutScrolling = await page
     .getByTestId("cover-letter-preview-shell")
