@@ -5,6 +5,7 @@ import ReactQuill, { Quill } from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import {
   restoreStoredJobDescriptionImages,
+  rewriteJobDescriptionImageUrl,
   rewriteJobDescriptionImages,
 } from "@/lib/media";
 
@@ -103,6 +104,7 @@ export function QuillEditor({
   const onUploadImageRef = useRef(onUploadImage);
   const onUploadAttachmentRef = useRef(onUploadAttachment);
   const attachmentCountRef = useRef(attachmentCount);
+  const uploadedImageSourcesRef = useRef(new Map<string, string>());
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -142,9 +144,59 @@ export function QuillEditor({
         const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
         url = `${base.replace(/\/$/, "")}${url}`;
       }
-      insertImage(url);
+      // R2 custom-domain access can be unavailable even though the upload
+      // succeeded. Insert through the public backend media route immediately
+      // so pasted images never render as broken while editing.
+      const displayUrl = rewriteJobDescriptionImageUrl(url);
+      if (displayUrl !== url) {
+        uploadedImageSourcesRef.current.set(displayUrl, url);
+      }
+      insertImage(displayUrl);
     },
     [insertImage]
+  );
+
+  const uploadFiles = useCallback(
+    (files: File[]) => {
+      void (async () => {
+        for (const file of files) {
+          try {
+            await uploadAndInsertImage(file);
+          } catch (err) {
+            console.error(err);
+            alert(err instanceof Error ? err.message : "Image upload failed");
+          }
+        }
+      })();
+    },
+    [uploadAndInsertImage],
+  );
+
+  const handlePasteCapture = useCallback(
+    (event: React.ClipboardEvent<HTMLDivElement>) => {
+      const clipboard = event.clipboardData;
+      const itemFiles = Array.from(clipboard.items || [])
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+      const directFiles = Array.from(clipboard.files || []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      const files = [...itemFiles, ...directFiles].filter(
+        (file, index, all) =>
+          all.findIndex(
+            (candidate) =>
+              candidate.name === file.name &&
+              candidate.size === file.size &&
+              candidate.type === file.type
+          ) === index
+      );
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      uploadFiles(files);
+    },
+    [uploadFiles],
   );
 
   const insertAttachmentLink = useCallback((url: string, name: string) => {
@@ -186,28 +238,6 @@ export function QuillEditor({
     const root = (editor as unknown as { root?: HTMLElement } | undefined)?.root;
     if (!root) return;
 
-    const uploadFiles = (files: File[]) => {
-      void (async () => {
-        for (const file of files) {
-          try {
-            await uploadAndInsertImage(file);
-          } catch (err) {
-            console.error(err);
-            alert(err instanceof Error ? err.message : "Image upload failed");
-          }
-        }
-      })();
-    };
-    const onPaste = (event: ClipboardEvent) => {
-      const files = Array.from(event.clipboardData?.items || [])
-        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => Boolean(file));
-      if (!files.length) return;
-      event.preventDefault();
-      event.stopPropagation();
-      uploadFiles(files);
-    };
     const onDrop = (event: DragEvent) => {
       const files = Array.from(event.dataTransfer?.files || []).filter((file) =>
         file.type.startsWith("image/")
@@ -218,14 +248,11 @@ export function QuillEditor({
       uploadFiles(files);
     };
 
-    // Capture before Quill can insert a temporary blob/data source itself.
-    root.addEventListener("paste", onPaste, true);
     root.addEventListener("drop", onDrop, true);
     return () => {
-      root.removeEventListener("paste", onPaste, true);
       root.removeEventListener("drop", onDrop, true);
     };
-  }, [mounted, uploadAndInsertImage]);
+  }, [mounted, uploadFiles]);
 
   const modules = useMemo(
     () => ({
@@ -316,7 +343,10 @@ export function QuillEditor({
   }
 
   return (
-    <div className={`quill-wrap${onUploadAttachment ? " quill-wrap--with-attach" : ""}`}>
+    <div
+      className={`quill-wrap${onUploadAttachment ? " quill-wrap--with-attach" : ""}`}
+      onPasteCapture={handlePasteCapture}
+    >
       {onUploadAttachment && (
         <div className="quill-extra-bar">
           <button
@@ -338,9 +368,15 @@ export function QuillEditor({
         value={editorValue}
         onChange={(html) => {
           const empty = !html || html === "<p><br></p>" || html === "<p></p>";
-          onChange(
-            empty ? "" : restoreStoredJobDescriptionImages(html, value || ""),
-          );
+          if (empty) {
+            onChange("");
+            return;
+          }
+          let storedHtml = restoreStoredJobDescriptionImages(html, value || "");
+          for (const [displayUrl, sourceUrl] of uploadedImageSourcesRef.current) {
+            storedHtml = storedHtml.replaceAll(displayUrl, sourceUrl);
+          }
+          onChange(storedHtml);
         }}
         modules={modules}
         formats={formats}

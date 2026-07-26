@@ -42,6 +42,7 @@ class AnalyticsVisit(Base):
     path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False, default="Unknown", index=True)
     region: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
+    city: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
     location_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     visited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
@@ -64,6 +65,7 @@ class Job(Base):
     skills: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     job_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)  # government | private
     cities: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    provinces: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     tags: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -253,6 +255,35 @@ class SubscriptionDigestRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SubscriptionEmailDelivery(Base):
+    __tablename__ = "subscription_email_deliveries"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_id",
+            "subscriber_id",
+            name="uq_subscription_email_deliveries_job_subscriber",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    subscriber_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    smtp_message_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class SEOBacklink(Base):

@@ -42,14 +42,21 @@ export default async function JobDetailPage({ params }: Props) {
   const salary =
     job.salary_range ||
     formatSalary(job.salary_min, job.salary_max, job.currency, job.salary_range);
-  const tags = job.tags?.length
-    ? job.tags
-    : ([
-        labelSource(job.source_type || job.job_type || "private"),
-        job.category,
-        job.city,
-        ...(job.skills || []),
-      ].filter(Boolean) as string[]);
+  const tags = Array.from(
+    new Set(
+      [
+        ...(job.tags || []),
+        ...(job.nationwide ? ["Pakistan"] : [...(job.provinces || []), ...(job.cities || [])]),
+        ...(!job.tags?.length
+          ? [
+              labelSource(job.source_type || job.job_type || "private"),
+              job.category,
+              ...(job.skills || []),
+            ]
+          : []),
+      ].filter(Boolean) as string[]
+    )
+  );
 
   const attachments = (job.attachments || []).filter((a) => !a.is_inline_image);
   const referenceUrl =

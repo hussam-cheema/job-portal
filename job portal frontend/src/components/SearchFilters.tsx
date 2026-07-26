@@ -54,7 +54,7 @@ export function SearchFilters({ filters }: Props) {
         </button>
       </form>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <select
           className="select"
           value={searchParams.get("source_type") || ""}
@@ -64,6 +64,18 @@ export function SearchFilters({ filters }: Props) {
           {filters.source_types.map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </select>
+        <select
+          className="select"
+          value={searchParams.get("province") || ""}
+          onChange={(e) => update("province", e.target.value)}
+        >
+          <option value="">All provinces</option>
+          {(filters.provinces || []).map((province) => (
+            <option key={province} value={province}>
+              {province}
             </option>
           ))}
         </select>

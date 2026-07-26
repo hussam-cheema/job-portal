@@ -26,9 +26,18 @@ export function JobCard({ job }: Props) {
   const date = formatDateShort(job.published_date || job.created_at);
   const applicationsClosed =
     job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
-  const tags = job.tags?.length
-    ? job.tags
-    : ([labelSource(job.source_type), job.category, job.city].filter(Boolean) as string[]);
+  const locationTags = job.nationwide
+    ? ["Pakistan"]
+    : [...(job.provinces || []), ...(job.cities || [])];
+  const tags = Array.from(
+    new Set(
+      [
+        ...(job.tags || []),
+        ...locationTags,
+        ...(!job.tags?.length ? [labelSource(job.source_type), job.category] : []),
+      ].filter(Boolean) as string[]
+    )
+  );
 
   return (
     <article

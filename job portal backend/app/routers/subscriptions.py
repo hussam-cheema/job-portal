@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
-from app.models import EmailSubscriber, SubscriptionDigestRun, User
+from app.models import EmailSubscriber, Job, SubscriptionDigestRun, User
 from app.schemas import (
     DigestAdminSummary,
     DigestTemplateUpdate,
@@ -20,6 +20,7 @@ from app.schemas import (
 from app.services.contact_security import validate_email
 from app.services.newsletter import (
     digest_templates,
+    send_new_job_alert,
     set_digest_templates,
     subscriber_counts,
 )
@@ -87,6 +88,7 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
     last = db.execute(
         select(SubscriptionDigestRun).order_by(SubscriptionDigestRun.window_end.desc())
     ).scalars().first()
+    last_job = db.get(Job, last.job_id) if last and last.job_id else None
     return DigestAdminSummary(
         subscriber_count=total,
         active_subscriber_count=active,
@@ -94,6 +96,12 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
         body_template=body,
         last_digest_at=last.completed_at if last else None,
         last_digest_status=last.status if last else None,
+        last_digest_job_id=last.job_id if last else None,
+        last_digest_job_title=last_job.title if last_job else None,
+        last_digest_recipients_count=last.recipients_count if last else 0,
+        last_digest_sent_count=last.sent_count if last else 0,
+        last_digest_failed_count=last.failed_count if last else 0,
+        last_digest_error=last.error if last else None,
     )
 
 
@@ -110,3 +118,26 @@ def update_template(
     )
     db.commit()
     return admin_summary(db, _)
+
+
+@router.post("/admin/subscriptions/resend-latest")
+def resend_latest_job_alert(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    latest = db.execute(
+        select(Job).order_by(Job.created_at.desc(), Job.published_date.desc())
+    ).scalars().first()
+    if not latest:
+        return {
+            "status": "no_jobs",
+            "sent_count": 0,
+            "failed_count": 0,
+            "message": "No job post is available to resend.",
+        }
+    result = send_new_job_alert(db, latest, force_resend=True)
+    return {
+        **result,
+        "job_id": latest.id,
+        "job_title": latest.title,
+    }

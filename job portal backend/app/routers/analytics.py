@@ -7,7 +7,7 @@ import re
 from calendar import monthrange
 from datetime import datetime, timedelta
 from functools import lru_cache
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import uuid4
 
 import httpx
@@ -39,6 +39,11 @@ def _clean_country(value: str | None) -> str | None:
     return country[:100] or None
 
 
+def _clean_location_name(value: str | None, limit: int = 150) -> str | None:
+    clean = unquote(value or "").strip()
+    return clean[:limit] or None
+
+
 def _client_ip(request: Request) -> str | None:
     trust_proxy = _enabled(cfg("analytics", "trust_proxy_headers", default=True))
     candidates: list[str | None] = []
@@ -62,9 +67,9 @@ def _client_ip(request: Request) -> str | None:
 
 
 @lru_cache(maxsize=2048)
-def _lookup_public_ip(ip: str) -> tuple[str | None, str | None]:
+def _lookup_public_ip(ip: str) -> tuple[str | None, str | None, str | None]:
     if not _enabled(cfg("analytics", "geolocation_enabled", default=True)):
-        return None, None
+        return None, None, None
     template = str(
         cfg("analytics", "geolocation_url", default="https://ipwho.is/{ip}")
         or "https://ipwho.is/{ip}"
@@ -75,15 +80,16 @@ def _lookup_public_ip(ip: str) -> tuple[str | None, str | None]:
         response.raise_for_status()
         data = response.json()
         if data.get("success") is False:
-            return None, None
+            return None, None, None
         country = _clean_country(data.get("country") or data.get("country_code"))
-        region = str(data.get("region") or data.get("regionName") or "").strip()[:150] or None
-        return country, region
+        region = _clean_location_name(data.get("region") or data.get("regionName"))
+        city = _clean_location_name(data.get("city"))
+        return country, region, city
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
-        return None, None
+        return None, None, None
 
 
-def _location(request: Request) -> tuple[str, str | None, bool]:
+def _location(request: Request) -> tuple[str, str | None, str | None, bool]:
     trust_proxy = _enabled(cfg("analytics", "trust_proxy_headers", default=True))
     if trust_proxy:
         country = _clean_country(
@@ -92,16 +98,21 @@ def _location(request: Request) -> tuple[str, str | None, bool]:
             or request.headers.get("x-country-code")
         )
         if country:
-            region = (
+            region = _clean_location_name(
                 request.headers.get("cf-region")
                 or request.headers.get("x-vercel-ip-country-region")
                 or request.headers.get("x-region")
             )
-            return country, region[:150] if region else None, True
+            city = _clean_location_name(
+                request.headers.get("cf-ipcity")
+                or request.headers.get("x-vercel-ip-city")
+                or request.headers.get("x-city")
+            )
+            return country, region, city, True
 
     ip = _client_ip(request)
-    country, region = _lookup_public_ip(ip) if ip else (None, None)
-    return country or "Unknown", region, bool(country)
+    country, region, city = _lookup_public_ip(ip) if ip else (None, None, None)
+    return country or "Unknown", region, city, bool(country)
 
 
 @router.post("/analytics/visit", status_code=201)
@@ -123,9 +134,16 @@ def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depe
     if duplicate:
         # Heartbeats refresh presence without increasing monthly page-view totals.
         duplicate.visited_at = datetime.utcnow()
+        if not duplicate.location_verified or not duplicate.city:
+            country, region, city, location_verified = _location(request)
+            if location_verified:
+                duplicate.country = country
+                duplicate.region = region
+                duplicate.city = city
+                duplicate.location_verified = True
         db.commit()
     else:
-        country, region, location_verified = _location(request)
+        country, region, city, location_verified = _location(request)
         db.add(
             AnalyticsVisit(
                 id=str(uuid4()),
@@ -133,6 +151,7 @@ def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depe
                 path=path,
                 country=country,
                 region=region,
+                city=city,
                 location_verified=location_verified,
                 visited_at=datetime.utcnow(),
             )
@@ -157,6 +176,7 @@ def realtime_analytics(
 
     active_visitors = {row.visitor_hash for row in rows}
     pages: dict[str, dict[str, object]] = {}
+    locations: dict[tuple[str, str | None, str | None], dict[str, object]] = {}
     for row in rows:
         page = pages.setdefault(
             row.path,
@@ -166,6 +186,18 @@ def realtime_analytics(
         page["page_views"] = int(page["page_views"]) + 1
         if row.visited_at > page["last_seen"]:  # type: ignore[operator]
             page["last_seen"] = row.visited_at
+        location_key = (
+            (row.country or "Unknown") if row.location_verified else "Unknown",
+            row.region if row.location_verified else None,
+            row.city if row.location_verified else None,
+        )
+        location = locations.setdefault(
+            location_key,
+            {"visitors": set(), "last_seen": row.visited_at},
+        )
+        location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
+        if row.visited_at > location["last_seen"]:  # type: ignore[operator]
+            location["last_seen"] = row.visited_at
 
     page_rows = [
         {
@@ -177,11 +209,23 @@ def realtime_analytics(
         for path, data in pages.items()
     ]
     page_rows.sort(key=lambda item: item["last_seen"], reverse=True)
+    location_rows = [
+        {
+            "country": country,
+            "region": region,
+            "city": city,
+            "visitors": len(data["visitors"]),
+            "last_seen": data["last_seen"],
+        }
+        for (country, region, city), data in locations.items()
+    ]
+    location_rows.sort(key=lambda item: item["last_seen"], reverse=True)
     return AnalyticsRealtime(
         window_minutes=window_minutes,
         active_visitors=len(active_visitors),
         page_views=len(rows),
         pages=page_rows,
+        locations=location_rows,
         generated_at=now,
     )
 
@@ -213,7 +257,7 @@ def analytics_dashboard(
     ).scalars().all()
 
     daily: dict[str, dict[str, set[str] | int]] = {}
-    locations: dict[tuple[str, str | None], dict[str, set[str] | int]] = {}
+    locations: dict[tuple[str, str | None, str | None], dict[str, set[str] | int]] = {}
     all_visitors: set[str] = set()
     for row in rows:
         all_visitors.add(row.visitor_hash)
@@ -225,6 +269,7 @@ def analytics_dashboard(
         key = (
             (row.country or "Unknown") if row.location_verified else "Unknown",
             row.region if row.location_verified else None,
+            row.city if row.location_verified else None,
         )
         location = locations.setdefault(key, {"visitors": set(), "page_views": 0})
         location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
@@ -243,10 +288,11 @@ def analytics_dashboard(
             {
                 "country": country,
                 "region": region,
+                "city": city,
                 "visitors": len(data["visitors"]),
                 "page_views": data["page_views"],
             }
-            for (country, region), data in locations.items()
+            for (country, region, city), data in locations.items()
         ),
         key=lambda item: int(item["visitors"]),
         reverse=True,

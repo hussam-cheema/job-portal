@@ -20,6 +20,19 @@ PAKISTAN_CITIES: list[str] = sorted(
     ]
 )
 
+# Provinces plus the three territory-level regions used by nationwide
+# employers. Keeping these separate from cities lets an administrator target a
+# whole region without selecting every city individually.
+PAKISTAN_PROVINCES: list[str] = [
+    "Punjab",
+    "Sindh",
+    "Khyber Pakhtunkhwa",
+    "Balochistan",
+    "Islamabad Capital Territory",
+    "Gilgit-Baltistan",
+    "Azad Jammu and Kashmir",
+]
+
 DEFAULT_CATEGORIES: list[str] = sorted(
     [
         "Accounting", "AI Engineer", "Banking & Finance", "Customer Service",

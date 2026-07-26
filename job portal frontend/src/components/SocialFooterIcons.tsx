@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/api";
 
-type Social = { facebook_url?: string; youtube_url?: string; x_url?: string };
+type Social = {
+  facebook_url?: string;
+  youtube_url?: string;
+  x_url?: string;
+  linkedin_url?: string;
+};
 
 export function SocialFooterIcons() {
   const [social, setSocial] = useState<Social>({});
@@ -19,6 +24,7 @@ export function SocialFooterIcons() {
     { href: social.facebook_url, label: "Facebook", icon: "f" },
     { href: social.youtube_url, label: "YouTube", icon: "▶" },
     { href: social.x_url, label: "X", icon: "𝕏" },
+    { href: social.linkedin_url, label: "LinkedIn", icon: "in" },
   ].filter((i) => i.href);
 
   if (!items.length) return null;

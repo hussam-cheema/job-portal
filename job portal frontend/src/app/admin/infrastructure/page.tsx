@@ -254,14 +254,38 @@ export default function InfrastructureAnalyticsPage() {
           <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,.9fr)]">
             <article className="card-panel p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div><p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">FinOps</p><h3 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">Monthly cost radar</h3></div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">FinOps</p>
+                  <h3 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">
+                    {data.costs.basis === "month_to_date_actual"
+                      ? "Azure month-to-date costs"
+                      : "Monthly cost radar"}
+                  </h3>
+                  <p className="mt-1 text-xs text-[var(--muted)]">{data.costs.source}</p>
+                </div>
                 <p className="text-right"><span className="text-2xl font-semibold tabular-nums text-[var(--navy-100)]">${data.costs.tracked_monthly_estimate_usd.toFixed(2)}</span><span className="text-xs text-[var(--muted)]"> / ${data.costs.monthly_budget_usd.toFixed(0)}</span></p>
               </div>
+              {data.costs.forecast_monthly_cost_usd !== null && (
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  Azure forecast:{" "}
+                  <strong className="text-[var(--navy-200)]">
+                    ${data.costs.forecast_monthly_cost_usd.toFixed(2)}
+                  </strong>
+                </p>
+              )}
               <div className="mt-5"><Progress value={data.costs.budget_utilization_percent} color="var(--gold)" /></div>
               <div className="mt-5 divide-y divide-[var(--border)]">
                 {data.costs.items.map((item) => (
                   <div key={item.id} className="flex items-start justify-between gap-4 py-3 first:pt-0">
-                    <div><p className="text-sm font-medium text-[var(--navy-200)]">{item.name}</p><p className="mt-0.5 text-xs text-[var(--muted)]">{item.provider}</p></div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[var(--navy-200)]">{item.name}</p>
+                      <p className="mt-0.5 text-xs text-[var(--muted)]">{item.provider}</p>
+                      {item.resource_id && (
+                        <p className="mt-1 break-all font-mono text-[10px] text-[var(--muted)]">
+                          {item.resource_id}
+                        </p>
+                      )}
+                    </div>
                     <p className={`shrink-0 text-sm font-semibold tabular-nums ${item.configured ? "text-[var(--navy-100)]" : "text-amber-300"}`}>{item.configured ? `$${(item.monthly_estimate_usd ?? 0).toFixed(2)}` : "Not configured"}</p>
                   </div>
                 ))}

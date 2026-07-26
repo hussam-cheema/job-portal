@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.types import String
 
 from app.auth import get_current_admin
-from app.constants import DEFAULT_CATEGORIES, JOB_TYPES, PAKISTAN_CITIES, SECTORS
+from app.constants import (
+    DEFAULT_CATEGORIES,
+    JOB_TYPES,
+    PAKISTAN_CITIES,
+    PAKISTAN_PROVINCES,
+    SECTORS,
+)
 from app.database import get_db
 from app.exceptions import empty_filters, empty_job_list
 from app.logging_config import get_logger
@@ -51,12 +57,14 @@ def _source_type(job: Job) -> str:
 
 def _to_summary(job: Job) -> JobSummary:
     cities = _list_field(job.cities)
+    provinces = _list_field(job.provinces)
     tags = _list_field(job.tags)
     skills = _list_field(job.skills)
     configured_cities = {city.casefold() for city in PAKISTAN_CITIES}
     selected_cities = {city.casefold() for city in cities}
     nationwide = bool(configured_cities) and configured_cities.issubset(selected_cities)
-    location = "Pakistan" if nationwide else ", ".join(cities) if cities else None
+    locations = [*provinces, *cities]
+    location = "Pakistan" if nationwide else ", ".join(locations) if locations else None
     deadline = job.deadline_date
     applications_closed = bool(
         deadline
@@ -79,13 +87,14 @@ def _to_summary(job: Job) -> JobSummary:
         skills=skills,
         job_type=job.job_type,
         cities=cities,
+        provinces=provinces,
         tags=tags,
         keywords=job.keywords,
         created_at=job.created_at,
         company=job.source,
         location=location,
         city="Pakistan" if nationwide else cities[0] if cities else None,
-        province=None,
+        province=provinces[0] if provinces else None,
         employment_type=None,
         salary_min=None,
         salary_max=None,
@@ -236,6 +245,17 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
         job.job_type = normalize_job_type(data["job_type"])
     if "cities" in data and data["cities"] is not None:
         job.cities = as_list(data["cities"])
+    if "provinces" in data and data["provinces"] is not None:
+        selected = as_list(data["provinces"])
+        allowed = {value.casefold(): value for value in PAKISTAN_PROVINCES}
+        unknown = [value for value in selected if value.casefold() not in allowed]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail="Select only predefined provinces/territories. Unknown: "
+                + ", ".join(unknown[:10]),
+            )
+        job.provinces = [allowed[value.casefold()] for value in selected]
     if "tags" in data and data["tags"] is not None:
         job.tags = canonicalize_job_terms(db, as_list(data["tags"]))
     if "keywords" in data:
@@ -250,6 +270,7 @@ def list_jobs(
     sector: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
+    province: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
     employment_type: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
@@ -281,6 +302,7 @@ def list_jobs(
                     cast(Job.skills, String).ilike(like),
                     cast(Job.tags, String).ilike(like),
                     cast(Job.cities, String).ilike(like),
+                    cast(Job.provinces, String).ilike(like),
                 )
             )
         if source_type or sector or job_type:
@@ -297,6 +319,9 @@ def list_jobs(
         if city:
             like = f"%{city.strip()}%"
             filters.append(cast(Job.cities, String).ilike(like))
+        if province:
+            like = f"%{province.strip()}%"
+            filters.append(cast(Job.provinces, String).ilike(like))
         if company:
             filters.append(Job.source == company)
         if tag:
@@ -315,6 +340,7 @@ def list_jobs(
                         cast(Job.tags, String).ilike(like),
                         cast(Job.skills, String).ilike(like),
                         cast(Job.cities, String).ilike(like),
+                        cast(Job.provinces, String).ilike(like),
                         Job.title.ilike(like),
                     )
                 )
@@ -550,6 +576,7 @@ def get_filters(db: Session = Depends(get_db)):
             sectors=SECTORS,
             categories=categories,
             cities=cities,
+            provinces=PAKISTAN_PROVINCES,
             companies=sorted(set(companies)),
             employment_types=[],
             # Kept for backwards-compatible clients; tags now represent only
@@ -561,5 +588,6 @@ def get_filters(db: Session = Depends(get_db)):
         logger.exception("get_filters failed")
         data = empty_filters()
         data["cities"] = PAKISTAN_CITIES
+        data["provinces"] = PAKISTAN_PROVINCES
         data["categories"] = DEFAULT_CATEGORIES
         return FiltersResponse(**data)

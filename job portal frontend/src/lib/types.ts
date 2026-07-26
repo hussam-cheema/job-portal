@@ -14,6 +14,7 @@ export type JobSummary = {
   skills: string[];
   job_type: string | null;
   cities: string[];
+  provinces: string[];
   tags: string[];
   keywords: string | null;
   created_at: string | null;
@@ -56,6 +57,12 @@ export type DigestAdminSummary = {
   body_template: string;
   last_digest_at: string | null;
   last_digest_status: string | null;
+  last_digest_job_id: string | null;
+  last_digest_job_title: string | null;
+  last_digest_recipients_count: number;
+  last_digest_sent_count: number;
+  last_digest_failed_count: number;
+  last_digest_error: string | null;
 };
 
 export type QnAItem = {
@@ -127,6 +134,7 @@ export type FiltersResponse = {
   sectors: string[];
   categories: string[];
   cities: string[];
+  provinces: string[];
   companies: string[];
   employment_types: string[];
   tags: string[];
@@ -149,6 +157,7 @@ export type JobQuery = {
   sector?: string;
   category?: string;
   city?: string;
+  province?: string;
   company?: string;
   employment_type?: string;
   tag?: string;
@@ -174,6 +183,7 @@ export type JobFormData = {
   skills?: string[];
   job_type?: string | null;
   cities?: string[];
+  provinces?: string[];
   tags?: string[];
   keywords?: string | null;
   seo?: {
@@ -262,10 +272,22 @@ export type SEODashboard = {
   backlinks?: Array<Record<string, unknown>>;
   keyword_ranks?: Array<Record<string, unknown>>;
   url_ranks?: Array<Record<string, unknown>>;
-  social?: { facebook_url?: string; youtube_url?: string; x_url?: string };
+  social?: {
+    facebook_url?: string;
+    youtube_url?: string;
+    x_url?: string;
+    linkedin_url?: string;
+  };
   sitemap_url?: string;
   robots_url?: string;
   robots_preview?: string;
+};
+
+export type SocialSettings = {
+  facebook_url: string;
+  youtube_url: string;
+  x_url: string;
+  linkedin_url: string;
 };
 
 export type Branding = {
@@ -290,6 +312,7 @@ export type AnalyticsDashboard = {
   locations: Array<{
     country: string;
     region: string | null;
+    city: string | null;
     visitors: number;
     page_views: number;
   }>;
@@ -304,6 +327,13 @@ export type AnalyticsRealtime = {
     path: string;
     visitors: number;
     page_views: number;
+    last_seen: string;
+  }>;
+  locations: Array<{
+    country: string;
+    region: string | null;
+    city: string | null;
+    visitors: number;
     last_seen: string;
   }>;
 };
@@ -375,7 +405,11 @@ export type InfrastructureDashboard = {
       monthly_estimate_usd: number | null;
       configured: boolean;
       detail: string;
+      resource_id?: string | null;
     }>;
+    basis: string;
+    source: string;
+    forecast_monthly_cost_usd: number | null;
   };
   alerts: Array<{
     severity: string;

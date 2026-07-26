@@ -41,6 +41,7 @@ const EMPTY_FILTERS: FiltersResponse = {
   sectors: ["govt", "private"],
   categories: [],
   cities: [],
+  provinces: [],
   companies: [],
   employment_types: [],
   tags: [],
@@ -233,6 +234,15 @@ export async function fetchBranding(): Promise<Branding> {
   return { ...DEFAULT_BRANDING, ...response };
 }
 
+export async function fetchSocialSettings(): Promise<import("./types").SocialSettings> {
+  return getJson<import("./types").SocialSettings>("/api/settings/social", {
+    facebook_url: "",
+    youtube_url: "",
+    x_url: "",
+    linkedin_url: "",
+  });
+}
+
 export async function fetchBlogPosts(params: {
   q?: string;
   category?: string;
@@ -317,6 +327,20 @@ export async function unsubscribeEmail(token: string): Promise<SubscriptionResul
   );
 }
 
+export async function adminResendLatestJobAlert(token: string) {
+  return requestJson<{
+    status: string;
+    message: string;
+    job_id?: string;
+    job_title?: string;
+    sent_count: number;
+    failed_count: number;
+  }>("/api/admin/subscriptions/resend-latest", {
+    method: "POST",
+    headers: authHeaders(token),
+  }, "Unable to resend the latest job alert");
+}
+
 export function fetchTaxonomy(): Promise<TaxonomyTerm[]> {
   return getJson<TaxonomyTerm[]>("/api/taxonomy", []);
 }
@@ -381,6 +405,17 @@ export async function adminChangePassword(
     },
     "Password change failed"
   );
+}
+
+export async function adminUpdateSocialSettings(
+  token: string,
+  data: import("./types").SocialSettings
+) {
+  return requestJson<import("./types").SocialSettings>("/api/admin/seo/social", {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  }, "Social media settings update failed");
 }
 
 export async function adminUploadLogo(token: string, file: File): Promise<Branding> {

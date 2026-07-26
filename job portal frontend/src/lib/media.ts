@@ -5,6 +5,24 @@ function publicApiBase() {
   return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 }
 
+export function rewriteJobDescriptionImageUrl(source: string): string {
+  if (!source) return source;
+  try {
+    const url = new URL(source);
+    if (!/^https?:$/i.test(url.protocol)) return source;
+    if (url.pathname.startsWith("/api/media/r2/")) return source;
+    const match = url.pathname.match(R2_INLINE_IMAGE_PATH);
+    const key = match?.[1]?.replace(/^\//, "");
+    if (!key) return source;
+    return `${publicApiBase()}/api/media/r2/${key
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}`;
+  } catch {
+    return source;
+  }
+}
+
 /**
  * Route stored R2 images through the backend media endpoint.
  *
@@ -18,20 +36,8 @@ export function rewriteJobDescriptionImages(html: string): string {
   return html.replace(
     /(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"']+)(\2)/gi,
     (full, prefix: string, quote: string, source: string) => {
-      try {
-        const url = new URL(source);
-        if (!/^https?:$/i.test(url.protocol)) return full;
-        const match = url.pathname.match(R2_INLINE_IMAGE_PATH);
-        const key = match?.[1]?.replace(/^\//, "");
-        if (!key) return full;
-        const proxied = `${publicApiBase()}/api/media/r2/${key
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/")}`;
-        return `${prefix}${quote}${proxied}${quote}`;
-      } catch {
-        return full;
-      }
+      const proxied = rewriteJobDescriptionImageUrl(source);
+      return proxied === source ? full : `${prefix}${quote}${proxied}${quote}`;
     }
   );
 }

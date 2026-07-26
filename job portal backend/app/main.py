@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -49,6 +50,77 @@ setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("jobportal.main")
 
 
+def _warm_embedding_cache_in_background() -> None:
+    if os.getenv("JOBPORTAL_TESTING", "").lower() in {"1", "true", "yes"}:
+        return
+    if os.getenv("QWEN3_EMBEDDING_CACHE_BACKGROUND", "true").lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return
+
+    def warm() -> None:
+        try:
+            from app.services.model_cache import ensure_local_embedding_model
+
+            ensure_local_embedding_model()
+        except Exception:
+            logger.exception("background embedding model warmup failed")
+
+    threading.Thread(
+        target=warm,
+        name="embedding-model-warmup",
+        daemon=True,
+    ).start()
+
+
+def _start_newsletter_retry_worker() -> tuple[threading.Event, threading.Thread] | None:
+    if os.getenv("JOBPORTAL_TESTING", "").lower() in {"1", "true", "yes"}:
+        return None
+    if os.getenv("NEWSLETTER_RETRY_ENABLED", "true").lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return None
+
+    stop_event = threading.Event()
+    interval = max(
+        15,
+        min(3600, int(os.getenv("NEWSLETTER_RETRY_INTERVAL_SECONDS", "60"))),
+    )
+
+    def run() -> None:
+        from app.database import SessionLocal
+        from app.services.newsletter import process_pending_job_alerts
+
+        while not stop_event.is_set():
+            db = SessionLocal()
+            try:
+                result = process_pending_job_alerts(db)
+                if result["processed_count"]:
+                    logger.info(
+                        "newsletter retry worker processed=%s delivered=%s",
+                        result["processed_count"],
+                        result["delivered_count"],
+                    )
+            except Exception:
+                db.rollback()
+                logger.exception("newsletter retry worker failed")
+            finally:
+                db.close()
+            stop_event.wait(interval)
+
+    thread = threading.Thread(
+        target=run,
+        name="newsletter-delivery-retry",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("server starting", extra={"r2_lifecycle": True})
@@ -94,10 +166,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.info("seed skipped (SEED_ON_STARTUP=false)")
 
+    # The embedding model is only needed by the admin Q&A workflow. Warming it
+    # asynchronously keeps public traffic from waiting for the Azure Files
+    # mount/model cache during a Container Apps cold start.
+    _warm_embedding_cache_in_background()
+    newsletter_worker = _start_newsletter_retry_worker()
     logger.info("server running", extra={"r2_lifecycle": True})
     try:
         yield
     finally:
+        if newsletter_worker:
+            stop_event, thread = newsletter_worker
+            stop_event.set()
+            thread.join(timeout=2)
         logger.info("server stopped", extra={"r2_lifecycle": True})
         flush_production_logs()
 

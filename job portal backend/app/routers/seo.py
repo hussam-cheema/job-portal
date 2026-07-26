@@ -120,7 +120,12 @@ def public_social(db: Session = Depends(get_db)):
     try:
         return get_social_settings(db)
     except Exception:
-        return {"facebook_url": "", "youtube_url": "", "x_url": ""}
+        return {
+            "facebook_url": "",
+            "youtube_url": "",
+            "x_url": "",
+            "linkedin_url": "",
+        }
 
 
 @router.get("/admin/seo/backlinks")

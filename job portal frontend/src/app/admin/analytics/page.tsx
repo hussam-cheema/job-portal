@@ -143,6 +143,50 @@ export default function AnalyticsPage() {
             </div>
           </section>
 
+          <section className="card-panel mt-5 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-4">
+              <h3 className="font-semibold text-[var(--navy-100)]">Realtime visitor locations</h3>
+              <span className="text-xs text-[var(--muted)]">
+                Privacy-safe aggregated locations
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <thead className="bg-[var(--navy-850)]">
+                  <tr>
+                    <th className="px-5 py-3">Country</th>
+                    <th className="px-5 py-3">Region</th>
+                    <th className="px-5 py-3">City</th>
+                    <th className="px-5 py-3">Active visitors</th>
+                    <th className="px-5 py-3">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {realtime?.locations.length ? realtime.locations.map((location) => (
+                    <tr
+                      key={`${location.country}-${location.region || ""}-${location.city || ""}`}
+                      className="border-t border-[var(--border)]"
+                    >
+                      <td className="px-5 py-3">{location.country}</td>
+                      <td className="px-5 py-3">{location.region || "—"}</td>
+                      <td className="px-5 py-3">{location.city || "—"}</td>
+                      <td className="px-5 py-3 tabular-nums">{location.visitors}</td>
+                      <td className="px-5 py-3 text-[var(--muted)]">
+                        {new Date(location.last_seen).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-6 text-center text-[var(--muted)]">
+                        No active visitor locations in the last five minutes.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section className="card-panel mt-5 p-5">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-semibold text-[var(--navy-100)]">Daily visitors</h3>
@@ -169,17 +213,18 @@ export default function AnalyticsPage() {
             </div>
             <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="bg-[var(--navy-850)]"><tr><th className="px-5 py-3">Country</th><th className="px-5 py-3">Region</th><th className="px-5 py-3">Visitors</th><th className="px-5 py-3">Page views</th></tr></thead>
+              <thead className="bg-[var(--navy-850)]"><tr><th className="px-5 py-3">Country</th><th className="px-5 py-3">Region</th><th className="px-5 py-3">City</th><th className="px-5 py-3">Visitors</th><th className="px-5 py-3">Page views</th></tr></thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {data.locations.length ? data.locations.map((location) => (
-                  <tr key={`${location.country}-${location.region || ""}`}>
+                  <tr key={`${location.country}-${location.region || ""}-${location.city || ""}`}>
                     <td className="px-5 py-3">{location.country}</td>
                     <td className="px-5 py-3">{location.region || "—"}</td>
+                    <td className="px-5 py-3">{location.city || "—"}</td>
                     <td className="px-5 py-3 tabular-nums">{location.visitors.toLocaleString()}</td>
                     <td className="px-5 py-3 tabular-nums">{location.page_views.toLocaleString()}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={4} className="px-5 py-6 text-center text-[var(--muted)]">No visits recorded for this month.</td></tr>
+                  <tr><td colSpan={5} className="px-5 py-6 text-center text-[var(--muted)]">No visits recorded for this month.</td></tr>
                 )}
               </tbody>
             </table>

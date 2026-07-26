@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import env, site_url
@@ -39,6 +39,7 @@ def get_social_settings(db: Session) -> dict[str, str]:
         "facebook_url": get_setting(db, "social_facebook", "") or "",
         "youtube_url": get_setting(db, "social_youtube", "") or "",
         "x_url": get_setting(db, "social_x", "") or "",
+        "linkedin_url": get_setting(db, "social_linkedin", "") or "",
     }
 
 
@@ -47,6 +48,7 @@ def set_social_settings(db: Session, data: dict[str, str]) -> dict[str, str]:
         "facebook_url": "social_facebook",
         "youtube_url": "social_youtube",
         "x_url": "social_x",
+        "linkedin_url": "social_linkedin",
     }
     for k, sk in mapping.items():
         if k in data:
@@ -258,13 +260,21 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
         resp = service.searchanalytics().query(siteUrl=site, body=body).execute()
         rows = resp.get("rows") or []
 
-        # Clear recent snapshot ranks for this sync window (optional: keep history)
+        # The dashboard represents the latest 28-day snapshot. Replace the
+        # previous snapshot atomically so repeated syncs cannot append the same
+        # keyword/URL rows indefinitely.
+        db.execute(delete(SEOKeywordRank))
         keywords_out = []
+        seen_pairs: set[tuple[str, str]] = set()
         for row in rows:
             keys = row.get("keys") or []
             if len(keys) < 2:
                 continue
             query, page = keys[0], keys[1]
+            pair = (str(query).strip().casefold(), str(page).strip().rstrip("/").casefold())
+            if not pair[0] or not pair[1] or pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
             pos = float(row.get("position") or 0)
             page_num = max(1, int((pos - 1) // 10) + 1)
             clicks = int(row.get("clicks") or 0)
@@ -308,6 +318,7 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
             "message": f"Synced {len(keywords_out)} keyword/page rows from GSC (last 28 days).",
         }
     except Exception as exc:
+        db.rollback()
         logger.exception("gsc sync failed")
         return {"connected": False, "message": f"GSC sync failed: {exc}", "keywords": [], "pages": []}
 
@@ -332,10 +343,24 @@ def _match_entity(db: Session, page_url: str) -> tuple[str | None, str | None]:
 
 def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     rows = (
-        db.execute(select(SEOKeywordRank).order_by(SEOKeywordRank.recorded_at.desc()).limit(limit))
+        db.execute(
+            select(SEOKeywordRank)
+            .order_by(SEOKeywordRank.recorded_at.desc())
+            .limit(max(limit * 5, 200))
+        )
         .scalars()
         .all()
     )
+    unique_rows: list[SEOKeywordRank] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (row.keyword.strip().casefold(), row.url.strip().rstrip("/").casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+        if len(unique_rows) >= limit:
+            break
     return [
         {
             "id": r.id,
@@ -350,7 +375,7 @@ def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
             "entity_id": r.entity_id,
             "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
         }
-        for r in rows
+        for r in unique_rows
     ]
 
 

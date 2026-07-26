@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,9 @@ _cpu_previous = (time.monotonic(), time.process_time())
 _r2_cache_lock = threading.Lock()
 _r2_cache: dict[str, Any] = {}
 _R2_CACHE_SECONDS = 300
+_azure_cost_cache_lock = threading.Lock()
+_azure_cost_cache: dict[str, Any] = {}
+_AZURE_COST_CACHE_SECONDS = 900
 
 
 def _env_float(name: str, default: float | None = None) -> float | None:
@@ -342,7 +346,175 @@ def _quota_metrics() -> list[InfrastructureQuotaMetric]:
     ]
 
 
-def _cost_summary(r2_metric: InfrastructureStorageMetric) -> InfrastructureCostSummary:
+def _bool_env(name: str, default: bool = False) -> bool:
+    fallback = "true" if default else "false"
+    return (env(name, fallback) or fallback).lower() in {"1", "true", "yes", "on"}
+
+
+def _azure_access_token() -> str | None:
+    endpoint = env("IDENTITY_ENDPOINT")
+    identity_header = env("IDENTITY_HEADER")
+    if endpoint and identity_header:
+        response = httpx.get(
+            endpoint,
+            params={
+                "resource": "https://management.azure.com/",
+                "api-version": "2019-08-01",
+            },
+            headers={"X-IDENTITY-HEADER": identity_header},
+            timeout=8.0,
+        )
+        response.raise_for_status()
+        return str(response.json().get("access_token") or "") or None
+
+    tenant_id = env("AZURE_TENANT_ID")
+    client_id = env("AZURE_CLIENT_ID")
+    client_secret = env("AZURE_CLIENT_SECRET")
+    if tenant_id and client_id and client_secret:
+        response = httpx.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://management.azure.com/.default",
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return str(response.json().get("access_token") or "") or None
+    return None
+
+
+def _azure_cost_category(resource_type: str, resource_id: str) -> str:
+    value = f"{resource_type} {resource_id}".casefold()
+    if "microsoft.app/containerapps" in value:
+        return "backend"
+    if "microsoft.app/managedenvironments" in value:
+        return "container_environment"
+    if "microsoft.web/staticsites" in value:
+        return "frontend"
+    if "microsoft.dbforpostgresql/flexibleservers" in value:
+        return "database"
+    if "microsoft.network/virtualnetworks" in value:
+        return "vnet"
+    if "microsoft.network/loadbalancers" in value:
+        return "load_balancer"
+    if "microsoft.network/publicipaddresses" in value:
+        return "public_ip"
+    if "microsoft.storage/storageaccounts" in value or "fileservices" in value:
+        return "azure_files"
+    if "microsoft.operationalinsights/workspaces" in value:
+        return "log_analytics"
+    if "microsoft.network/privatednszones" in value:
+        return "private_dns"
+    return "azure_other"
+
+
+def _azure_month_to_date_costs(force_refresh: bool) -> dict[str, Any] | None:
+    if not _bool_env("AZURE_COST_MANAGEMENT_ENABLED"):
+        return None
+    subscription_id = env("AZURE_SUBSCRIPTION_ID")
+    if not subscription_id:
+        return None
+    resource_group = env("AZURE_RESOURCE_GROUP")
+    scope = f"/subscriptions/{subscription_id}"
+    if resource_group:
+        scope += f"/resourceGroups/{resource_group}"
+    with _azure_cost_cache_lock:
+        cached = _azure_cost_cache.get(scope)
+        if (
+            cached
+            and not force_refresh
+            and time.monotonic() - cached["at"] < _AZURE_COST_CACHE_SECONDS
+        ):
+            return dict(cached["value"])
+
+    try:
+        token = _azure_access_token()
+        if not token:
+            raise RuntimeError(
+                "No managed identity or Azure service-principal credential is available"
+            )
+        response = httpx.post(
+            "https://management.azure.com"
+            f"{scope}/providers/Microsoft.CostManagement/query"
+            "?api-version=2023-11-01",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "type": "ActualCost",
+                "timeframe": "MonthToDate",
+                "dataset": {
+                    "granularity": "None",
+                    "aggregation": {
+                        "totalCost": {"name": "PreTaxCost", "function": "Sum"}
+                    },
+                    "grouping": [
+                        {"type": "Dimension", "name": "ResourceId"},
+                        {"type": "Dimension", "name": "ResourceType"},
+                    ],
+                },
+            },
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        properties = response.json().get("properties") or {}
+        columns = [
+            str(column.get("name") or "")
+            for column in properties.get("columns") or []
+        ]
+        indexes = {name.casefold(): index for index, name in enumerate(columns)}
+        cost_index = indexes.get("pretaxcost", indexes.get("cost", 0))
+        resource_id_index = indexes.get("resourceid")
+        resource_type_index = indexes.get("resourcetype")
+        currency_index = indexes.get("currency")
+        category_costs: dict[str, float] = {}
+        resource_ids: dict[str, list[str]] = {}
+        currency = "USD"
+        for raw_row in properties.get("rows") or []:
+            if not isinstance(raw_row, list):
+                continue
+            try:
+                cost = float(raw_row[cost_index])
+            except (IndexError, TypeError, ValueError):
+                continue
+            resource_id = (
+                str(raw_row[resource_id_index] or "")
+                if resource_id_index is not None and resource_id_index < len(raw_row)
+                else ""
+            )
+            resource_type = (
+                str(raw_row[resource_type_index] or "")
+                if resource_type_index is not None and resource_type_index < len(raw_row)
+                else ""
+            )
+            if currency_index is not None and currency_index < len(raw_row):
+                currency = str(raw_row[currency_index] or currency)
+            category = _azure_cost_category(resource_type, resource_id)
+            category_costs[category] = category_costs.get(category, 0.0) + cost
+            if resource_id:
+                resource_ids.setdefault(category, []).append(resource_id)
+        value = {
+            "category_costs": {
+                key: round(amount, 4) for key, amount in category_costs.items()
+            },
+            "resource_ids": resource_ids,
+            "currency": currency,
+            "scope": scope,
+        }
+        with _azure_cost_cache_lock:
+            _azure_cost_cache[scope] = {"at": time.monotonic(), "value": value}
+        return value
+    except Exception:
+        logger.exception("Azure Cost Management collection failed scope=%s", scope)
+        return None
+
+
+def _cost_summary(
+    r2_metric: InfrastructureStorageMetric,
+    *,
+    force_refresh: bool,
+) -> InfrastructureCostSummary:
     # Cloudflare R2 Standard pricing, last verified 2026-07: first 10 GB-month free,
     # then USD 0.015/GB-month. This snapshot is directional, not an invoice.
     r2_gb = (r2_metric.used_bytes or 0) / GIB
@@ -351,6 +523,14 @@ def _cost_summary(r2_metric: InfrastructureStorageMetric) -> InfrastructureCostS
     configured_costs = {
         "database": _env_float("DB_MONTHLY_COST_USD"),
         "backend": _env_float("BACKEND_MONTHLY_COST_USD"),
+        "container_environment": _env_float("AZURE_CONTAINER_ENV_MONTHLY_COST_USD", 0.0),
+        "vnet": _env_float("AZURE_VNET_MONTHLY_COST_USD", 0.0),
+        "load_balancer": _env_float("AZURE_LOAD_BALANCER_MONTHLY_COST_USD"),
+        "public_ip": _env_float("AZURE_PUBLIC_IP_MONTHLY_COST_USD"),
+        "azure_files": _env_float("AZURE_FILES_MONTHLY_COST_USD"),
+        "log_analytics": _env_float("AZURE_LOG_ANALYTICS_MONTHLY_COST_USD"),
+        "private_dns": _env_float("AZURE_PRIVATE_DNS_MONTHLY_COST_USD"),
+        "azure_other": _env_float("AZURE_OTHER_MONTHLY_COST_USD"),
     }
     frontend_plan = (env("FRONTEND_PLAN", "Free") or "Free").lower()
     configured_costs["frontend"] = (
@@ -358,6 +538,41 @@ def _cost_summary(r2_metric: InfrastructureStorageMetric) -> InfrastructureCostS
         if env("FRONTEND_MONTHLY_COST_USD") is not None
         else (0.0 if frontend_plan == "free" else None)
     )
+    azure_live = _azure_month_to_date_costs(force_refresh)
+    if azure_live:
+        for key in configured_costs:
+            configured_costs[key] = float(
+                (azure_live.get("category_costs") or {}).get(key, 0.0)
+            )
+    basis = "month_to_date_actual" if azure_live else "monthly_estimate"
+    azure_detail = (
+        "Live month-to-date actual cost from Azure Cost Management."
+        if azure_live
+        else "Configured estimate; enable Azure Cost Management or set the listed environment variable."
+    )
+    resources = azure_live.get("resource_ids") if azure_live else {}
+
+    def azure_item(
+        item_id: str,
+        name: str,
+        provider: str,
+        env_name: str,
+        *,
+        default_free: bool = False,
+    ) -> InfrastructureCostItem:
+        value = configured_costs[item_id]
+        configured = azure_live is not None or env(env_name) is not None or default_free
+        resource_ids = list((resources or {}).get(item_id) or [])
+        return InfrastructureCostItem(
+            id=item_id,
+            name=name,
+            provider=provider,
+            monthly_estimate_usd=value,
+            configured=configured,
+            resource_id=", ".join(resource_ids[:3]) or None,
+            detail=f"{azure_detail} Environment fallback: {env_name}.",
+        )
+
     items = [
         InfrastructureCostItem(
             id="r2",
@@ -367,29 +582,64 @@ def _cost_summary(r2_metric: InfrastructureStorageMetric) -> InfrastructureCostS
             configured=True,
             detail="Snapshot estimate: first 10 GB-month free, then $0.015 per GB-month; operations are separate.",
         ),
-        InfrastructureCostItem(
-            id="database",
-            name="Database",
-            provider="Azure PostgreSQL",
-            monthly_estimate_usd=configured_costs["database"],
-            configured=configured_costs["database"] is not None,
-            detail="Regional SKU and backup pricing; set DB_MONTHLY_COST_USD from Azure Cost Management.",
+        azure_item("backend", "Container App", "Azure Container Apps", "BACKEND_MONTHLY_COST_USD"),
+        azure_item(
+            "container_environment",
+            "Container Apps environment",
+            "Azure Container Apps",
+            "AZURE_CONTAINER_ENV_MONTHLY_COST_USD",
+            default_free=True,
         ),
-        InfrastructureCostItem(
-            id="backend",
-            name="Backend compute",
-            provider="Azure Container Apps",
-            monthly_estimate_usd=configured_costs["backend"],
-            configured=configured_costs["backend"] is not None,
-            detail="Consumption varies with replica activity; set BACKEND_MONTHLY_COST_USD from Azure Cost Management.",
+        azure_item("database", "Database", "Azure PostgreSQL", "DB_MONTHLY_COST_USD"),
+        azure_item(
+            "frontend",
+            "Frontend hosting",
+            f"Azure Static Web Apps {env('FRONTEND_PLAN', 'Free') or 'Free'}",
+            "FRONTEND_MONTHLY_COST_USD",
+            default_free=frontend_plan == "free",
         ),
-        InfrastructureCostItem(
-            id="frontend",
-            name="Frontend hosting",
-            provider=f"Azure Static Web Apps {env('FRONTEND_PLAN', 'Free') or 'Free'}",
-            monthly_estimate_usd=configured_costs["frontend"],
-            configured=configured_costs["frontend"] is not None,
-            detail="Free plan is tracked as $0; configure FRONTEND_MONTHLY_COST_USD for a paid plan.",
+        azure_item(
+            "vnet",
+            "Virtual network",
+            "Azure Virtual Network",
+            "AZURE_VNET_MONTHLY_COST_USD",
+            default_free=True,
+        ),
+        azure_item(
+            "load_balancer",
+            "Load balancer",
+            "Azure Networking",
+            "AZURE_LOAD_BALANCER_MONTHLY_COST_USD",
+        ),
+        azure_item(
+            "public_ip",
+            "Public IP",
+            "Azure Networking",
+            "AZURE_PUBLIC_IP_MONTHLY_COST_USD",
+        ),
+        azure_item(
+            "azure_files",
+            "Embedding model file share",
+            "Azure Files",
+            "AZURE_FILES_MONTHLY_COST_USD",
+        ),
+        azure_item(
+            "log_analytics",
+            "Log Analytics",
+            "Azure Monitor",
+            "AZURE_LOG_ANALYTICS_MONTHLY_COST_USD",
+        ),
+        azure_item(
+            "private_dns",
+            "Private DNS",
+            "Azure Private DNS",
+            "AZURE_PRIVATE_DNS_MONTHLY_COST_USD",
+        ),
+        azure_item(
+            "azure_other",
+            "Other Azure resources",
+            "Microsoft Azure",
+            "AZURE_OTHER_MONTHLY_COST_USD",
         ),
     ]
     tracked = round(sum(item.monthly_estimate_usd or 0 for item in items if item.configured), 2)
@@ -400,8 +650,19 @@ def _cost_summary(r2_metric: InfrastructureStorageMetric) -> InfrastructureCostS
         tracked_monthly_estimate_usd=tracked,
         budget_utilization_percent=_percent(tracked, budget) or 0.0,
         unconfigured_services=missing,
+        basis=basis,
+        source=(
+            "Azure Cost Management + Cloudflare R2 estimate"
+            if azure_live
+            else "Configured service estimates + Cloudflare R2 estimate"
+        ),
+        forecast_monthly_cost_usd=_env_float("AZURE_FORECAST_MONTHLY_COST_USD"),
         items=items,
-        detail="Tracked estimates exclude unconfigured services and are not a substitute for provider invoices.",
+        detail=(
+            "Azure values are month-to-date actual costs."
+            if azure_live
+            else "Tracked estimates exclude unconfigured paid services. Enable live Azure Cost Management for invoice-backed values."
+        ),
     )
 
 
@@ -438,6 +699,18 @@ def _alerts(
                 detail="CPU or memory utilization has crossed the capacity threshold.",
             )
         )
+    if backend and backend.min_replicas == 0:
+        alerts.append(
+            InfrastructureAlert(
+                severity="warning",
+                title="Scale-to-zero can slow the first page load",
+                detail=(
+                    "Low CPU/RAM does not rule out latency: an idle Container App must cold-start "
+                    "before serving traffic. Set BACKEND_MIN_REPLICAS=1 when consistent response "
+                    "time is worth the additional compute cost."
+                ),
+            )
+        )
     if connections.status in {"warning", "critical"}:
         alerts.append(
             InfrastructureAlert(
@@ -469,7 +742,7 @@ def infrastructure_dashboard(db: Session, *, force_refresh: bool = False) -> Inf
     storage_metrics = [_r2_storage(force_refresh), _database_storage(db)]
     compute_metrics = _compute_metrics()
     connections = _database_connections(db)
-    costs = _cost_summary(storage_metrics[0])
+    costs = _cost_summary(storage_metrics[0], force_refresh=force_refresh)
     return InfrastructureDashboard(
         collected_at=datetime.now(timezone.utc),
         refresh_after_seconds=30,

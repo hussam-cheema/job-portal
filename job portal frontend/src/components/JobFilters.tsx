@@ -63,7 +63,7 @@ export function JobFilters({ filters, basePath = "/" }: Props) {
         </button>
       </form>
 
-      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2">
         <select
           className="select"
           value={searchParams.get("city") || ""}
@@ -74,6 +74,20 @@ export function JobFilters({ filters, basePath = "/" }: Props) {
           {filters.cities.map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="select"
+          value={searchParams.get("province") || ""}
+          onChange={(e) => update("province", e.target.value)}
+          aria-label="Province or territory"
+        >
+          <option value="">All provinces</option>
+          {(filters.provinces || []).map((province) => (
+            <option key={province} value={province}>
+              {province}
             </option>
           ))}
         </select>

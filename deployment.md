@@ -150,7 +150,7 @@ In the Azure portal:
 6. Keep `0.5` vCPU and `1 GiB` memory, minimum replicas `0`, and maximum replicas `2`. The application uses the official Q8 GGUF build of Qwen3-Embedding-0.6B so the existing allocation can remain unchanged.
 7. Configure an HTTP liveness probe for `/health` and a readiness probe for `/ready`, both on port `8000`.
 
-Minimum replicas of zero minimizes cost but the first request after an idle period can be slower. Change it to one when consistent latency matters more than the budget.
+Minimum replicas of zero minimizes cost but the first request after an idle period can be slower. Set the GitHub production environment variable `BACKEND_MIN_REPLICAS=1` when consistent latency matters more than the additional compute cost. The Qwen embedding cache warms in the background, so it no longer blocks public API readiness after a cold start.
 
 ### Add persistent Qwen3 embedding model storage
 
@@ -184,7 +184,7 @@ az containerapp env storage set \
   --access-mode ReadWrite
 ```
 
-Keep the storage account key in Azure only; do not add it to GitHub. The workflow verifies that `/models` is mounted before updating the app. During the first successful revision, the backend downloads the model directly into the mounted Azure Files share before starting the API. Subsequent revisions reuse it immediately.
+Keep the storage account key in Azure only; do not add it to GitHub. The workflow verifies that `/models` is mounted before updating the app. During the first successful revision, the backend starts serving public requests and warms the model into the mounted Azure Files share in a background thread. Subsequent revisions reuse it immediately.
 
 ### Configure GHCR access once
 
@@ -325,7 +325,11 @@ standard error.
 
 Add any YouTube or LLM API keys as Container App secrets only when those features are enabled. The local backend `.env` is not copied into the production container.
 
-The admin **Infrastructure analytics** page collects R2 object bytes, PostgreSQL database size, backend replica CPU/RAM, and connection-pool utilization directly. `R2_STORAGE_LIMIT_GB` is a cost-control budget because R2 storage is elastic; `DB_STORAGE_LIMIT_GB` must match the PostgreSQL provisioned storage. For a complete monthly cost view, periodically copy the current Azure Cost Management estimates into `DB_MONTHLY_COST_USD`, `BACKEND_MONTHLY_COST_USD`, and `FRONTEND_MONTHLY_COST_USD`. Unset costs are shown as unconfigured instead of being guessed.
+The admin **Infrastructure analytics** page collects R2 object bytes, PostgreSQL database size, backend replica CPU/RAM, and connection-pool utilization directly. `R2_STORAGE_LIMIT_GB` is a cost-control budget because R2 storage is elastic; `DB_STORAGE_LIMIT_GB` must match the PostgreSQL provisioned storage.
+
+For live month-to-date Azure costs, enable the Container App's system-assigned managed identity, grant that identity **Cost Management Reader** on the application resource group, and set the GitHub production environment variable `AZURE_COST_MANAGEMENT_ENABLED=true`. The deployment already supplies `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP`. The dashboard then groups actual costs for Container Apps, the Container Apps environment, PostgreSQL, Static Web Apps, the virtual network, load balancer, public IP, Azure Files, Log Analytics, Private DNS, and any remaining Azure resources.
+
+If managed-identity access is not available, configure estimates directly on the Container App with `DB_MONTHLY_COST_USD`, `BACKEND_MONTHLY_COST_USD`, `FRONTEND_MONTHLY_COST_USD`, `AZURE_CONTAINER_ENV_MONTHLY_COST_USD`, `AZURE_VNET_MONTHLY_COST_USD`, `AZURE_LOAD_BALANCER_MONTHLY_COST_USD`, `AZURE_PUBLIC_IP_MONTHLY_COST_USD`, `AZURE_FILES_MONTHLY_COST_USD`, `AZURE_LOG_ANALYTICS_MONTHLY_COST_USD`, `AZURE_PRIVATE_DNS_MONTHLY_COST_USD`, `AZURE_OTHER_MONTHLY_COST_USD`, and optionally `AZURE_FORECAST_MONTHLY_COST_USD`. Unset paid services are shown as unconfigured instead of being guessed.
 
 The first successful admin login creates the configured admin account if it does not already exist, so production does not require startup seed data.
 
@@ -461,7 +465,8 @@ Then verify:
 - A failed backend readiness check prevents the frontend deployment.
 - Production secrets are maintained in Azure; changing an Azure secret creates or updates a Container Apps revision independently of a source deployment.
 - Creating a new job commits the post first, then immediately sends that one job to each active subscriber. Editing an existing post does not send another alert.
-- The Newsletter Subscription page shows the subscriber count, editable subject/body text, and the latest delivery status. SMTP failures are recorded in backend logs and do not roll back a successfully-created job.
+- A durable delivery row is created for every active subscriber before SMTP is contacted. One failed address cannot stop the remaining recipients; failed deliveries survive container restarts and retry automatically. `SMTP_SEND_ATTEMPTS`, `NEWSLETTER_MAX_DELIVERY_ATTEMPTS`, and `NEWSLETTER_RETRY_INTERVAL_SECONDS` tune the retry policy.
+- The Newsletter Subscription page shows the subscriber count, editable subject/body text, the latest per-job recipient totals, and recovery controls. SMTP failures are recorded in backend logs and do not roll back a successfully-created job.
 
 For rollback:
 
@@ -494,7 +499,7 @@ Scale intentionally:
 | Database connections are exhausted | Tune the backend pool conservatively before increasing PostgreSQL size |
 | Database CPU/storage is sustained high | Scale PostgreSQL vertically and enable stronger backup/HA options |
 | R2 traffic grows | Retain R2; increase CORS/caching controls rather than moving binary data into PostgreSQL |
-| Static Web Apps hybrid limits are reached | Deploy the existing frontend Docker image to Container Apps |
+| Static Web Apps hybrid limits are reached | The default homepage is cached for 15 seconds; if hybrid page latency remains high, deploy the existing frontend Docker image to Container Apps |
 
 Avoid adding an Azure NAT Gateway, Application Gateway, dedicated load balancer, Redis, high availability, or minimum always-on replicas until there is a measured requirement; each can materially increase the baseline cost.
 

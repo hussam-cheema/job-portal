@@ -34,6 +34,7 @@ const empty = {
   skills: [] as string[],
   job_type: "private",
   cities: [] as string[],
+  provinces: [] as string[],
   tags: [] as string[],
   keywords: "",
 };
@@ -76,6 +77,7 @@ export default function JobFormPage() {
   const { token } = useAdminAuth();
   const [form, setForm] = useState(empty);
   const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [provinceOptions, setProvinceOptions] = useState<string[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<TaxonomyTerm[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,10 @@ export default function JobFormPage() {
   });
 
   useEffect(() => {
-    fetchFilters().then((f) => setCityOptions(asStringList(f.cities)));
+    fetchFilters().then((f) => {
+      setCityOptions(asStringList(f.cities));
+      setProvinceOptions(asStringList(f.provinces));
+    });
     if (token) {
       adminListTaxonomy(token).then(setCategoryOptions).catch(() => setCategoryOptions([]));
     }
@@ -121,6 +126,7 @@ export default function JobFormPage() {
         }
         const skills = asStringList(job.skills);
         const cities = asStringList(job.cities);
+        const provinces = asStringList(job.provinces);
         const tags = asStringList(job.tags);
         setSavedId(asString(job.id));
         setForm({
@@ -137,6 +143,7 @@ export default function JobFormPage() {
           skills,
           job_type: asString(job.job_type) || (job.source_type === "govt" ? "government" : "private"),
           cities: cities.length ? cities : asStringList(job.city),
+          provinces: provinces.length ? provinces : asStringList(job.province),
           tags: tags.filter(
             (t) => !["government", "private", "govt"].includes(t.toLowerCase())
           ),
@@ -209,6 +216,7 @@ export default function JobFormPage() {
         skills: form.skills,
         job_type: form.job_type,
         cities: form.cities,
+        provinces: form.provinces,
         tags: form.tags,
         keywords: form.keywords || null,
         seo: {
@@ -431,6 +439,66 @@ export default function JobFormPage() {
               onChange={(e) => setField("education_required", e.target.value)}
             />
           </div>
+        </div>
+
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="field-label mb-0">Province / Territory</label>
+            {form.provinces.length > 0 && (
+              <button
+                type="button"
+                className="text-xs text-[var(--muted)] underline underline-offset-4"
+                onClick={() => setField("provinces", [])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Select a whole province or territory when the vacancy is not limited to individual cities.
+          </p>
+          {form.provinces.length > 0 && (
+            <div className="my-2 flex flex-wrap gap-2 rounded-xl border border-[var(--border)] p-3">
+              {form.provinces.map((province) => (
+                <span key={province} className="tag flex items-center gap-1.5">
+                  {province}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${province}`}
+                    className="font-bold text-[var(--muted)] hover:text-red-500"
+                    onClick={() =>
+                      setField(
+                        "provinces",
+                        form.provinces.filter((value) => value !== province)
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <select
+            className="select mt-2"
+            aria-label="Add province or territory"
+            value=""
+            onChange={(event) => {
+              const selected = event.target.value;
+              if (selected && !form.provinces.includes(selected)) {
+                setField("provinces", [...form.provinces, selected]);
+              }
+            }}
+          >
+            <option value="">Add province or territory…</option>
+            {provinceOptions
+              .filter((province) => !form.provinces.includes(province))
+              .map((province) => (
+                <option key={province} value={province}>
+                  {province}
+                </option>
+              ))}
+          </select>
         </div>
 
         <div>

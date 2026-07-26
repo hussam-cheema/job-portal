@@ -154,6 +154,7 @@ def _reset_app_tables() -> None:
         "analytics_visits",
         "taxonomy_terms",
         "email_subscribers",
+        "subscription_email_deliveries",
         "subscription_digest_runs",
         "agent_runs",
         "job_resources",
@@ -184,6 +185,8 @@ def _ensure_new_columns() -> None:
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS readability_score DOUBLE PRECISION',
         'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS analysis JSON',
         'ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE',
+        'ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS city VARCHAR(150) NULL',
+        'ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL',
         'ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL',
     ]
     if DATABASE_URL.startswith("sqlite"):
@@ -200,6 +203,8 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE seo_meta ADD COLUMN readability_score FLOAT",
             "ALTER TABLE seo_meta ADD COLUMN analysis JSON",
             "ALTER TABLE analytics_visits ADD COLUMN location_verified BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE analytics_visits ADD COLUMN city VARCHAR(150)",
+            "ALTER TABLE jobs ADD COLUMN provinces JSON",
             "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
         ]
     try:

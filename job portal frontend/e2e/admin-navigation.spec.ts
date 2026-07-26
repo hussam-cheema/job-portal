@@ -107,6 +107,8 @@ test("job form only offers predefined categories", async ({ page }) => {
   await expect(page.getByPlaceholder("Add city and press Enter")).toHaveCount(0);
   await page.getByLabel("Add city from predefined list").selectOption("Lahore");
   await expect(page.getByRole("button", { name: "Remove Lahore" })).toBeVisible();
+  await page.getByLabel("Add province or territory").selectOption("Punjab");
+  await expect(page.getByRole("button", { name: "Remove Punjab" })).toBeVisible();
 });
 
 test("existing R2 images load inside the job editor through the media proxy", async ({ page }) => {
@@ -122,6 +124,37 @@ test("existing R2 images load inside the job editor through the media proxy", as
     .toBeGreaterThan(0);
 });
 
+test("clipboard image paste uploads and renders through the media proxy", async ({ page }) => {
+  await page.goto("/admin/jobs/new");
+  const editor = page.locator(".ql-editor").first();
+  await expect(editor).toBeVisible();
+  await editor.evaluate((element) => {
+    const binary = atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    );
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const file = new File([bytes], "clipboard.png", { type: "image/png" });
+    const clipboard = new DataTransfer();
+    clipboard.items.add(file);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: clipboard,
+      }),
+    );
+  });
+
+  const image = editor.locator("img").first();
+  await expect(image).toHaveAttribute(
+    "src",
+    "http://127.0.0.1:4010/api/media/r2/job-portal/pasted/images/clipboard.png",
+  );
+  await expect
+    .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+});
+
 test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
   await page.goto("/admin/seo");
   await expect(page.getByText("Daily job alert subscriptions")).toHaveCount(0);
@@ -129,6 +162,15 @@ test("newsletter page shows subscription count and editable alert template", asy
   await expect(page.getByRole("heading", { name: "Newsletter subscription" })).toBeVisible();
   await expect(page.getByText("6", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Email subject")).toHaveValue(/New Job Alert/);
+});
+
+test("keyword rankings scroll after twenty unique rows", async ({ page }) => {
+  await page.goto("/admin/seo");
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Keyword rankings", exact: true }),
+  });
+  await expect(section.locator("tbody tr")).toHaveCount(21);
+  await expect(section.locator(".overflow-y-auto")).toHaveCSS("overflow-y", "auto");
 });
 
 test("website title position is configurable from settings", async ({ page }) => {
@@ -145,6 +187,9 @@ test("website title position is configurable from settings", async ({ page }) =>
   );
   await expect(page.getByLabel("Meta keywords")).toHaveValue(
     "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
+  );
+  await expect(page.getByRole("textbox", { name: "LinkedIn URL" })).toHaveValue(
+    "https://linkedin.com/company/pakistanjobsmarket",
   );
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();

@@ -120,7 +120,8 @@ def test_login_and_create_job(client: TestClient):
             "description": "<p>Build APIs in Pakistan.</p>",
             "published_date": "2026-07-01T00:00:00",
             "job_type": "private",
-            "cities": ["Karachi"],
+            "cities": ["Karachi", "Lahore"],
+            "provinces": ["Sindh", "Punjab"],
             "skills": ["Python"],
             "tags": ["Software Engineering"],
         },
@@ -131,11 +132,27 @@ def test_login_and_create_job(client: TestClient):
     r = client.get(f"/api/jobs/{job_id}")
     assert r.status_code == 200
     assert r.json()["title"] == "Python Developer"
+    assert r.json()["cities"] == ["Karachi", "Lahore"]
+    assert r.json()["provinces"] == ["Sindh", "Punjab"]
+    assert "Karachi" in r.json()["location"]
+    assert "Punjab" in r.json()["location"]
     assert "no-store" in r.headers["cache-control"]
 
-    r = client.get("/api/jobs")
+    r = client.get("/api/jobs?province=Punjab")
     assert r.status_code == 200
     assert r.json()["total"] >= 1
+
+    invalid = client.post(
+        "/api/admin/jobs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Invalid Province Role",
+            "description": "<p>This job uses a province outside the allowed list.</p>",
+            "published_date": "2026-07-01T00:00:00",
+            "provinces": ["Not a province"],
+        },
+    )
+    assert invalid.status_code == 400
 
 
 def test_admin_pages_self_heal_core_pages(client: TestClient):
@@ -893,6 +910,7 @@ def test_job_creation_survives_email_delivery_failure(
     )
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
     monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
+    monkeypatch.setenv("SMTP_SEND_ATTEMPTS", "1")
 
     def fail_delivery(_message):
         raise RuntimeError("simulated SMTP outage")
@@ -910,7 +928,37 @@ def test_job_creation_survives_email_delivery_failure(
     assert created.status_code == 200
     assert client.get(f"/api/jobs/{created.json()['id']}").status_code == 200
     summary = client.get("/api/admin/subscriptions", headers=auth).json()
-    assert summary["last_digest_status"] == "failed"
+    assert summary["last_digest_status"] == "retrying"
+    assert summary["last_digest_recipients_count"] == 1
+    assert summary["last_digest_sent_count"] == 0
+    assert summary["last_digest_failed_count"] == 1
+
+    # Failed recipients are durable and the automatic worker can retry only
+    # those recipients without sending duplicates to successful subscribers.
+    from datetime import datetime
+    from sqlalchemy import update
+    from app.models import SubscriptionEmailDelivery
+
+    delivered = []
+    monkeypatch.setattr(
+        newsletter, "_send_smtp_message", lambda message: delivered.append(message)
+    )
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        db.execute(
+            update(SubscriptionEmailDelivery).values(next_attempt_at=datetime.utcnow())
+        )
+        db.commit()
+        result = newsletter.process_pending_job_alerts(db)
+        assert result["delivered_count"] == 1
+    finally:
+        db.close()
+    assert len(delivered) == 1
+    retried_summary = client.get("/api/admin/subscriptions", headers=auth).json()
+    assert retried_summary["last_digest_status"] == "completed"
+    assert retried_summary["last_digest_sent_count"] == 1
+    assert retried_summary["last_digest_failed_count"] == 0
 
 
 def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
@@ -1239,7 +1287,12 @@ def test_admin_bootstrap_rejects_short_password(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_monthly_analytics(client: TestClient):
-    headers = {"user-agent": "Mozilla/5.0", "cf-ipcountry": "PK", "cf-region": "Sindh"}
+    headers = {
+        "user-agent": "Mozilla/5.0",
+        "cf-ipcountry": "PK",
+        "cf-region": "Sindh",
+        "cf-ipcity": "Karachi",
+    }
     assert client.post(
         "/api/analytics/visit",
         headers=headers,
@@ -1262,10 +1315,17 @@ def test_monthly_analytics(client: TestClient):
     assert data["unique_visitors"] == 2
     assert data["page_views"] == 2
     assert data["locations"][0]["country"] == "PK"
+    assert data["locations"][0]["region"] == "Sindh"
+    assert data["locations"][0]["city"] == "Karachi"
 
 
 def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: TestClient):
-    headers = {"user-agent": "Mozilla/5.0", "cf-ipcountry": "PK"}
+    headers = {
+        "user-agent": "Mozilla/5.0",
+        "cf-ipcountry": "PK",
+        "cf-region": "Punjab",
+        "cf-ipcity": "Lahore",
+    }
     payload = {"visitor_id": "realtime-visitor", "path": "/jobs/live-role"}
     assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
     assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
@@ -1278,13 +1338,32 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     assert live.status_code == 200
     assert live.json()["active_visitors"] == 1
     assert live.json()["pages"][0]["path"] == "/jobs/live-role"
+    assert live.json()["locations"] == [
+        {
+            "country": "PK",
+            "region": "Punjab",
+            "city": "Lahore",
+            "visitors": 1,
+            "last_seen": live.json()["locations"][0]["last_seen"],
+        }
+    ]
 
     monthly = client.get("/api/admin/analytics", headers=auth)
     assert monthly.json()["page_views"] == 1
 
 
-def test_infrastructure_analytics_requires_admin_and_reports_capacity(client: TestClient):
+def test_infrastructure_analytics_requires_admin_and_reports_capacity(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
     assert client.get("/api/admin/infrastructure").status_code == 401
+    monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "false")
+    monkeypatch.setenv("BACKEND_MONTHLY_COST_USD", "3.55")
+    monkeypatch.setenv("DB_MONTHLY_COST_USD", "0.20")
+    monkeypatch.setenv("FRONTEND_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("AZURE_CONTAINER_ENV_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("AZURE_VNET_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("AZURE_PUBLIC_IP_MONTHLY_COST_USD", "1.46")
 
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -1305,7 +1384,71 @@ def test_infrastructure_analytics_requires_admin_and_reports_capacity(client: Te
         "runtime_model"
     ] == "Provider managed"
     assert data["costs"]["monthly_budget_usd"] == 25.0
+    assert data["costs"]["tracked_monthly_estimate_usd"] == 5.21
+    assert {
+        "backend",
+        "container_environment",
+        "database",
+        "frontend",
+        "vnet",
+        "load_balancer",
+        "public_ip",
+        "azure_files",
+        "log_analytics",
+        "private_dns",
+        "azure_other",
+    }.issubset({item["id"] for item in data["costs"]["items"]})
     assert data["refresh_after_seconds"] == 30
+
+
+def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
+    from datetime import datetime, timedelta
+    from app.models import SEOKeywordRank
+    from app.services.seo_tools import list_keyword_ranks
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        now = datetime.utcnow()
+        db.add_all(
+            [
+                SEOKeywordRank(
+                    id="keyword-old",
+                    keyword="PakJobs",
+                    url="https://pakistanjobsmarket.com/",
+                    position=9,
+                    search_page=1,
+                    recorded_at=now - timedelta(minutes=1),
+                ),
+                SEOKeywordRank(
+                    id="keyword-new",
+                    keyword="pakjobs",
+                    url="https://pakistanjobsmarket.com",
+                    position=7,
+                    search_page=1,
+                    recorded_at=now,
+                ),
+                SEOKeywordRank(
+                    id="keyword-distinct",
+                    keyword="Lahore jobs",
+                    url="https://pakistanjobsmarket.com/tags/lahore",
+                    position=8,
+                    search_page=1,
+                    recorded_at=now,
+                ),
+            ]
+        )
+        db.commit()
+        rows = list_keyword_ranks(db, 100)
+    finally:
+        db.close()
+
+    assert len(rows) == 2
+    assert next(row for row in rows if row["keyword"].casefold() == "pakjobs")["id"] == "keyword-new"
+    assert {(row["keyword"].casefold(), row["url"].rstrip("/")) for row in rows} == {
+        ("pakjobs", "https://pakistanjobsmarket.com"),
+        ("lahore jobs", "https://pakistanjobsmarket.com/tags/lahore"),
+    }
 
 
 def test_analytics_ignores_browser_location_hints(client: TestClient):
@@ -1329,7 +1472,13 @@ def test_analytics_ignores_browser_location_hints(client: TestClient):
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     ).json()
     assert dashboard["locations"] == [
-        {"country": "Unknown", "region": None, "visitors": 1, "page_views": 1}
+        {
+            "country": "Unknown",
+            "region": None,
+            "city": None,
+            "visitors": 1,
+            "page_views": 1,
+        }
     ]
 
 

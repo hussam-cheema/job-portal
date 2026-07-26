@@ -93,10 +93,11 @@ def _load_local_model():
 
     model_path = _local_model_path()
     if not model_path.is_file():
-        raise RuntimeError(
-            f"Qwen3-Embedding-0.6B model is missing at {model_path}. "
-            "Verify the persistent /models mount and restart the revision."
-        )
+        from app.services.model_cache import ensure_local_embedding_model
+
+        ensure_local_embedding_model()
+    if not model_path.is_file():
+        raise RuntimeError(f"Qwen3-Embedding-0.6B model is missing at {model_path}.")
 
     conf = _embedding_config()
     threads = max(1, int(env("QWEN3_EMBEDDING_THREADS") or conf.get("local_threads") or 1))

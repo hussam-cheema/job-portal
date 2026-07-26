@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import html
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
+from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import cfg, env, site_name, site_url
 from app.logging_config import get_logger
-from app.models import EmailSubscriber, Job, SiteSetting, SubscriptionDigestRun
+from app.models import (
+    EmailSubscriber,
+    Job,
+    SiteSetting,
+    SubscriptionDigestRun,
+    SubscriptionEmailDelivery,
+)
 from app.services.smtp_transport import address_fingerprint, deliver_smtp_message
 
 logger = get_logger("jobportal.newsletter")
@@ -145,24 +153,247 @@ def _send_smtp_message(message: EmailMessage):
     return deliver_smtp_message(message)
 
 
-def send_new_job_alert(db: Session, job: Job) -> dict[str, object]:
-    """Send one committed job to active subscribers exactly once.
+def _deliver_with_retries(message: EmailMessage):
+    attempts = max(1, min(5, int(env("SMTP_SEND_ATTEMPTS", "3") or "3")))
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return _send_smtp_message(message)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            delay = min(2.0, 0.35 * (2 ** (attempt - 1)))
+            logger.warning(
+                "new job SMTP attempt failed attempt=%s/%s retry_in=%.2fs error=%s",
+                attempt,
+                attempts,
+                delay,
+                type(exc).__name__,
+            )
+            time.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
-    Delivery errors are recorded and returned; they are deliberately not raised
-    so an SMTP outage can never roll back or hide an otherwise valid job post.
+
+def _max_delivery_attempts() -> int:
+    return max(
+        1,
+        min(20, int(env("NEWSLETTER_MAX_DELIVERY_ATTEMPTS", "5") or "5")),
+    )
+
+
+def _next_retry_at(attempts: int) -> datetime:
+    delay_seconds = min(3600, 60 * (5 ** max(0, attempts - 1)))
+    return datetime.utcnow() + timedelta(seconds=delay_seconds)
+
+
+def _refresh_run_summary(db: Session, run_id: str) -> SubscriptionDigestRun | None:
+    run = db.get(SubscriptionDigestRun, run_id)
+    if not run:
+        return None
+    deliveries = (
+        db.execute(
+            select(SubscriptionEmailDelivery).where(
+                SubscriptionEmailDelivery.run_id == run_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    run.recipients_count = len(deliveries)
+    run.sent_count = sum(item.status == "delivered" for item in deliveries)
+    run.failed_count = len(deliveries) - run.sent_count
+    retrying = any(
+        item.status in {"pending", "processing", "retrying"} for item in deliveries
+    )
+    if not deliveries:
+        run.status = "no_subscribers"
+    elif run.sent_count == len(deliveries):
+        run.status = "completed"
+    elif retrying:
+        run.status = "retrying"
+    elif run.sent_count:
+        run.status = "partial"
+    else:
+        run.status = "failed"
+    errors = [
+        f"{item.subscriber_id}: {item.last_error}"
+        for item in deliveries
+        if item.status != "delivered" and item.last_error
+    ]
+    run.error = "; ".join(errors[:20]) or None
+    run.completed_at = (
+        datetime.utcnow()
+        if run.status in {"completed", "partial", "failed", "no_subscribers"}
+        else None
+    )
+    return run
+
+
+def _run_result(run: SubscriptionDigestRun) -> dict[str, object]:
+    return {
+        "status": run.status,
+        "jobs_count": 1,
+        "recipients_count": run.recipients_count,
+        "sent_count": run.sent_count,
+        "failed_count": run.failed_count,
+        "message": (
+            f"Delivered {run.sent_count} of {run.recipients_count} new-job alerts."
+            if run.status != "retrying"
+            else (
+                f"Delivered {run.sent_count} of {run.recipients_count} alerts; "
+                f"{run.failed_count} recipient(s) are queued for automatic retry."
+            )
+        ),
+    }
+
+
+def process_pending_job_alerts(
+    db: Session,
+    *,
+    job_id: str | None = None,
+    max_deliveries: int = 100,
+) -> dict[str, object]:
+    """Claim and deliver queued subscriber alerts.
+
+    Each recipient has a durable row, so a failed address does not interrupt
+    other subscribers and pending work survives a container restart.
+    """
+    now = datetime.utcnow()
+    stale_before = now - timedelta(minutes=10)
+    db.execute(
+        update(SubscriptionEmailDelivery)
+        .where(
+            SubscriptionEmailDelivery.status == "processing",
+            SubscriptionEmailDelivery.last_attempt_at < stale_before,
+        )
+        .values(status="retrying", next_attempt_at=now, updated_at=now)
+    )
+    due = select(SubscriptionEmailDelivery.id).where(
+        SubscriptionEmailDelivery.status.in_(["pending", "retrying"]),
+        SubscriptionEmailDelivery.next_attempt_at <= now,
+    )
+    if job_id:
+        due = due.where(SubscriptionEmailDelivery.job_id == job_id)
+    delivery_ids = list(
+        db.execute(
+            due.order_by(SubscriptionEmailDelivery.created_at.asc()).limit(
+                max(1, min(1000, max_deliveries))
+            )
+        ).scalars()
+    )
+    db.commit()
+
+    touched_runs: set[str] = set()
+    delivered_count = 0
+    for delivery_id in delivery_ids:
+        claimed_at = datetime.utcnow()
+        claimed = db.execute(
+            update(SubscriptionEmailDelivery)
+            .where(
+                SubscriptionEmailDelivery.id == delivery_id,
+                SubscriptionEmailDelivery.status.in_(["pending", "retrying"]),
+            )
+            .values(
+                status="processing",
+                attempts=SubscriptionEmailDelivery.attempts + 1,
+                last_attempt_at=claimed_at,
+                updated_at=claimed_at,
+            )
+        )
+        db.commit()
+        if not claimed.rowcount:
+            continue
+
+        delivery = db.get(SubscriptionEmailDelivery, delivery_id)
+        if not delivery:
+            continue
+        touched_runs.add(delivery.run_id)
+        job = db.get(Job, delivery.job_id)
+        subscriber = db.get(EmailSubscriber, delivery.subscriber_id)
+        if not job or not subscriber or not subscriber.is_active:
+            delivery.status = "cancelled"
+            delivery.last_error = "Job or active subscriber no longer exists"
+            delivery.updated_at = datetime.utcnow()
+            db.commit()
+            continue
+
+        try:
+            message = build_job_alert_message(db, subscriber, job)
+            receipt = _deliver_with_retries(message)
+            delivered_at = datetime.utcnow()
+            delivery.status = "delivered"
+            delivery.last_error = None
+            delivery.smtp_message_id = str(
+                getattr(receipt, "message_id", message.get("Message-ID", ""))
+            )
+            delivery.delivered_at = delivered_at
+            delivery.updated_at = delivered_at
+            subscriber.last_digest_sent_at = delivered_at
+            subscriber.updated_at = delivered_at
+            delivered_count += 1
+            logger.info(
+                "new job alert accepted job_id=%s subscriber=%s message_id=%s "
+                "smtp_code=%s smtp_response=%s",
+                job.id,
+                address_fingerprint(subscriber.subscribed_email),
+                delivery.smtp_message_id,
+                getattr(receipt, "response_code", "mocked"),
+                getattr(receipt, "response", "mocked"),
+            )
+        except Exception as exc:
+            delivery.last_error = type(exc).__name__
+            delivery.updated_at = datetime.utcnow()
+            if delivery.attempts >= _max_delivery_attempts():
+                delivery.status = "failed"
+            else:
+                delivery.status = "retrying"
+                delivery.next_attempt_at = _next_retry_at(delivery.attempts)
+            logger.exception(
+                "new job alert failed job_id=%s subscriber_id=%s queued_for_retry=%s",
+                delivery.job_id,
+                delivery.subscriber_id,
+                delivery.status == "retrying",
+            )
+        db.commit()
+
+    for run_id in touched_runs:
+        _refresh_run_summary(db, run_id)
+    db.commit()
+
+    return {
+        "processed_count": len(touched_runs) and len(delivery_ids) or 0,
+        "delivered_count": delivered_count,
+    }
+
+
+def send_new_job_alert(
+    db: Session,
+    job: Job,
+    *,
+    force_resend: bool = False,
+) -> dict[str, object]:
+    """Queue and immediately attempt one committed job for every subscriber.
+
+    Recipient work is committed before SMTP is contacted. Failed recipients are
+    retained for the periodic worker rather than being silently skipped.
     """
     existing = db.execute(
         select(SubscriptionDigestRun).where(SubscriptionDigestRun.job_id == job.id)
     ).scalar_one_or_none()
+    if existing and not force_resend:
+        process_pending_job_alerts(db, job_id=job.id)
+        db.refresh(existing)
+        return _run_result(existing)
     if existing:
-        return {
-            "status": "already_processed",
-            "jobs_count": 1,
-            "recipients_count": existing.recipients_count,
-            "sent_count": existing.sent_count,
-            "failed_count": existing.failed_count,
-            "message": "This job alert has already been processed.",
-        }
+        db.execute(
+            delete(SubscriptionEmailDelivery).where(
+                SubscriptionEmailDelivery.run_id == existing.id
+            )
+        )
+        db.delete(existing)
+        db.flush()
 
     subscribers = (
         db.execute(
@@ -175,7 +406,7 @@ def send_new_job_alert(db: Session, job: Job) -> dict[str, object]:
     )
     now = datetime.utcnow()
     run = SubscriptionDigestRun(
-        id=__import__("uuid").uuid4().hex,
+        id=uuid4().hex,
         job_id=job.id,
         window_start=job.created_at or now,
         window_end=now,
@@ -187,57 +418,31 @@ def send_new_job_alert(db: Session, job: Job) -> dict[str, object]:
         created_at=now,
     )
     db.add(run)
+    db.flush()
 
     if not subscribers:
-        run.status = "no_subscribers"
-        run.completed_at = datetime.utcnow()
+        _refresh_run_summary(db, run.id)
         db.commit()
-        return {
-            "status": run.status,
-            "jobs_count": 1,
-            "recipients_count": 0,
-            "sent_count": 0,
-            "failed_count": 0,
-            "message": "There are no active subscribers; no email was sent.",
-        }
+        return _run_result(run)
 
-    errors: list[str] = []
     for subscriber in subscribers:
-        try:
-            message = build_job_alert_message(db, subscriber, job)
-            receipt = _send_smtp_message(message)
-            subscriber.last_digest_sent_at = datetime.utcnow()
-            subscriber.updated_at = datetime.utcnow()
-            run.sent_count += 1
-            logger.info(
-                "new job alert accepted job_id=%s subscriber=%s message_id=%s "
-                "smtp_code=%s smtp_response=%s",
-                job.id,
-                address_fingerprint(subscriber.subscribed_email),
-                getattr(receipt, "message_id", message.get("Message-ID", "")),
-                getattr(receipt, "response_code", "mocked"),
-                getattr(receipt, "response", "mocked"),
+        db.add(
+            SubscriptionEmailDelivery(
+                id=uuid4().hex,
+                run_id=run.id,
+                job_id=job.id,
+                subscriber_id=subscriber.user_uuid,
+                status="pending",
+                attempts=0,
+                next_attempt_at=now,
+                created_at=now,
+                updated_at=now,
             )
-        except Exception as exc:
-            run.failed_count += 1
-            errors.append(f"{subscriber.user_uuid}: {type(exc).__name__}")
-            logger.exception(
-                "new job alert failed job_id=%s subscriber_id=%s",
-                job.id,
-                subscriber.user_uuid,
-            )
-    run.status = "completed" if run.failed_count == 0 else "partial" if run.sent_count else "failed"
-    run.error = "; ".join(errors[:20]) or None
-    run.completed_at = datetime.utcnow()
+        )
     db.commit()
-    return {
-        "status": run.status,
-        "jobs_count": 1,
-        "recipients_count": run.recipients_count,
-        "sent_count": run.sent_count,
-        "failed_count": run.failed_count,
-        "message": f"Sent {run.sent_count} of {run.recipients_count} new-job alert emails.",
-    }
+    process_pending_job_alerts(db, job_id=job.id, max_deliveries=len(subscribers))
+    db.refresh(run)
+    return _run_result(run)
 
 
 def subscriber_counts(db: Session) -> tuple[int, int]:

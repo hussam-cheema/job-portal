@@ -8,10 +8,13 @@ import { useAdminAuth } from "@/lib/adminAuth";
 import {
   adminChangePassword,
   adminDeleteLogo,
+  adminUpdateSocialSettings,
   adminUpdateBranding,
   adminUploadLogo,
   fetchBranding,
+  fetchSocialSettings,
 } from "@/lib/api";
+import type { SocialSettings } from "@/lib/types";
 
 export default function SettingsPage() {
   const { token } = useAdminAuth();
@@ -30,6 +33,12 @@ export default function SettingsPage() {
   const [footerCopyright, setFooterCopyright] = useState(
     "Copyrights © {year} - Pakistan Jobs Market. All rights reserved."
   );
+  const [social, setSocial] = useState<SocialSettings>({
+    facebook_url: "",
+    youtube_url: "",
+    x_url: "",
+    linkedin_url: "",
+  });
   const [homepageSeo, setHomepageSeo] = useState<YoastSEOValue>({
     focus_keyword: "jobs in Pakistan",
     meta_title: "Jobs in Pakistan 2026 | Pakistan Jobs Market",
@@ -58,6 +67,7 @@ export default function SettingsPage() {
         meta_keywords: branding.homepage_meta_keywords,
       });
     });
+    void fetchSocialSettings().then(setSocial);
   }, []);
 
   async function saveBranding(event: FormEvent) {
@@ -110,6 +120,22 @@ export default function SettingsPage() {
       setMessage("Website logo updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logo update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveSocial(event: FormEvent) {
+    event.preventDefault();
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      setSocial(await adminUpdateSocialSettings(token, social));
+      setMessage("Social media links updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Social media settings update failed");
     } finally {
       setBusy(false);
     }
@@ -294,6 +320,36 @@ export default function SettingsPage() {
               <button type="button" className="btn btn-ghost" onClick={removeLogo} disabled={busy}>Restore default</button>
             )}
           </div>
+        </form>
+
+        <form onSubmit={saveSocial} className="card-panel p-5">
+          <h3 className="font-semibold text-[var(--navy-100)]">Footer social links</h3>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Configured profiles appear as buttons in the public website footer.
+          </p>
+          <div className="mt-4 space-y-4">
+            {([
+              ["facebook_url", "Facebook URL", "https://facebook.com/..."],
+              ["youtube_url", "YouTube URL", "https://youtube.com/..."],
+              ["x_url", "X (Twitter) URL", "https://x.com/..."],
+              ["linkedin_url", "LinkedIn URL", "https://linkedin.com/company/..."],
+            ] as const).map(([key, label, placeholder]) => (
+              <div key={key}>
+                <label className="field-label" htmlFor={key}>{label}</label>
+                <input
+                  id={key}
+                  type="url"
+                  className="input"
+                  value={social[key]}
+                  onChange={(event) => setSocial({ ...social, [key]: event.target.value })}
+                  placeholder={placeholder}
+                />
+              </div>
+            ))}
+          </div>
+          <button type="submit" className="btn btn-primary mt-5" disabled={busy}>
+            Save social links
+          </button>
         </form>
 
         <form onSubmit={changePassword} className="card-panel p-5">

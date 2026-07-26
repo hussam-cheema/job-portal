@@ -396,12 +396,50 @@ a {
 }
 
 .prose-job {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   color: var(--navy-200);
   line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .prose-job p {
   margin: 0 0 0.85rem;
+}
+
+.prose-job h1,
+.prose-job h2,
+.prose-job h3,
+.prose-job h4,
+.prose-job h5,
+.prose-job h6 {
+  color: var(--navy-100);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.35em 0 0.55em;
+  overflow-wrap: anywhere;
+}
+
+.prose-job h1 { font-size: clamp(1.75rem, 5vw, 2.25rem); }
+.prose-job h2 { font-size: clamp(1.45rem, 4vw, 1.85rem); }
+.prose-job h3 { font-size: clamp(1.25rem, 3.5vw, 1.55rem); }
+.prose-job h4 { font-size: 1.2rem; }
+.prose-job h5 { font-size: 1.05rem; }
+.prose-job h6 { font-size: 0.95rem; }
+
+.prose-job > *,
+.prose-job img,
+.prose-job video,
+.prose-job iframe,
+.prose-job table {
+  max-width: 100% !important;
+}
+
+.prose-job :is(p, h1, h2, h3, h4, h5, h6, li, a, div, span) {
+  overflow-wrap: anywhere;
+  white-space: normal !important;
 }
 
 .prose-job ul,
@@ -410,14 +448,61 @@ a {
 }
 
 .prose-job img {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain;
   max-width: 100%;
   border-radius: 0.65rem;
   margin: 0.75rem 0;
 }
 
+.prose-job pre,
+.prose-job .ql-syntax {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.prose-job table {
+  display: block;
+  width: 100% !important;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.prose-job iframe,
+.prose-job video {
+  width: 100% !important;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
 .prose-job a {
   color: var(--accent);
   text-decoration: underline;
+}
+
+[data-theme="dark"] .prose-job,
+[data-theme="dark"] .prose-job * {
+  background-color: transparent !important;
+}
+
+[data-theme="dark"] .prose-job :is(p, li, div, span, blockquote, td, th) {
+  color: var(--navy-200) !important;
+}
+
+[data-theme="dark"] .prose-job :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--navy-100) !important;
+}
+
+[data-theme="dark"] .prose-job a {
+  color: var(--accent) !important;
+}
+
+[data-theme="dark"] .prose-job :is(pre, .ql-syntax) {
+  background-color: var(--navy-850) !important;
+  color: var(--navy-200) !important;
 }
 
 .blog-list-card {

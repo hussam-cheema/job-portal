@@ -14,7 +14,12 @@ export default function AdminSeoPage() {
   const [data, setData] = useState<SEODashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [social, setSocial] = useState({ facebook_url: "", youtube_url: "", x_url: "" });
+  const [social, setSocial] = useState({
+    facebook_url: "",
+    youtube_url: "",
+    x_url: "",
+    linkedin_url: "",
+  });
   const [backlink, setBacklink] = useState({ source_url: "", anchor_text: "" });
   const [busy, setBusy] = useState(false);
 
@@ -27,6 +32,7 @@ export default function AdminSeoPage() {
         facebook_url: d.social.facebook_url || "",
         youtube_url: d.social.youtube_url || "",
         x_url: d.social.x_url || "",
+        linkedin_url: d.social.linkedin_url || "",
       });
     }
   }
@@ -206,9 +212,15 @@ export default function AdminSeoPage() {
               {(data.url_ranks || []).length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No ranking data yet — sync GSC.</p>
               ) : (
-                <div className="overflow-x-auto -mx-1 px-1">
+                <div
+                  className={`overflow-x-auto -mx-1 px-1 ${
+                    (data.url_ranks || []).length > 20
+                      ? "max-h-[52rem] overflow-y-auto"
+                      : ""
+                  }`}
+                >
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-[var(--card)]">
                       <tr className="text-left text-[var(--muted)]">
                         <th className="py-2 pr-3">URL</th>
                         <th className="py-2 pr-3">Type</th>
@@ -239,9 +251,15 @@ export default function AdminSeoPage() {
               {(data.keyword_ranks || []).length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No keywords yet — sync GSC.</p>
               ) : (
-                <div className="overflow-x-auto -mx-1 px-1">
+                <div
+                  className={`overflow-x-auto -mx-1 px-1 ${
+                    (data.keyword_ranks || []).length > 20
+                      ? "max-h-[52rem] overflow-y-auto"
+                      : ""
+                  }`}
+                >
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-[var(--card)]">
                       <tr className="text-left text-[var(--muted)]">
                         <th className="py-2 pr-3">Keyword</th>
                         <th className="py-2 pr-3">URL</th>
@@ -251,7 +269,7 @@ export default function AdminSeoPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(data.keyword_ranks || []).slice(0, 40).map((r, i) => (
+                      {(data.keyword_ranks || []).map((r, i) => (
                         <tr key={i} className="border-t border-[var(--border)]">
                           <td className="py-2 pr-3 text-[var(--navy-100)]">{String(r.keyword)}</td>
                           <td className="py-2 pr-3 max-w-[200px] truncate">{String(r.url)}</td>
@@ -365,6 +383,15 @@ export default function AdminSeoPage() {
                     value={social.x_url}
                     onChange={(e) => setSocial({ ...social, x_url: e.target.value })}
                     placeholder="https://x.com/..."
+                  />
+                </div>
+                <div>
+                  <label className="field-label">LinkedIn URL</label>
+                  <input
+                    className="input"
+                    value={social.linkedin_url}
+                    onChange={(e) => setSocial({ ...social, linkedin_url: e.target.value })}
+                    placeholder="https://linkedin.com/company/..."
                   />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={busy}>

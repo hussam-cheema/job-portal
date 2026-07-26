@@ -46,9 +46,29 @@ const server = createServer((request, response) => {
       logo_url: "/pakistan-jobs-market-logo.png",
     });
   }
+  if (path === "/api/settings/social" || path === "/api/admin/seo/social") {
+    return json(response, {
+      facebook_url: "https://facebook.com/pakistanjobsmarket",
+      youtube_url: "",
+      x_url: "",
+      linkedin_url: "https://linkedin.com/company/pakistanjobsmarket",
+    });
+  }
+  if (path === "/api/admin/upload") {
+    return json(response, {
+      id: null,
+      public_url: "https://files.pakistanjobsmarket.com/job-portal/pasted/images/clipboard.png",
+      file_type: "image/png",
+      file_size: 68,
+      original_name: "clipboard.png",
+      is_inline_image: true,
+      s3_path: "job-portal/pasted/images/clipboard.png",
+    });
+  }
   if (path === "/api/filters") {
     return json(response, {
-      source_types: [], sectors: ["govt", "private"], categories: ["Software Engineering"], cities: ["Lahore"],
+      source_types: [], sectors: ["govt", "private"], categories: ["Software Engineering"],
+      cities: ["Lahore"], provinces: ["Punjab"],
       companies: [], employment_types: [], tags: ["Software Engineering"], job_types: ["government", "private"],
     });
   }
@@ -73,6 +93,9 @@ const server = createServer((request, response) => {
       subject_template: "New Job Alert: {job_title} — {site_title}",
       body_template: "Dear Sir/Madam, a new job was published on {site_title}.",
       last_digest_at: null, last_digest_status: null,
+      last_digest_job_id: null, last_digest_job_title: null,
+      last_digest_recipients_count: 0, last_digest_sent_count: 0,
+      last_digest_failed_count: 0, last_digest_error: null,
     });
   }
   if (path === "/api/admin/subscriptions/template") {
@@ -80,6 +103,9 @@ const server = createServer((request, response) => {
       subscriber_count: 7, active_subscriber_count: 6,
       subject_template: "Saved subject", body_template: "Saved body",
       last_digest_at: null, last_digest_status: null,
+      last_digest_job_id: null, last_digest_job_title: null,
+      last_digest_recipients_count: 0, last_digest_sent_count: 0,
+      last_digest_failed_count: 0, last_digest_error: null,
     });
   }
   if (path === "/api/jobs") {
@@ -92,11 +118,23 @@ const server = createServer((request, response) => {
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
-      cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
+      cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
       salary_min: null, salary_max: null, currency: "PKR", category: "Government",
       source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
-    }], total: 1, page: 1, page_size: 50, pages: 1 });
+    }, {
+      id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
+      description: "A role available in more than one city.", published_date: "2026-07-02T00:00:00Z",
+      deadline_date: null, application_deadline: null, salary_range: null, source: "FPSC",
+      reference_url: null, application_url: null, experience_required: null,
+      education_required: null, skills: [], job_type: "government",
+      cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
+      keywords: null, created_at: "2026-07-02T00:00:00Z", company: "FPSC",
+      location: "Sindh, Karachi, Lahore", city: "Karachi", province: "Sindh",
+      employment_type: null, salary_min: null, salary_max: null, currency: "PKR",
+      category: "Government", source_type: "govt", source_name: "FPSC",
+      nationwide: false, applications_closed: false,
+    }], total: 2, page: 1, page_size: 30, pages: 1 });
   }
   if (path === "/api/stats") {
     return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
@@ -104,15 +142,31 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/closed-role") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
-      description: '<p>A nationwide job with a passed deadline.</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
-      cities: ["Karachi", "Lahore"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
+      cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
       salary_min: null, salary_max: null, currency: "PKR", category: "Government",
       source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
       application_email: null, source_url: null, attachments: [], qna: [], resources: [],
+    });
+  }
+  if (path === "/api/jobs/multi-location-role") {
+    return json(response, {
+      id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
+      published_date: "2026-07-01T00:00:00Z", deadline_date: null, application_deadline: null,
+      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      experience_required: null, education_required: null, skills: [], job_type: "government",
+      cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
+      keywords: null, created_at: "2026-07-01T00:00:00Z", company: "FPSC",
+      location: "Sindh, Karachi, Lahore", city: "Karachi", province: "Sindh",
+      employment_type: null, salary_min: null, salary_max: null, currency: "PKR",
+      category: "Government", source_type: "govt", source_name: "FPSC",
+      nationwide: false, applications_closed: false, application_email: null,
+      source_url: null, attachments: [], qna: [], resources: [],
     });
   }
   const blogPost = {
@@ -146,7 +200,7 @@ const server = createServer((request, response) => {
   if (path === "/api/admin/analytics/realtime") {
     return json(response, {
       window_minutes: 5, active_visitors: 0, page_views: 0,
-      generated_at: new Date().toISOString(), pages: [],
+      generated_at: new Date().toISOString(), pages: [], locations: [],
     });
   }
   if (path === "/api/admin/analytics") {
@@ -170,7 +224,7 @@ const server = createServer((request, response) => {
       quotas: [
         { id: "frontend_assets", name: "Frontend app size", provider: "Azure Static Web Apps Free", used: null, total: 250, unit: "MB", utilization_percent: null, status: "unknown", detail: "Provider quota." },
       ],
-      costs: { currency: "USD", monthly_budget_usd: 25, tracked_monthly_estimate_usd: 0, budget_utilization_percent: 0, unconfigured_services: 2, detail: "Test estimate.", items: [] },
+      costs: { currency: "USD", basis: "monthly_estimate", source: "mock", monthly_budget_usd: 25, tracked_monthly_estimate_usd: 0, forecast_monthly_cost_usd: null, budget_utilization_percent: 0, unconfigured_services: 2, detail: "Test estimate.", items: [] },
       alerts: [{ severity: "healthy", title: "All measured resources are within target", detail: "No measured resource crossed the warning threshold." }],
     });
   }
@@ -178,7 +232,15 @@ const server = createServer((request, response) => {
     return json(response, {
       on_page: {}, off_page: {}, performance: {}, jobs_with_seo: 0, pages_with_seo: 0,
       total_jobs: 0, total_pages: 0, issues: [], metrics: [], backlinks: [],
-      keyword_ranks: [], url_ranks: [], social: {}, pagespeed: {}, authority: {},
+      keyword_ranks: Array.from({ length: 21 }, (_, index) => ({
+        id: `keyword-${index}`,
+        keyword: `unique keyword ${index}`,
+        url: `https://pakistanjobsmarket.com/jobs/role-${index}`,
+        position: index + 1,
+        search_page: Math.floor(index / 10) + 1,
+        clicks: index,
+      })),
+      url_ranks: [], social: {}, pagespeed: {}, authority: {},
     });
   }
   return json(response, { detail: `No mock for ${path}` }, 404);

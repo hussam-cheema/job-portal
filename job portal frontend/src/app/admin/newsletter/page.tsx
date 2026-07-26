@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AdminShell } from "@/components/AdminShell";
 import {
+  adminResendLatestJobAlert,
   adminSubscriptionSummary,
   adminUpdateDigestTemplate,
 } from "@/lib/api";
@@ -49,6 +50,24 @@ export default function NewsletterSubscriptionPage() {
     }
   }
 
+  async function resendLatest() {
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await adminResendLatestJobAlert(token);
+      setMessage(
+        `${result.job_title || "Latest job"}: ${result.message}`
+      );
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to resend the latest job alert.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <AdminShell>
       <div className="space-y-5">
@@ -85,8 +104,36 @@ export default function NewsletterSubscriptionPage() {
             <button className="btn btn-primary" type="submit" disabled={busy}>Save email template</button>
           </form>
           <p className="text-xs text-[var(--muted)]">
-            Last job alert: {digest?.last_digest_status || "not sent"}{digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}
+            Last job alert: {digest?.last_digest_status || "not sent"}
+            {digest?.last_digest_job_title ? ` · ${digest.last_digest_job_title}` : ""}
+            {digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}
           </p>
+          {digest?.last_digest_status && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-4 text-sm">
+              <p className="text-[var(--navy-200)]">
+                Accepted by SMTP: <strong>{digest.last_digest_sent_count}</strong> /{" "}
+                {digest.last_digest_recipients_count}; failed:{" "}
+                <strong>{digest.last_digest_failed_count}</strong>
+              </p>
+              {digest.last_digest_error && (
+                <p className="mt-2 break-words text-xs text-[var(--danger)]">
+                  {digest.last_digest_error}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                SMTP acceptance cannot guarantee Inbox placement; also check Spam, Promotions,
+                and recipient filters.
+              </p>
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy || !digest?.active_subscriber_count}
+            onClick={resendLatest}
+          >
+            {busy ? "Sending…" : "Resend latest job alert"}
+          </button>
         </section>
       </div>
     </AdminShell>

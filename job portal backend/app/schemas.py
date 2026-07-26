@@ -53,6 +53,7 @@ class AnalyticsDailyPoint(BaseModel):
 class AnalyticsLocation(BaseModel):
     country: str
     region: Optional[str] = None
+    city: Optional[str] = None
     visitors: int
     page_views: int
 
@@ -64,11 +65,20 @@ class AnalyticsRealtimePage(BaseModel):
     last_seen: datetime
 
 
+class AnalyticsRealtimeLocation(BaseModel):
+    country: str
+    region: Optional[str] = None
+    city: Optional[str] = None
+    visitors: int
+    last_seen: datetime
+
+
 class AnalyticsRealtime(BaseModel):
     window_minutes: int
     active_visitors: int
     page_views: int
     pages: list[AnalyticsRealtimePage] = Field(default_factory=list)
+    locations: list[AnalyticsRealtimeLocation] = Field(default_factory=list)
     generated_at: datetime
 
 
@@ -137,6 +147,7 @@ class InfrastructureCostItem(BaseModel):
     monthly_estimate_usd: Optional[float] = None
     configured: bool
     detail: str
+    resource_id: Optional[str] = None
 
 
 class InfrastructureCostSummary(BaseModel):
@@ -145,6 +156,9 @@ class InfrastructureCostSummary(BaseModel):
     tracked_monthly_estimate_usd: float
     budget_utilization_percent: float
     unconfigured_services: int
+    basis: str = "monthly_estimate"
+    source: str = "configuration"
+    forecast_monthly_cost_usd: Optional[float] = None
     items: list[InfrastructureCostItem] = Field(default_factory=list)
     detail: str
 
@@ -235,6 +249,7 @@ class JobBase(BaseModel):
     skills: list[str] = Field(default_factory=list)
     job_type: Optional[str] = None  # government | private
     cities: list[str] = Field(default_factory=list)
+    provinces: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     keywords: Optional[str] = None
 
@@ -264,6 +279,7 @@ class JobUpdate(BaseModel):
     skills: Optional[list[str]] = None
     job_type: Optional[str] = None
     cities: Optional[list[str]] = None
+    provinces: Optional[list[str]] = None
     tags: Optional[list[str]] = None
     keywords: Optional[str] = None
     seo: Optional[SEOFields] = None
@@ -287,6 +303,7 @@ class JobSummary(BaseModel):
     skills: list[str] = Field(default_factory=list)
     job_type: Optional[str] = None
     cities: list[str] = Field(default_factory=list)
+    provinces: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     keywords: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -328,6 +345,7 @@ class FiltersResponse(BaseModel):
     sectors: list[str]
     categories: list[str]
     cities: list[str]
+    provinces: list[str] = Field(default_factory=list)
     companies: list[str]
     employment_types: list[str]
     tags: list[str]
@@ -505,6 +523,7 @@ class SocialSettingsIn(BaseModel):
     facebook_url: Optional[str] = None
     youtube_url: Optional[str] = None
     x_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
 
 
 class BacklinkIn(BaseModel):
@@ -585,3 +604,9 @@ class DigestAdminSummary(BaseModel):
     body_template: str
     last_digest_at: Optional[datetime] = None
     last_digest_status: Optional[str] = None
+    last_digest_job_id: Optional[str] = None
+    last_digest_job_title: Optional[str] = None
+    last_digest_recipients_count: int = 0
+    last_digest_sent_count: int = 0
+    last_digest_failed_count: int = 0
+    last_digest_error: Optional[str] = None
