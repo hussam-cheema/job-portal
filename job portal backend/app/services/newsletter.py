@@ -368,24 +368,23 @@ def process_pending_job_alerts(
     }
 
 
-def send_new_job_alert(
+def queue_new_job_alert(
     db: Session,
     job: Job,
     *,
     force_resend: bool = False,
-) -> dict[str, object]:
-    """Queue and immediately attempt one committed job for every subscriber.
+) -> SubscriptionDigestRun:
+    """Stage one durable delivery per active subscriber in the current transaction.
 
-    Recipient work is committed before SMTP is contacted. Failed recipients are
-    retained for the periodic worker rather than being silently skipped.
+    The caller that publishes a job uses this before committing, so the job and
+    its complete subscriber outbox either persist together or both roll back.
+    SMTP is intentionally not contacted while that database transaction is open.
     """
     existing = db.execute(
         select(SubscriptionDigestRun).where(SubscriptionDigestRun.job_id == job.id)
     ).scalar_one_or_none()
     if existing and not force_resend:
-        process_pending_job_alerts(db, job_id=job.id)
-        db.refresh(existing)
-        return _run_result(existing)
+        return existing
     if existing:
         db.execute(
             delete(SubscriptionEmailDelivery).where(
@@ -421,9 +420,9 @@ def send_new_job_alert(
     db.flush()
 
     if not subscribers:
-        _refresh_run_summary(db, run.id)
-        db.commit()
-        return _run_result(run)
+        run.status = "no_subscribers"
+        run.completed_at = now
+        return run
 
     for subscriber in subscribers:
         db.add(
@@ -439,8 +438,30 @@ def send_new_job_alert(
                 updated_at=now,
             )
         )
+    db.flush()
+    return run
+
+
+def send_new_job_alert(
+    db: Session,
+    job: Job,
+    *,
+    force_resend: bool = False,
+) -> dict[str, object]:
+    """Queue and immediately attempt one committed job for every subscriber.
+
+    This remains the entry point for manual resend/recovery. The normal publish
+    route stages the same outbox inside the job transaction, then calls the
+    processor immediately after that atomic commit.
+    """
+    run = queue_new_job_alert(db, job, force_resend=force_resend)
     db.commit()
-    process_pending_job_alerts(db, job_id=job.id, max_deliveries=len(subscribers))
+    if run.recipients_count:
+        process_pending_job_alerts(
+            db,
+            job_id=job.id,
+            max_deliveries=run.recipients_count,
+        )
     db.refresh(run)
     return _run_result(run)
 

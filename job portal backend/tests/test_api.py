@@ -819,9 +819,15 @@ def test_subscription_validation_template_and_new_job_alert(
 
     assert client.post("/api/subscriptions", json={"email": "bad"}).status_code == 400
     assert client.post("/api/subscriptions", json={"email": "x@mailinator.com"}).status_code == 400
-    subscribed = client.post("/api/subscriptions", json={"email": "reader@gmail.com"})
-    assert subscribed.status_code == 200
-    assert subscribed.json()["status"] == "subscribed"
+    subscriber_emails = [
+        "reader@gmail.com",
+        "second.reader@gmail.com",
+        "third.reader@gmail.com",
+    ]
+    for email in subscriber_emails:
+        subscribed = client.post("/api/subscriptions", json={"email": email})
+        assert subscribed.status_code == 200
+        assert subscribed.json()["status"] == "subscribed"
     duplicate = client.post("/api/subscriptions", json={"email": "READER@GMAIL.COM"})
     assert duplicate.json()["status"] == "already_subscribed"
 
@@ -829,7 +835,7 @@ def test_subscription_validation_template_and_new_job_alert(
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
     summary = client.get("/api/admin/subscriptions", headers=auth)
     assert summary.status_code == 200
-    assert summary.json()["active_subscriber_count"] == 1
+    assert summary.json()["active_subscriber_count"] == len(subscriber_emails)
 
     updated = client.put(
         "/api/admin/subscriptions/template",
@@ -856,8 +862,8 @@ def test_subscription_validation_template_and_new_job_alert(
         },
     )
     assert job.status_code == 200
-    assert len(delivered) == 1
-    assert delivered[0]["To"] == "reader@gmail.com"
+    assert len(delivered) == len(subscriber_emails)
+    assert {message["To"] for message in delivered} == set(subscriber_emails)
     plain = delivered[0].get_body(preferencelist=("plain",)).get_content()
     assert "Dear Sir/Madam" in plain
     assert "Immediate Alert Role" in plain
@@ -876,7 +882,7 @@ def test_subscription_validation_template_and_new_job_alert(
         json={"salary_range": "100000-120000"},
     )
     assert updated_job.status_code == 200
-    assert len(delivered) == 1
+    assert len(delivered) == len(subscriber_emails)
 
     summary_after_delivery = client.get("/api/admin/subscriptions", headers=auth).json()
     assert summary_after_delivery["last_digest_status"] == "completed"
@@ -890,10 +896,41 @@ def test_subscription_validation_template_and_new_job_alert(
     assert removed.status_code == 200
     assert removed.json()["status"] == "unsubscribed"
     summary_after_removal = client.get("/api/admin/subscriptions", headers=auth).json()
-    assert summary_after_removal["subscriber_count"] == 0
-    assert summary_after_removal["active_subscriber_count"] == 0
+    assert summary_after_removal["subscriber_count"] == len(subscriber_emails) - 1
+    assert summary_after_removal["active_subscriber_count"] == len(subscriber_emails) - 1
     repeated_removal = client.post(f"/api/subscriptions/unsubscribe?token={unsubscribe_token}")
     assert repeated_removal.json()["status"] == "not_subscribed"
+
+
+def test_job_publish_rolls_back_if_subscriber_outbox_cannot_be_staged(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import jobs as jobs_router
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def fail_outbox(_db, _job):
+        raise RuntimeError("simulated outbox write failure")
+
+    monkeypatch.setattr(jobs_router, "queue_new_job_alert", fail_outbox)
+    title = "Must Not Publish Without Subscriber Outbox"
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": title,
+            "description": "<p>This publication must be atomic.</p>",
+            "published_date": "2026-07-18T08:30:00",
+        },
+    )
+    assert created.status_code == 500
+    listed = client.get("/api/jobs", params={"q": title})
+    assert listed.status_code == 200
+    assert listed.json()["items"] == []
 
 
 def test_job_creation_survives_email_delivery_failure(

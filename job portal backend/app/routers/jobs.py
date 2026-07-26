@@ -34,7 +34,7 @@ from app.schemas import (
     QnAFetchResult,
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
-from app.services.newsletter import send_new_job_alert
+from app.services.newsletter import process_pending_job_alerts, queue_new_job_alert
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.watermark import process_description_images
 from app.services.taxonomy import canonicalize_job_terms, ensure_default_taxonomy
@@ -429,19 +429,30 @@ def create_job(
         _apply_job_fields(job, data, db, is_create=True)
         db.add(job)
         upsert_job_seo(db, job, seo_override=seo_ov if isinstance(seo_ov, dict) else None)
+        # Atomically publish the job and stage exactly one delivery for every
+        # subscriber. There is no post-commit gap in which a published job can
+        # exist without its newsletter outbox.
+        alert_run = queue_new_job_alert(db, job)
         db.commit()
         db.refresh(job)
         logger.info("job created id=%s title=%s", job.id, job.title)
-        # Newsletter delivery happens only after the job commit. A temporary
-        # SMTP failure therefore cannot roll back or hide the newly-created job.
+        # The first delivery attempt runs during the publish request. Automatic
+        # retries remain a safety net for failures outside the application's
+        # control after every intended recipient has already been persisted.
         try:
-            alert = send_new_job_alert(db, job)
+            if alert_run.recipients_count:
+                process_pending_job_alerts(
+                    db,
+                    job_id=job.id,
+                    max_deliveries=alert_run.recipients_count,
+                )
+            db.refresh(alert_run)
             logger.info(
                 "new job alert processed job_id=%s status=%s sent=%s failed=%s",
                 job.id,
-                alert.get("status"),
-                alert.get("sent_count"),
-                alert.get("failed_count"),
+                alert_run.status,
+                alert_run.sent_count,
+                alert_run.failed_count,
             )
         except Exception:
             db.rollback()
