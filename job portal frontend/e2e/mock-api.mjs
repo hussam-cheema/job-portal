@@ -142,7 +142,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/closed-role") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
-      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
@@ -156,7 +156,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/multi-location-role") {
     return json(response, {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
-      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
       published_date: "2026-07-01T00:00:00Z", deadline_date: null, application_deadline: null,
       salary_range: null, source: "FPSC", reference_url: null, application_url: null,
       experience_required: null, education_required: null, skills: [], job_type: "government",

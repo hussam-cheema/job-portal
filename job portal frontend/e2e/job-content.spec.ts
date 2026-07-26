@@ -26,6 +26,15 @@ test("job rich text headings, location tags, and overflow render correctly", asy
   expect(headingFontSize).toBeGreaterThan(paragraphFontSize);
   await expect(heading.locator("span")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
+  const quillBullets = description.locator('li[data-list="bullet"]');
+  await expect(quillBullets).toHaveCount(2);
+  expect(
+    await quillBullets.first().evaluate((element) =>
+      getComputedStyle(element, "::before").content,
+    ),
+  ).toContain("•");
+  await expect(description.locator("ul > li")).toHaveCSS("list-style-type", "disc");
+
   const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
   const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(documentWidth).toBeLessThanOrEqual(viewportWidth);

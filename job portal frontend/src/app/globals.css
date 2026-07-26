@@ -445,6 +445,63 @@ a {
 .prose-job ul,
 .prose-job ol {
   margin: 0 0 0.85rem 1.2rem;
+  padding-left: 1.25rem;
+}
+
+.prose-job ul {
+  list-style: disc outside;
+}
+
+.prose-job ol {
+  list-style: decimal outside;
+}
+
+.prose-job li {
+  margin: 0.2rem 0;
+  padding-left: 0.2rem;
+}
+
+/*
+ * Quill 2 serializes both bullet and numbered lists as <ol> elements and
+ * distinguishes them with data-list. Its editor-only stylesheet supplies the
+ * markers, so recreate them here for saved rich text on public pages.
+ */
+.prose-job ol:has(> li[data-list]) {
+  counter-reset: prose-job-list;
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose-job li[data-list] {
+  position: relative;
+  list-style: none;
+  padding-left: 1.5rem;
+}
+
+.prose-job li[data-list] > .ql-ui {
+  display: none;
+}
+
+.prose-job li[data-list]::before {
+  position: absolute;
+  left: 0;
+  width: 1rem;
+  color: currentColor;
+  text-align: center;
+}
+
+.prose-job li[data-list="bullet"]::before {
+  content: "\2022";
+}
+
+.prose-job li[data-list="ordered"] {
+  counter-increment: prose-job-list;
+}
+
+.prose-job li[data-list="ordered"]::before {
+  content: counter(prose-job-list) ".";
+  width: 1.2rem;
+  text-align: right;
 }
 
 .prose-job img {
