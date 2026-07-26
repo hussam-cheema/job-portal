@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from sqlalchemy import delete, func, select, update
@@ -112,6 +113,11 @@ def build_job_alert_message(
     subject = _render_text(subject_template, values)
     body_intro = _render_text(body_template, values)
     unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
+    public_api_url = (env("PUBLIC_API_URL") or base_url).rstrip("/")
+    one_click_unsubscribe_url = (
+        f"{public_api_url}/api/subscriptions/unsubscribe"
+        f"?token={subscriber.unsubscribe_token}"
+    )
 
     plain = (
         f"{title}\n\n{body_intro}\n\n"
@@ -141,7 +147,10 @@ def build_job_alert_message(
     message["Reply-To"] = from_email
     message["Date"] = formatdate(localtime=False)
     message["Message-ID"] = make_msgid(domain=from_email.rpartition("@")[2] or None)
-    message["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+    message["List-Unsubscribe"] = f"<{one_click_unsubscribe_url}>"
+    message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    site_domain = urlsplit(base_url).hostname or "pakistanjobsmarket.com"
+    message["List-ID"] = f"{title} Job Alerts <job-alerts.{site_domain}>"
     message["Auto-Submitted"] = "auto-generated"
     message["X-Entity-Ref-ID"] = str(job.id)
     message.set_content(plain)

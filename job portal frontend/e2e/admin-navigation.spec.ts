@@ -155,6 +155,55 @@ test("clipboard image paste uploads and renders through the media proxy", async 
     .toBeGreaterThan(0);
 });
 
+test("toolbar upload and clipboard paste keep working in the same editor", async ({ page }) => {
+  await page.goto("/admin/jobs/new");
+  const editor = page.locator(".ql-editor").first();
+  await expect(editor).toBeVisible();
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.locator(".ql-toolbar .ql-image").first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
+    name: "toolbar-upload.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+  await expect(editor.locator("img")).toHaveCount(1);
+
+  await editor.evaluate((element, bytes) => {
+    const file = new File([Uint8Array.from(bytes)], "clipboard-after-upload.png", {
+      type: "image/png",
+    });
+    const clipboard = new DataTransfer();
+    clipboard.items.add(file);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: clipboard,
+      }),
+    );
+  }, Array.from(png));
+
+  await expect(editor.locator("img")).toHaveCount(2);
+  await editor.click();
+  await page.keyboard.type("Both image paths remain editable.");
+  await expect(editor).toContainText("Both image paths remain editable.");
+  for (const image of await editor.locator("img").all()) {
+    await expect(image).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:4010/api/media/r2/job-portal/pasted/images/clipboard.png",
+    );
+    await expect
+      .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  }
+});
+
 test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
   await page.goto("/admin/seo");
   await expect(page.getByText("Daily job alert subscriptions")).toHaveCount(0);

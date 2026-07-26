@@ -104,3 +104,80 @@ def test_r2_usage_sums_paginated_objects(monkeypatch):
     assert metric.object_count == 3
     assert metric.status == "healthy"
     paginator.paginate.assert_called_once_with(Bucket="job-files", Prefix="job-portal/")
+
+
+def test_azure_costs_include_managed_group_and_invoice_vnet_meter(monkeypatch):
+    monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "true")
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "subscription-1")
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP", "job-portal-prod-rg")
+    monkeypatch.setenv(
+        "AZURE_MANAGED_RESOURCE_GROUP",
+        "ME_job-portal-prod-env_job-portal-prod-rg_centralindia",
+    )
+    monkeypatch.setattr(infrastructure, "_azure_access_token", lambda: "token")
+    infrastructure._azure_cost_cache.clear()
+    requested_urls: list[str] = []
+
+    class Response:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "properties": {
+                    "columns": [
+                        {"name": "PreTaxCost"},
+                        {"name": "ResourceId"},
+                        {"name": "ResourceType"},
+                        {"name": "MeterCategory"},
+                        {"name": "MeterSubCategory"},
+                        {"name": "Currency"},
+                    ],
+                    "rows": self._rows,
+                }
+            }
+
+    def fake_post(url: str, **_kwargs):
+        requested_urls.append(url)
+        if "/resourceGroups/job-portal-prod-rg/" in url:
+            return Response(
+                [
+                    [
+                        3.93648,
+                        "/subscriptions/subscription-1/resourceGroups/job-portal-prod-rg/"
+                        "providers/microsoft.app/containerapps/job-portal-api",
+                        "microsoft.app/containerapps",
+                        "Azure Container Apps",
+                        "Azure Container Apps",
+                        "USD",
+                    ]
+                ]
+            )
+        return Response(
+            [
+                [
+                    1.510051,
+                    "/subscriptions/subscription-1/resourceGroups/"
+                    "ME_job-portal-prod-env_job-portal-prod-rg_centralindia/"
+                    "providers/microsoft.network/publicipaddresses/capp-svc-lb-ip",
+                    "microsoft.network/publicipaddresses",
+                    "Virtual Network",
+                    "IP Addresses",
+                    "USD",
+                ]
+            ]
+        )
+
+    monkeypatch.setattr(infrastructure.httpx, "post", fake_post)
+
+    costs = infrastructure._azure_month_to_date_costs(force_refresh=True)
+
+    assert costs is not None
+    assert costs["category_costs"]["backend"] == 3.9365
+    assert costs["category_costs"]["vnet"] == 1.5101
+    assert "public_ip" not in costs["category_costs"]
+    assert len(requested_urls) == 2
+    assert any("ME_job-portal-prod-env" in url for url in requested_urls)

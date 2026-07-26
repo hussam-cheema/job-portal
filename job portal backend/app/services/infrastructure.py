@@ -386,8 +386,14 @@ def _azure_access_token() -> str | None:
     return None
 
 
-def _azure_cost_category(resource_type: str, resource_id: str) -> str:
+def _azure_cost_category(
+    resource_type: str,
+    resource_id: str,
+    meter_category: str = "",
+    meter_subcategory: str = "",
+) -> str:
     value = f"{resource_type} {resource_id}".casefold()
+    meter = f"{meter_category} {meter_subcategory}".casefold()
     if "microsoft.app/containerapps" in value:
         return "backend"
     if "microsoft.app/managedenvironments" in value:
@@ -396,6 +402,12 @@ def _azure_cost_category(resource_type: str, resource_id: str) -> str:
         return "frontend"
     if "microsoft.dbforpostgresql/flexibleservers" in value:
         return "database"
+    # Azure bills the Container Apps environment public IP under the
+    # "Virtual Network / IP Addresses" meter even though the resource type is
+    # Microsoft.Network/publicIPAddresses. Prefer the invoice meter here so
+    # the VNet total agrees with Azure Cost Management.
+    if "virtual network" in meter:
+        return "vnet"
     if "microsoft.network/virtualnetworks" in value:
         return "vnet"
     if "microsoft.network/loadbalancers" in value:
@@ -411,18 +423,62 @@ def _azure_cost_category(resource_type: str, resource_id: str) -> str:
     return "azure_other"
 
 
+def _azure_cost_scopes(subscription_id: str) -> list[str]:
+    base = f"/subscriptions/{subscription_id}"
+    resource_groups = [
+        env("AZURE_RESOURCE_GROUP"),
+        env("AZURE_MANAGED_RESOURCE_GROUP"),
+    ]
+    scopes: list[str] = []
+    seen: set[str] = set()
+    for raw_group in resource_groups:
+        group = (raw_group or "").strip()
+        key = group.casefold()
+        if not group or key in seen:
+            continue
+        seen.add(key)
+        scopes.append(f"{base}/resourceGroups/{group}")
+    return scopes or [base]
+
+
+def _query_azure_cost_scope(scope: str, token: str) -> dict[str, Any]:
+    response = httpx.post(
+        "https://management.azure.com"
+        f"{scope}/providers/Microsoft.CostManagement/query"
+        "?api-version=2023-11-01",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "type": "ActualCost",
+            "timeframe": "MonthToDate",
+            "dataset": {
+                "granularity": "None",
+                "aggregation": {
+                    "totalCost": {"name": "PreTaxCost", "function": "Sum"}
+                },
+                "grouping": [
+                    {"type": "Dimension", "name": "ResourceId"},
+                    {"type": "Dimension", "name": "ResourceType"},
+                    {"type": "Dimension", "name": "MeterCategory"},
+                    {"type": "Dimension", "name": "MeterSubCategory"},
+                ],
+            },
+        },
+        timeout=15.0,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def _azure_month_to_date_costs(force_refresh: bool) -> dict[str, Any] | None:
     if not _bool_env("AZURE_COST_MANAGEMENT_ENABLED"):
         return None
     subscription_id = env("AZURE_SUBSCRIPTION_ID")
     if not subscription_id:
         return None
-    resource_group = env("AZURE_RESOURCE_GROUP")
-    scope = f"/subscriptions/{subscription_id}"
-    if resource_group:
-        scope += f"/resourceGroups/{resource_group}"
+    scopes = _azure_cost_scopes(subscription_id)
+    cache_key = "|".join(scopes)
     with _azure_cost_cache_lock:
-        cached = _azure_cost_cache.get(scope)
+        cached = _azure_cost_cache.get(cache_key)
         if (
             cached
             and not force_refresh
@@ -436,77 +492,64 @@ def _azure_month_to_date_costs(force_refresh: bool) -> dict[str, Any] | None:
             raise RuntimeError(
                 "No managed identity or Azure service-principal credential is available"
             )
-        response = httpx.post(
-            "https://management.azure.com"
-            f"{scope}/providers/Microsoft.CostManagement/query"
-            "?api-version=2023-11-01",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "type": "ActualCost",
-                "timeframe": "MonthToDate",
-                "dataset": {
-                    "granularity": "None",
-                    "aggregation": {
-                        "totalCost": {"name": "PreTaxCost", "function": "Sum"}
-                    },
-                    "grouping": [
-                        {"type": "Dimension", "name": "ResourceId"},
-                        {"type": "Dimension", "name": "ResourceType"},
-                    ],
-                },
-            },
-            timeout=15.0,
-        )
-        response.raise_for_status()
-        properties = response.json().get("properties") or {}
-        columns = [
-            str(column.get("name") or "")
-            for column in properties.get("columns") or []
-        ]
-        indexes = {name.casefold(): index for index, name in enumerate(columns)}
-        cost_index = indexes.get("pretaxcost", indexes.get("cost", 0))
-        resource_id_index = indexes.get("resourceid")
-        resource_type_index = indexes.get("resourcetype")
-        currency_index = indexes.get("currency")
         category_costs: dict[str, float] = {}
         resource_ids: dict[str, list[str]] = {}
         currency = "USD"
-        for raw_row in properties.get("rows") or []:
-            if not isinstance(raw_row, list):
-                continue
-            try:
-                cost = float(raw_row[cost_index])
-            except (IndexError, TypeError, ValueError):
-                continue
-            resource_id = (
-                str(raw_row[resource_id_index] or "")
-                if resource_id_index is not None and resource_id_index < len(raw_row)
-                else ""
-            )
-            resource_type = (
-                str(raw_row[resource_type_index] or "")
-                if resource_type_index is not None and resource_type_index < len(raw_row)
-                else ""
-            )
-            if currency_index is not None and currency_index < len(raw_row):
-                currency = str(raw_row[currency_index] or currency)
-            category = _azure_cost_category(resource_type, resource_id)
-            category_costs[category] = category_costs.get(category, 0.0) + cost
-            if resource_id:
-                resource_ids.setdefault(category, []).append(resource_id)
+        for scope in scopes:
+            properties = (_query_azure_cost_scope(scope, token).get("properties") or {})
+            columns = [
+                str(column.get("name") or "")
+                for column in properties.get("columns") or []
+            ]
+            indexes = {name.casefold(): index for index, name in enumerate(columns)}
+            cost_index = indexes.get("pretaxcost", indexes.get("cost", 0))
+            resource_id_index = indexes.get("resourceid")
+            resource_type_index = indexes.get("resourcetype")
+            meter_category_index = indexes.get("metercategory")
+            meter_subcategory_index = indexes.get("metersubcategory")
+            currency_index = indexes.get("currency")
+            for raw_row in properties.get("rows") or []:
+                if not isinstance(raw_row, list):
+                    continue
+                try:
+                    cost = float(raw_row[cost_index])
+                except (IndexError, TypeError, ValueError):
+                    continue
+
+                def row_value(index: int | None) -> str:
+                    return (
+                        str(raw_row[index] or "")
+                        if index is not None and index < len(raw_row)
+                        else ""
+                    )
+
+                resource_id = row_value(resource_id_index)
+                category = _azure_cost_category(
+                    row_value(resource_type_index),
+                    resource_id,
+                    row_value(meter_category_index),
+                    row_value(meter_subcategory_index),
+                )
+                category_costs[category] = category_costs.get(category, 0.0) + cost
+                if resource_id:
+                    ids = resource_ids.setdefault(category, [])
+                    if resource_id not in ids:
+                        ids.append(resource_id)
+                if currency_index is not None:
+                    currency = row_value(currency_index) or currency
         value = {
             "category_costs": {
                 key: round(amount, 4) for key, amount in category_costs.items()
             },
             "resource_ids": resource_ids,
             "currency": currency,
-            "scope": scope,
+            "scope": ", ".join(scopes),
         }
         with _azure_cost_cache_lock:
-            _azure_cost_cache[scope] = {"at": time.monotonic(), "value": value}
+            _azure_cost_cache[cache_key] = {"at": time.monotonic(), "value": value}
         return value
     except Exception:
-        logger.exception("Azure Cost Management collection failed scope=%s", scope)
+        logger.exception("Azure Cost Management collection failed scopes=%s", scopes)
         return None
 
 

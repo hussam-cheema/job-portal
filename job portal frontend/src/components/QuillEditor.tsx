@@ -105,6 +105,7 @@ export function QuillEditor({
   const onUploadAttachmentRef = useRef(onUploadAttachment);
   const attachmentCountRef = useRef(attachmentCount);
   const uploadedImageSourcesRef = useRef(new Map<string, string>());
+  const imageUploadQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -158,7 +159,7 @@ export function QuillEditor({
 
   const uploadFiles = useCallback(
     (files: File[]) => {
-      void (async () => {
+      const operation = imageUploadQueueRef.current.then(async () => {
         for (const file of files) {
           try {
             await uploadAndInsertImage(file);
@@ -167,7 +168,12 @@ export function QuillEditor({
             alert(err instanceof Error ? err.message : "Image upload failed");
           }
         }
-      })();
+      });
+      // Paste, drag/drop, and the toolbar picker share one upload queue. This
+      // prevents two async uploads from overwriting the controlled Quill value
+      // or restoring the wrong durable R2 source.
+      imageUploadQueueRef.current = operation.catch(() => undefined);
+      return operation;
     },
     [uploadAndInsertImage],
   );
@@ -230,7 +236,7 @@ export function QuillEditor({
       }
     }, 50);
     return () => window.clearTimeout(id);
-  }, [mounted, openImagePicker, value]);
+  }, [mounted, openImagePicker]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -301,12 +307,7 @@ export function QuillEditor({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    try {
-      await uploadAndInsertImage(file);
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : "Image upload failed");
-    }
+    await uploadFiles([file]);
   }
 
   async function handleAttachmentFile(e: React.ChangeEvent<HTMLInputElement>) {

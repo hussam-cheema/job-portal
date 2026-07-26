@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
+from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,12 +23,34 @@ from app.services.watermark import WATERMARK_VERSION, apply_watermark
 router = APIRouter()
 logger = get_logger("jobportal.uploads")
 
+_RASTER_FORMATS = {
+    "PNG": (".png", "image/png"),
+    "JPEG": (".jpg", "image/jpeg"),
+    "WEBP": (".webp", "image/webp"),
+    "GIF": (".gif", "image/gif"),
+    "BMP": (".bmp", "image/bmp"),
+}
+
 
 def _is_image(content_type: str | None, filename: str) -> bool:
     ct = (content_type or "").lower()
     if ct.startswith("image/"):
         return True
     return filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+
+
+def _normalized_raster_metadata(data: bytes, original_name: str) -> tuple[str, str]:
+    """Return a proxy-compatible filename and MIME type for processed image bytes."""
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image_format = str(image.format or "").upper()
+    except Exception:
+        raise ValueError("Unable to identify the processed image format") from None
+    extension, content_type = _RASTER_FORMATS.get(image_format, ("", ""))
+    if not extension:
+        raise ValueError(f"Unsupported processed image format: {image_format or 'unknown'}")
+    stem = Path(original_name).stem.strip() or "image"
+    return f"{stem}{extension}", content_type
 
 
 @router.post("/admin/upload", response_model=UploadOut)
@@ -74,6 +99,13 @@ async def upload_file(
                 raise HTTPException(status_code=404, detail="Job not found")
 
         data = apply_watermark(raw, content_type, strict=True) if is_image else raw
+        if is_image:
+            filename, content_type = _normalized_raster_metadata(data, filename)
+            if len(data) / (1024 * 1024) > max_img:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Processed image exceeds {max_img}MB",
+                )
         folder = "images" if is_image else "attachments"
         # Store under the R2 prefix/{job_uuid}/images|attachments/.
         meta = upload_bytes(

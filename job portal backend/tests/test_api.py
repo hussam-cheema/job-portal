@@ -551,6 +551,44 @@ def test_admin_upload_watermarks_each_of_two_images(
         assert ImageChops.difference(source, rendered).getbbox() is not None
 
 
+def test_admin_upload_normalizes_extensionless_clipboard_image(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import uploads as uploads_router
+
+    captured: dict[str, object] = {}
+
+    def fake_upload(data: bytes, **kwargs):
+        captured.update(kwargs)
+        return {
+            "s3_path": "job-portal/pending/images/clipboard.png",
+            "public_url": "https://files.example.test/clipboard.png",
+            "file_type": kwargs["content_type"],
+            "file_size": len(data),
+            "original_name": kwargs["filename"],
+            "storage": "r2",
+        }
+
+    monkeypatch.setattr(uploads_router, "upload_bytes", fake_upload)
+    image = Image.new("RGB", (40, 30), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    response = client.post(
+        "/api/admin/upload",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        files={"file": ("clipboard", buffer.getvalue(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert captured["filename"] == "clipboard.png"
+    assert captured["content_type"] == "image/png"
+    assert response.json()["public_url"].endswith("/clipboard.png")
+
+
 def test_job_rejects_temporary_clipboard_image_url(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -849,6 +887,7 @@ def test_subscription_validation_template_and_new_job_alert(
 
     delivered = []
     monkeypatch.setenv("SMTP_FROM_EMAIL", "hussam.cheema7102@gmail.com")
+    monkeypatch.setenv("PUBLIC_API_URL", "https://api.pakistanjobsmarket.com")
     monkeypatch.setattr(newsletter, "_send_smtp_message", lambda message: delivered.append(message))
     job = client.post(
         "/api/admin/jobs",
@@ -872,6 +911,14 @@ def test_subscription_validation_template_and_new_job_alert(
     assert "unsubscribe" in plain.lower()
     assert "Immediate Alert Role" in delivered[0]["Subject"]
     assert delivered[0]["List-Unsubscribe"].startswith("<")
+    assert (
+        delivered[0]["List-Unsubscribe-Post"]
+        == "List-Unsubscribe=One-Click"
+    )
+    assert delivered[0]["List-Unsubscribe"].startswith(
+        "<https://api.pakistanjobsmarket.com/api/subscriptions/unsubscribe?token="
+    )
+    assert "job-alerts." in delivered[0]["List-ID"]
     assert delivered[0]["Auto-Submitted"] == "auto-generated"
     assert delivered[0]["X-Entity-Ref-ID"] == job.json()["id"]
 
