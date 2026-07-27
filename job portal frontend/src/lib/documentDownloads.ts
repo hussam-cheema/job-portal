@@ -147,6 +147,7 @@ export async function createResumeDocx(data: ResumeDocumentData) {
   const leftColumnWidth = 7_560;
   const rightColumnWidth = contentWidth - leftColumnWidth;
   const entrySpacing = 153;
+  const noBorder = { style: BorderStyle.NONE, color: "FFFFFF", size: 0 };
   const body: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>> = [];
   const includedSections: ResumeSectionSelection = {
     education: true,
@@ -205,31 +206,111 @@ export async function createResumeDocx(data: ResumeDocumentData) {
       },
     });
 
-  const sectionHeading = (title: string, first = false) =>
-    new Paragraph({
-      children: [
-        run(title, {
-          bold: true,
-          font: headingFont,
-          size: 31,
+  const centeredBand = (
+    children: InstanceType<typeof Paragraph>[],
+    centerWidth: number,
+    bottomMargin = 0
+  ) => {
+    const boundedCenter = Math.min(contentWidth, Math.max(1_800, centerWidth));
+    const sideWidth = Math.floor((contentWidth - boundedCenter) / 2);
+    const finalCenterWidth = contentWidth - sideWidth * 2;
+    const blankCell = (width: number) =>
+      new TableCell({
+        width: { size: width, type: WidthType.DXA },
+        margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+        borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+        children: [new Paragraph({ children: [] })],
+      });
+    return new Table({
+      width: { size: contentWidth, type: WidthType.DXA },
+      columnWidths: [sideWidth, finalCenterWidth, sideWidth],
+      layout: TableLayoutType.FIXED,
+      borders: TableBorders.NONE,
+      margins: {
+        top: 0,
+        bottom: bottomMargin,
+        left: 0,
+        right: 0,
+        marginUnitType: WidthType.DXA,
+      },
+      rows: [
+        new TableRow({
+          cantSplit: true,
+          children: [
+            blankCell(sideWidth),
+            new TableCell({
+              width: { size: finalCenterWidth, type: WidthType.DXA },
+              margins: {
+                top: 0,
+                bottom: bottomMargin,
+                left: 0,
+                right: 0,
+                marginUnitType: WidthType.DXA,
+              },
+              borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+              children,
+            }),
+            blankCell(sideWidth),
+          ],
         }),
       ],
-      spacing: {
-        before: first ? 0 : 198,
-        after: 125,
-        line: 276,
-        lineRule: LineRuleType.AUTO,
-      },
-      border: {
-        bottom: {
-          style: BorderStyle.SINGLE,
-          color: "222222",
-          size: 8,
-          space: 6,
-        },
-      },
-      keepNext: true,
     });
+  };
+
+  const sectionHeading = (title: string, first = false) => {
+    const rule = { style: BorderStyle.SINGLE, color: "222222", size: 8 };
+    return new Table({
+      width: { size: contentWidth, type: WidthType.DXA },
+      columnWidths: [contentWidth],
+      layout: TableLayoutType.FIXED,
+      borders: {
+        top: noBorder,
+        left: noBorder,
+        bottom: rule,
+        right: noBorder,
+        insideHorizontal: noBorder,
+        insideVertical: noBorder,
+      },
+      margins: {
+        top: first ? 0 : 198,
+        bottom: 125,
+        left: 0,
+        right: 0,
+        marginUnitType: WidthType.DXA,
+      },
+      rows: [
+        new TableRow({
+          cantSplit: true,
+          children: [
+            new TableCell({
+              width: { size: contentWidth, type: WidthType.DXA },
+              margins: {
+                top: first ? 0 : 198,
+                bottom: 125,
+                left: 0,
+                right: 0,
+                marginUnitType: WidthType.DXA,
+              },
+              borders: { top: noBorder, left: noBorder, bottom: rule, right: noBorder },
+              children: [
+                new Paragraph({
+                  children: [
+                    run(title, {
+                      bold: true,
+                      font: headingFont,
+                      size: 31,
+                    }),
+                  ],
+                  spacing: { after: 0, line: 276, lineRule: LineRuleType.AUTO },
+                  keepNext: true,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+  };
 
   const entryTable = ({
     title,
@@ -321,34 +402,43 @@ export async function createResumeDocx(data: ResumeDocumentData) {
       spacing: { after, line: 314, lineRule: LineRuleType.AUTO },
     });
 
+  const headerName = (data.personal.fullName || "YOUR NAME").toUpperCase();
+  const headerContact = [
+    data.personal.address || "Address",
+    data.personal.phone || "Phone",
+    data.personal.email || "Email",
+  ].join(" • ");
   body.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [
-        run(data.personal.fullName || "YOUR NAME", {
-          font: headingFont,
-          size: 52,
-          bold: true,
-          allCaps: true,
-          color: ink,
+    centeredBand(
+      [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            run(headerName, {
+              font: headingFont,
+              size: 52,
+              bold: true,
+              allCaps: true,
+              color: ink,
+            }),
+          ],
+          spacing: { after: 0, line: 259, lineRule: LineRuleType.AUTO },
         }),
       ],
-      spacing: { after: 85, line: 259, lineRule: LineRuleType.AUTO },
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [
-        run(
-          [
-            data.personal.address || "Address",
-            data.personal.phone || "Phone",
-            data.personal.email || "Email",
-          ].join(" • "),
-          { size: 21, color: ink }
-        ),
+      Math.max(3_600, headerName.length * 420),
+      85
+    ),
+    centeredBand(
+      [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [run(headerContact, { size: 21, color: ink })],
+          spacing: { after: 0, line: 314, lineRule: LineRuleType.AUTO },
+        }),
       ],
-      spacing: { after: 215, line: 314, lineRule: LineRuleType.AUTO },
-    })
+      Math.max(5_400, headerContact.length * 130),
+      215
+    )
   );
 
   let firstSection = true;
@@ -584,6 +674,7 @@ export async function createCoverLetterDocx(
     PageOrientation,
     Paragraph,
     Table,
+    TableBorders,
     TableCell,
     TableLayoutType,
     TableRow,
@@ -596,61 +687,121 @@ export async function createCoverLetterDocx(
   const ink = "090909";
   const bodyIndent = 567;
   const contentWidth = 10_998;
+  const bodyWidth = contentWidth - bodyIndent * 2;
   const noBorder = { style: BorderStyle.NONE, color: "FFFFFF", size: 0 };
-  const bodyRun = (text: string, options: { bold?: boolean; font?: string; size?: number } = {}) =>
+  const bodyRun = (
+    text: string,
+    options: { bold?: boolean; font?: string; size?: number; color?: string } = {}
+  ) =>
     new TextRun({
       text,
       font: options.font || bodyFont,
       size: options.size || 18,
-      color: "000000",
+      color: options.color || "000000",
       bold: options.bold,
     });
   const bodyParagraph = (
     text: string,
     options: {
-      before?: number;
-      after?: number;
       alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
-      indent?: boolean;
       keepNext?: boolean;
+      bold?: boolean;
+      font?: string;
+      size?: number;
     } = {}
   ) =>
     new Paragraph({
       alignment: options.alignment,
       keepNext: options.keepNext,
-      indent:
-        options.indent === false
-          ? undefined
-          : {
-              left: bodyIndent,
-              right: bodyIndent,
-            },
-      children: [bodyRun(text)],
+      children: [
+        bodyRun(text, {
+          bold: options.bold,
+          font: options.font,
+          size: options.size,
+        }),
+      ],
       spacing: {
-        before: options.before ?? 0,
-        after: options.after ?? 283,
+        before: 0,
+        after: 0,
         line: 355,
         lineRule: LineRuleType.AUTO,
       },
     });
+
+  const spacer = (height: number) =>
+    new Paragraph({
+      children: [bodyRun("\u00a0", { size: 2, color: "FFFFFF" })],
+      spacing: {
+        before: 0,
+        after: 0,
+        line: height,
+        lineRule: LineRuleType.EXACT,
+      },
+    });
+
+  const blankCell = (width: number) =>
+    new TableCell({
+      width: { size: width, type: WidthType.DXA },
+      margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+      borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+      children: [new Paragraph({ children: [] })],
+    });
+
+  const centeredBand = (
+    paragraphs: InstanceType<typeof Paragraph>[],
+    centerWidth: number,
+    bottomMargin = 0
+  ) => {
+    const boundedCenter = Math.min(contentWidth, Math.max(1_800, centerWidth));
+    const sideWidth = Math.floor((contentWidth - boundedCenter) / 2);
+    const finalCenterWidth = contentWidth - sideWidth * 2;
+    return new Table({
+      width: { size: contentWidth, type: WidthType.DXA },
+      columnWidths: [sideWidth, finalCenterWidth, sideWidth],
+      layout: TableLayoutType.FIXED,
+      borders: TableBorders.NONE,
+      margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+      rows: [
+        new TableRow({
+          cantSplit: true,
+          children: [
+            blankCell(sideWidth),
+            new TableCell({
+              width: { size: finalCenterWidth, type: WidthType.DXA },
+              margins: {
+                top: 0,
+                bottom: bottomMargin,
+                left: 0,
+                right: 0,
+                marginUnitType: WidthType.DXA,
+              },
+              borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+              children: paragraphs,
+            }),
+            blankCell(sideWidth),
+          ],
+        }),
+      ],
+    });
+  };
 
   const recipientLines = [
     data.contactName || "(Contact Person’s Name)",
     data.companyName || "(Company Name)",
     ...populatedLines(data.companyAddress, ["(Company Address)"]),
   ];
+  const title = (data.documentTitle || "GOOGLE COVER LETTER").toUpperCase();
+  const subtitle = data.subtitle || "by CV Genius";
+  const phone = data.phone || "07123 456 789";
+  const email = data.email || "your.email@gmail.com";
+  const address = data.address || "26 Springfield Road, London, N39 6CU";
+  const contactText = `${phone}   •   ${email}   •   ${address}`;
 
   const contactLine = new Table({
     width: { size: contentWidth, type: WidthType.DXA },
     columnWidths: [contentWidth],
     layout: TableLayoutType.FIXED,
-    margins: {
-      top: 160,
-      bottom: 160,
-      left: 0,
-      right: 0,
-      marginUnitType: WidthType.DXA,
-    },
+    margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
     borders: {
       top: { style: BorderStyle.SINGLE, color: "9B9B9B", size: 6 },
       bottom: { style: BorderStyle.SINGLE, color: "9B9B9B", size: 6 },
@@ -679,41 +830,56 @@ export async function createCoverLetterDocx(
               right: noBorder,
             },
             children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    text: data.phone || "07123 456 789",
-                    font: headingFont,
-                    size: 14,
-                    color: ink,
-                  }),
-                  new TextRun({
-                    text: "   •   ",
-                    font: headingFont,
-                    size: 16,
-                    color: "D20B20",
-                  }),
-                  new TextRun({
-                    text: data.email || "your.email@gmail.com",
-                    font: headingFont,
-                    size: 14,
-                    color: ink,
-                  }),
-                  new TextRun({
-                    text: "   •   ",
-                    font: headingFont,
-                    size: 16,
-                    color: "D20B20",
-                  }),
-                  new TextRun({
-                    text: data.address || "26 Springfield Road, London, N39 6CU",
-                    font: headingFont,
-                    size: 14,
-                    color: ink,
+              centeredBand(
+                [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                      bodyRun(phone, { font: headingFont, size: 14, color: ink }),
+                      bodyRun("   •   ", {
+                        font: headingFont,
+                        size: 16,
+                        color: "D20B20",
+                      }),
+                      bodyRun(email, { font: headingFont, size: 14, color: ink }),
+                      bodyRun("   •   ", {
+                        font: headingFont,
+                        size: 16,
+                        color: "D20B20",
+                      }),
+                      bodyRun(address, { font: headingFont, size: 14, color: ink }),
+                    ],
+                    spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO },
                   }),
                 ],
-                spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO },
+                Math.max(4_200, contactText.length * 75)
+              ),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const dateWidth = 2_100;
+  const dateRow = new Table({
+    width: { size: bodyWidth, type: WidthType.DXA },
+    columnWidths: [bodyWidth - dateWidth, dateWidth],
+    layout: TableLayoutType.FIXED,
+    borders: TableBorders.NONE,
+    margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+    rows: [
+      new TableRow({
+        cantSplit: true,
+        children: [
+          blankCell(bodyWidth - dateWidth),
+          new TableCell({
+            width: { size: dateWidth, type: WidthType.DXA },
+            margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+            borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+            children: [
+              bodyParagraph(formattedDate, {
+                alignment: AlignmentType.RIGHT,
               }),
             ],
           }),
@@ -722,12 +888,68 @@ export async function createCoverLetterDocx(
     ],
   });
 
-  const recipientParagraphs = recipientLines.map((line, index) =>
-    bodyParagraph(line, {
-      after: index === recipientLines.length - 1 ? 397 : 0,
-      keepNext: index < recipientLines.length - 1,
-    })
-  );
+  const bodyChildren: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>> = [
+    spacer(340),
+    dateRow,
+    spacer(283),
+    ...recipientLines.map((line, index) =>
+      bodyParagraph(line, { keepNext: index < recipientLines.length - 1 })
+    ),
+    spacer(397),
+    bodyParagraph(
+      `Dear ${data.contactSurname ? `${data.contactSurname},` : "(Contact Person’s Surname),"}`
+    ),
+    spacer(283),
+    bodyParagraph(
+      data.openingParagraph ||
+        "I’m writing to express my interest in the advertised position. With relevant experience and a strong record of delivering results, I am eager to bring my expertise to your organisation."
+    ),
+    spacer(283),
+    bodyParagraph(
+      data.bodyParagraphOne ||
+        "In my current role, I have successfully led important projects, improved processes, and collaborated with cross-functional teams. My commitment to quality and continuous improvement has enabled me to create measurable impact."
+    ),
+    spacer(283),
+    bodyParagraph(
+      data.bodyParagraphTwo ||
+        "Throughout my career, I have demonstrated sound judgement, clear communication, and the ability to solve complex challenges. My experience and technical proficiency would allow me to contribute from the outset."
+    ),
+    spacer(283),
+    bodyParagraph(
+      data.closingParagraph ||
+        "I’m excited by the opportunity to make a meaningful contribution. I welcome the chance to discuss how my skills and experience align with the needs of your team."
+    ),
+    spacer(340),
+    bodyParagraph(data.signOff || "Yours sincerely,"),
+    spacer(57),
+    bodyParagraph(data.fullName || "(YOUR NAME)", {
+      bold: true,
+      font: headingFont,
+      size: 25,
+    }),
+  ];
+
+  const bodyTable = new Table({
+    width: { size: contentWidth, type: WidthType.DXA },
+    columnWidths: [bodyIndent, bodyWidth, bodyIndent],
+    layout: TableLayoutType.FIXED,
+    borders: TableBorders.NONE,
+    margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+    rows: [
+      new TableRow({
+        children: [
+          blankCell(bodyIndent),
+          new TableCell({
+            width: { size: bodyWidth, type: WidthType.DXA },
+            margins: { top: 0, bottom: 0, left: 0, right: 0, marginUnitType: WidthType.DXA },
+            borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+            children: bodyChildren,
+          }),
+          blankCell(bodyIndent),
+        ],
+      }),
+    ],
+  });
 
   const letter = new Document({
     creator: "Pakistan Jobs Market",
@@ -756,74 +978,30 @@ export async function createCoverLetterDocx(
           },
         },
         children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [
-              new TextRun({
-                text: (data.documentTitle || "GOOGLE COVER LETTER").toUpperCase(),
-                font: headingFont,
-                size: 34,
-                color: ink,
+          centeredBand(
+            [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [bodyRun(title, { font: headingFont, size: 34, color: ink })],
+                spacing: { after: 0, line: 264, lineRule: LineRuleType.AUTO },
               }),
             ],
-            spacing: { after: 45, line: 264, lineRule: LineRuleType.AUTO },
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [
-              new TextRun({
-                text: data.subtitle || "by CV Genius",
-                font: headingFont,
-                size: 16,
-                color: ink,
+            Math.max(3_600, title.length * 200),
+            45
+          ),
+          centeredBand(
+            [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [bodyRun(subtitle, { font: headingFont, size: 16, color: ink })],
+                spacing: { after: 0, line: 264, lineRule: LineRuleType.AUTO },
               }),
             ],
-            spacing: { after: 198, line: 264, lineRule: LineRuleType.AUTO },
-          }),
+            Math.max(1_800, subtitle.length * 130),
+            198
+          ),
           contactLine,
-          bodyParagraph(formattedDate, {
-            before: 340,
-            after: 283,
-            alignment: AlignmentType.RIGHT,
-          }),
-          ...recipientParagraphs,
-          bodyParagraph(
-            `Dear ${
-              data.contactSurname ? `${data.contactSurname},` : "(Contact Person’s Surname),"
-            }`,
-            { after: 283 }
-          ),
-          bodyParagraph(
-            data.openingParagraph ||
-              "I’m writing to express my interest in the advertised position. With relevant experience and a strong record of delivering results, I am eager to bring my expertise to your organisation."
-          ),
-          bodyParagraph(
-            data.bodyParagraphOne ||
-              "In my current role, I have successfully led important projects, improved processes, and collaborated with cross-functional teams. My commitment to quality and continuous improvement has enabled me to create measurable impact."
-          ),
-          bodyParagraph(
-            data.bodyParagraphTwo ||
-              "Throughout my career, I have demonstrated sound judgement, clear communication, and the ability to solve complex challenges. My experience and technical proficiency would allow me to contribute from the outset."
-          ),
-          bodyParagraph(
-            data.closingParagraph ||
-              "I’m excited by the opportunity to make a meaningful contribution. I welcome the chance to discuss how my skills and experience align with the needs of your team.",
-            { after: 340 }
-          ),
-          bodyParagraph(data.signOff || "Yours sincerely,", { after: 57 }),
-          new Paragraph({
-            indent: { left: bodyIndent, right: bodyIndent },
-            children: [
-              new TextRun({
-                text: data.fullName || "(YOUR NAME)",
-                bold: true,
-                font: headingFont,
-                size: 25,
-                color: "000000",
-              }),
-            ],
-            spacing: { after: 0, line: 355, lineRule: LineRuleType.AUTO },
-          }),
+          bodyTable,
         ],
       },
     ],

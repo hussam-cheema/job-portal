@@ -106,5 +106,11 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
   expect(documentXml).toContain("GOOGLE COVER LETTER");
   expect(documentXml).toContain("I am applying for the Senior Software Engineer position.");
   expect(documentXml).toContain("31 August 2026");
+  expect((documentXml.match(/<w:tbl>/g) ?? []).length).toBeGreaterThanOrEqual(6);
+  expect(documentXml).toContain(
+    '<w:gridCol w:w="567"/><w:gridCol w:w="9864"/><w:gridCol w:w="567"/>'
+  );
+  expect(documentXml).toContain('w:lineRule="exact"');
+  expect(documentXml).toContain('<w:top w:val="single" w:color="9B9B9B"');
   expect(pageErrors).toEqual([]);
 });

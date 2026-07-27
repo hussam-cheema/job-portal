@@ -97,10 +97,15 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
   expect(docxBytes.length).toBeGreaterThan(8_000);
   const archive = await JSZip.loadAsync(docxBytes);
   const documentXml = await archive.file("word/document.xml")!.async("string");
-  expect(documentXml).toContain("Mary Leannon");
+  expect(documentXml.toLowerCase()).toContain("mary leannon");
   expect(documentXml).toContain("University of Idaho");
   expect(documentXml).toContain("Data Analyst");
   expect(documentXml).toContain("<w:numPr>");
+  expect((documentXml.match(/<w:tbl>/g) ?? []).length).toBeGreaterThanOrEqual(10);
+  expect(documentXml).toContain('<w:bottom w:val="single" w:color="222222"');
+  expect(documentXml).toContain(
+    '<w:gridCol w:w="7560"/><w:gridCol w:w="3212"/>'
+  );
   expect(pageErrors).toEqual([]);
 });
 
