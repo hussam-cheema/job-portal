@@ -9,6 +9,33 @@ import {
 import { useAdminAuth } from "@/lib/adminAuth";
 import type { SEODashboard } from "@/lib/types";
 
+function canonicalUrl(value: unknown) {
+  try {
+    const url = new URL(String(value || "").trim());
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return url.toString().replace(/\/$/, "").toLowerCase();
+  } catch {
+    return String(value || "").trim().replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+function uniqueBacklinks(rows: Array<Record<string, unknown>>) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${canonicalUrl(row.source_url)}|${canonicalUrl(row.target_url)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function percent(value: unknown) {
+  const numeric = Number(value || 0);
+  return `${(numeric * 100).toFixed(1)}%`;
+}
+
 export default function AdminSeoPage() {
   const { token } = useAdminAuth();
   const [data, setData] = useState<SEODashboard | null>(null);
@@ -83,6 +110,7 @@ export default function AdminSeoPage() {
 
   const speed = Number(data?.pagespeed?.score ?? data?.performance?.load_score_pct ?? 0);
   const authority = Number(data?.authority?.score ?? 0);
+  const backlinks = uniqueBacklinks(data?.backlinks || []);
 
   return (
     <AdminShell>
@@ -115,6 +143,15 @@ export default function AdminSeoPage() {
                 <p>
                   Site: {(data.gsc?.site_url as string) || "—"} · Last sync:{" "}
                   {(data.gsc?.last_sync as string) || "never"}
+                </p>
+                <p>
+                  Reporting window: {(data.gsc?.period_start as string) || "sync required"} to{" "}
+                  {(data.gsc?.period_end as string) || "sync required"} · Source:{" "}
+                  {(data.gsc?.data_source as string) || "Google Search Console"}
+                </p>
+                <p>
+                  {(data.gsc?.position_note as string) ||
+                    "Average position is measured across impressions, not a live fixed rank."}
                 </p>
                 <p>
                   Env: <code>GSC_SITE_URL</code> + <code>GOOGLE_APPLICATION_CREDENTIALS</code>{" "}
@@ -201,13 +238,14 @@ export default function AdminSeoPage() {
               </div>
             </section>
 
-            {/* URL ranks */}
+            {/* URL search performance */}
             <section className="card-panel p-5 space-y-3">
               <h3 className="font-semibold text-[var(--navy-100)]">
-                Job/page Google search page ranks
+                URL search performance
               </h3>
               <p className="text-xs text-[var(--muted)]">
-                From Search Console sync: which URL appears on which Google results page.
+                Impression-weighted Search Console averages across every query recorded for each
+                URL. Manual searches can differ by location, device, history, and time.
               </p>
               {(data.url_ranks || []).length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No ranking data yet — sync GSC.</p>
@@ -224,8 +262,10 @@ export default function AdminSeoPage() {
                       <tr className="text-left text-[var(--muted)]">
                         <th className="py-2 pr-3">URL</th>
                         <th className="py-2 pr-3">Type</th>
-                        <th className="py-2 pr-3">Best pos</th>
-                        <th className="py-2">Google page</th>
+                        <th className="py-2 pr-3">Avg position</th>
+                        <th className="py-2 pr-3">Impressions</th>
+                        <th className="py-2 pr-3">CTR</th>
+                        <th className="py-2">Clicks</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -235,8 +275,12 @@ export default function AdminSeoPage() {
                             {String(r.url)}
                           </td>
                           <td className="py-2 pr-3">{String(r.entity_type || "—")}</td>
-                          <td className="py-2 pr-3">{Number(r.best_position).toFixed(1)}</td>
-                          <td className="py-2">Page {String(r.search_page)}</td>
+                          <td className="py-2 pr-3">
+                            {Number(r.average_position ?? r.position).toFixed(1)}
+                          </td>
+                          <td className="py-2 pr-3">{String(r.impressions ?? 0)}</td>
+                          <td className="py-2 pr-3">{percent(r.ctr)}</td>
+                          <td className="py-2">{String(r.clicks ?? 0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -248,6 +292,11 @@ export default function AdminSeoPage() {
             {/* Keyword ranks */}
             <section className="card-panel p-5 space-y-3">
               <h3 className="font-semibold text-[var(--navy-100)]">Keyword rankings</h3>
+              <p className="text-xs text-[var(--muted)]">
+                Real query/URL performance from Search Console for searches where Google recorded
+                an impression. “Avg position” is an aggregate—not a promise that the URL currently
+                appears at that exact spot.
+              </p>
               {(data.keyword_ranks || []).length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No keywords yet — sync GSC.</p>
               ) : (
@@ -263,8 +312,9 @@ export default function AdminSeoPage() {
                       <tr className="text-left text-[var(--muted)]">
                         <th className="py-2 pr-3">Keyword</th>
                         <th className="py-2 pr-3">URL</th>
-                        <th className="py-2 pr-3">Pos</th>
-                        <th className="py-2 pr-3">Page</th>
+                        <th className="py-2 pr-3">Avg position</th>
+                        <th className="py-2 pr-3">Impressions</th>
+                        <th className="py-2 pr-3">CTR</th>
                         <th className="py-2">Clicks</th>
                       </tr>
                     </thead>
@@ -273,9 +323,12 @@ export default function AdminSeoPage() {
                         <tr key={i} className="border-t border-[var(--border)]">
                           <td className="py-2 pr-3 text-[var(--navy-100)]">{String(r.keyword)}</td>
                           <td className="py-2 pr-3 max-w-[200px] truncate">{String(r.url)}</td>
-                          <td className="py-2 pr-3">{Number(r.position).toFixed(1)}</td>
-                          <td className="py-2 pr-3">{String(r.search_page)}</td>
-                          <td className="py-2">{String(r.clicks)}</td>
+                          <td className="py-2 pr-3">
+                            {Number(r.average_position ?? r.position).toFixed(1)}
+                          </td>
+                          <td className="py-2 pr-3">{String(r.impressions ?? 0)}</td>
+                          <td className="py-2 pr-3">{percent(r.ctr)}</td>
+                          <td className="py-2">{String(r.clicks ?? 0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -328,11 +381,15 @@ export default function AdminSeoPage() {
                   Add backlink
                 </button>
               </form>
-              {(data.backlinks || []).length === 0 ? (
+              <p className="text-xs text-[var(--muted)]">
+                Social discovery refreshes an existing source/target pair instead of adding it
+                again.
+              </p>
+              {backlinks.length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No backlinks recorded yet.</p>
               ) : (
                 <ul className="space-y-2 text-sm">
-                  {(data.backlinks || []).map((b) => (
+                  {backlinks.map((b) => (
                     <li
                       key={String(b.id)}
                       className="border border-[var(--border)] rounded-lg p-3 bg-[var(--navy-850)]"

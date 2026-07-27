@@ -1535,6 +1535,105 @@ def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
     }
 
 
+def test_backlink_add_is_idempotent_and_existing_rows_are_deduplicated(client: TestClient):
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.models import SEOBacklink
+    from app.services.seo_tools import add_backlink, list_backlinks
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        now = datetime.utcnow()
+        db.add_all(
+            [
+                SEOBacklink(
+                    id="backlink-old",
+                    source_url="https://www.linkedin.com/company/pakistanjobsmarket/",
+                    target_url="https://pakistanjobsmarket.com/",
+                    anchor_text="old",
+                    domain="www.linkedin.com",
+                    first_seen=now - timedelta(days=2),
+                    last_seen=now - timedelta(days=1),
+                ),
+                SEOBacklink(
+                    id="backlink-new",
+                    source_url="https://www.linkedin.com/company/pakistanjobsmarket",
+                    target_url="https://pakistanjobsmarket.com",
+                    anchor_text="new",
+                    domain="www.linkedin.com",
+                    first_seen=now - timedelta(days=1),
+                    last_seen=now,
+                ),
+            ]
+        )
+        db.commit()
+
+        assert len(list_backlinks(db)) == 1
+        result = add_backlink(
+            db,
+            source_url="https://www.linkedin.com/company/pakistanjobsmarket/",
+            target_url="https://pakistanjobsmarket.com/",
+            anchor_text="linkedin_url",
+        )
+        stored = db.execute(select(SEOBacklink)).scalars().all()
+    finally:
+        db.close()
+
+    assert result["created"] is False
+    assert result["duplicates_removed"] == 1
+    assert len(stored) == 1
+    assert stored[0].anchor_text == "linkedin_url"
+
+
+def test_url_search_performance_is_impression_weighted(client: TestClient):
+    from datetime import datetime
+
+    from app.models import SEOKeywordRank
+    from app.services.seo_tools import entity_rank_summary
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        db.add_all(
+            [
+                SEOKeywordRank(
+                    id="weighted-rank-one",
+                    keyword="pak jobs",
+                    url="https://pakistanjobsmarket.com/jobs/test",
+                    position=2,
+                    impressions=10,
+                    clicks=1,
+                    ctr=0.1,
+                    recorded_at=datetime.utcnow(),
+                ),
+                SEOKeywordRank(
+                    id="weighted-rank-two",
+                    keyword="jobs pakistan",
+                    url="https://pakistanjobsmarket.com/jobs/test",
+                    position=10,
+                    impressions=30,
+                    clicks=3,
+                    ctr=0.1,
+                    recorded_at=datetime.utcnow(),
+                ),
+            ]
+        )
+        db.commit()
+        rows = entity_rank_summary(db)
+    finally:
+        db.close()
+
+    assert len(rows) == 1
+    assert rows[0]["average_position"] == 8.0
+    assert rows[0]["impressions"] == 40
+    assert rows[0]["clicks"] == 4
+    assert rows[0]["ctr"] == 0.1
+    assert "search_page" not in rows[0]
+
+
 def test_analytics_ignores_browser_location_hints(client: TestClient):
     response = client.post(
         "/api/analytics/visit",

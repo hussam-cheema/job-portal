@@ -49,7 +49,14 @@ def seo_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_a
         gsc_status = {
             "connected": bool(get_setting(db, "gsc_last_sync") or os.getenv("GSC_SITE_URL")),
             "last_sync": get_setting(db, "gsc_last_sync"),
+            "period_start": get_setting(db, "gsc_period_start"),
+            "period_end": get_setting(db, "gsc_period_end"),
             "site_url": os.getenv("GSC_SITE_URL") or get_setting(db, "gsc_site_url"),
+            "data_source": "Google Search Console Search Analytics API",
+            "position_note": (
+                "Average position is the topmost position recorded across actual impressions; "
+                "it is not a live or fixed result for every search."
+            ),
             "message": (
                 "GSC ready — use Sync Search Console."
                 if os.getenv("GOOGLE_APPLICATION_CREDENTIALS")

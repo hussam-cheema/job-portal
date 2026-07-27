@@ -231,16 +231,49 @@ const server = createServer((request, response) => {
   if (path === "/api/admin/seo/dashboard") {
     return json(response, {
       on_page: {}, off_page: {}, performance: {}, jobs_with_seo: 0, pages_with_seo: 0,
-      total_jobs: 0, total_pages: 0, issues: [], metrics: [], backlinks: [],
+      total_jobs: 0, total_pages: 0, issues: [], metrics: [],
+      gsc: {
+        connected: true,
+        period_start: "2026-06-29",
+        period_end: "2026-07-26",
+        data_source: "Google Search Console Search Analytics API",
+        position_note: "Average position is not a live or fixed result.",
+      },
+      backlinks: [
+        {
+          id: "backlink-original",
+          source_url: "https://www.linkedin.com/company/pakistanjobsmarket/",
+          target_url: "https://pakistanjobsmarket.com/",
+          domain: "www.linkedin.com",
+          anchor_text: "linkedin_url",
+        },
+        {
+          id: "backlink-duplicate",
+          source_url: "https://www.linkedin.com/company/pakistanjobsmarket",
+          target_url: "https://pakistanjobsmarket.com",
+          domain: "www.linkedin.com",
+          anchor_text: "linkedin_url",
+        },
+      ],
       keyword_ranks: Array.from({ length: 21 }, (_, index) => ({
         id: `keyword-${index}`,
         keyword: `unique keyword ${index}`,
         url: `https://pakistanjobsmarket.com/jobs/role-${index}`,
         position: index + 1,
-        search_page: Math.floor(index / 10) + 1,
+        average_position: index + 1,
         clicks: index,
+        impressions: index + 10,
+        ctr: index / (index + 10),
       })),
-      url_ranks: [], social: {}, pagespeed: {}, authority: {},
+      url_ranks: [{
+        url: "https://pakistanjobsmarket.com/jobs/role-0",
+        entity_type: "job",
+        average_position: 8.5,
+        clicks: 1,
+        impressions: 12,
+        ctr: 1 / 12,
+      }],
+      social: {}, pagespeed: {}, authority: {},
     });
   }
   return json(response, { detail: `No mock for ${path}` }, 404);

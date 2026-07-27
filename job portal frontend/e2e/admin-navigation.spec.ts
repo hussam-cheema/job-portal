@@ -220,6 +220,24 @@ test("keyword rankings scroll after twenty unique rows", async ({ page }) => {
   });
   await expect(section.locator("tbody tr")).toHaveCount(21);
   await expect(section.locator(".overflow-y-auto")).toHaveCSS("overflow-y", "auto");
+  await expect(section.getByRole("columnheader", { name: "Avg position" })).toBeVisible();
+  await expect(section.getByRole("columnheader", { name: "Impressions" })).toBeVisible();
+  await expect(section.getByRole("columnheader", { name: "CTR" })).toBeVisible();
+  await expect(section.getByRole("columnheader", { name: "Page", exact: true })).toHaveCount(0);
+});
+
+test("SEO dashboard explains average position and hides duplicate backlinks", async ({ page }) => {
+  await page.goto("/admin/seo");
+  await expect(
+    page.getByText(/Manual searches can differ by location, device, history, and time/),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "URL search performance" })).toBeVisible();
+  const backlinks = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Backlinks", exact: true }),
+  });
+  await expect(
+    backlinks.getByRole("link", { name: /linkedin\.com\/company\/pakistanjobsmarket/ }),
+  ).toHaveCount(1);
 });
 
 test("website title position is configurable from settings", async ({ page }) => {

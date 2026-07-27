@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 
 import httpx
@@ -208,7 +208,7 @@ def authority_score(db: Session) -> dict[str, Any]:
         jobs = db.execute(select(Job)).scalars().all()
         pages = db.execute(select(Page)).scalars().all()
         metas = db.execute(select(SEOMeta)).scalars().all()
-        bl_count = len(db.execute(select(SEOBacklink)).scalars().all())
+        bl_count = len(_unique_backlink_rows(db))
         scores = [m.seo_score for m in metas if m.seo_score is not None]
         avg_seo = sum(scores) / len(scores) if scores else 40
         coverage = (len(metas) / max(len(jobs) + len(pages), 1)) * 100
@@ -249,8 +249,9 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
         scopes = ["https://www.googleapis.com/auth/webmasters.readonly"]
         credentials = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
         service = build("searchconsole", "v1", credentials=credentials, cache_discovery=False)
-        end = datetime.utcnow().date()
-        start = end - timedelta(days=28)
+        # Use an exact 28-day window and avoid today's still-changing data.
+        end = datetime.utcnow().date() - timedelta(days=1)
+        start = end - timedelta(days=27)
         body = {
             "startDate": start.isoformat(),
             "endDate": end.isoformat(),
@@ -276,7 +277,6 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                 continue
             seen_pairs.add(pair)
             pos = float(row.get("position") or 0)
-            page_num = max(1, int((pos - 1) // 10) + 1)
             clicks = int(row.get("clicks") or 0)
             imps = int(row.get("impressions") or 0)
             ctr = float(row.get("ctr") or 0)
@@ -289,7 +289,9 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                     entity_type=entity_type,
                     entity_id=entity_id,
                     position=pos,
-                    search_page=page_num,
+                    # Kept for database compatibility only. Average position
+                    # cannot be translated into a fixed Google results page.
+                    search_page=1,
                     clicks=clicks,
                     impressions=imps,
                     ctr=ctr,
@@ -301,7 +303,7 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                     "keyword": query,
                     "url": page,
                     "position": pos,
-                    "search_page": page_num,
+                    "average_position": pos,
                     "clicks": clicks,
                     "impressions": imps,
                     "ctr": ctr,
@@ -310,12 +312,19 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
             )
         db.commit()
         set_setting(db, "gsc_last_sync", datetime.utcnow().isoformat())
+        set_setting(db, "gsc_period_start", start.isoformat())
+        set_setting(db, "gsc_period_end", end.isoformat())
         return {
             "connected": True,
             "site": site,
             "rows": len(keywords_out),
             "keywords": keywords_out[:50],
-            "message": f"Synced {len(keywords_out)} keyword/page rows from GSC (last 28 days).",
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "message": (
+                f"Synced {len(keywords_out)} query/URL rows from Google Search Console "
+                f"for {start.isoformat()} to {end.isoformat()}."
+            ),
         }
     except Exception as exc:
         db.rollback()
@@ -367,7 +376,7 @@ def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
             "keyword": r.keyword,
             "url": r.url,
             "position": r.position,
-            "search_page": r.search_page,
+            "average_position": r.position,
             "clicks": r.clicks,
             "impressions": r.impressions,
             "ctr": r.ctr,
@@ -379,22 +388,59 @@ def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     ]
 
 
-def list_backlinks(db: Session) -> list[dict[str, Any]]:
+def _canonical_backlink_url(value: str | None) -> str:
+    """Normalize inconsequential URL differences for backlink identity checks."""
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.casefold()
+    hostname = (parsed.hostname or "").casefold()
+    port = parsed.port
+    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+        hostname = f"{hostname}:{port}"
+    path = parsed.path.rstrip("/") or "/"
+    return urlunparse((scheme, hostname, path, "", parsed.query, "")).casefold()
+
+
+def _backlink_key(row: SEOBacklink) -> tuple[str, str]:
+    return (
+        _canonical_backlink_url(row.source_url),
+        _canonical_backlink_url(row.target_url or site_url()),
+    )
+
+
+def _unique_backlink_rows(db: Session) -> list[SEOBacklink]:
+    """Return the latest record for each source/target pair."""
     rows = db.execute(select(SEOBacklink).order_by(SEOBacklink.last_seen.desc())).scalars().all()
-    return [
-        {
-            "id": r.id,
-            "source_url": r.source_url,
-            "target_url": r.target_url,
-            "anchor_text": r.anchor_text,
-            "domain": r.domain,
-            "is_dofollow": r.is_dofollow,
-            "notes": r.notes,
-            "first_seen": r.first_seen.isoformat() if r.first_seen else None,
-            "last_seen": r.last_seen.isoformat() if r.last_seen else None,
-        }
-        for r in rows
-    ]
+    unique: list[SEOBacklink] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        key = _backlink_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique
+
+
+def _backlink_out(row: SEOBacklink, **extra: Any) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "source_url": row.source_url,
+        "target_url": row.target_url,
+        "anchor_text": row.anchor_text,
+        "domain": row.domain,
+        "is_dofollow": row.is_dofollow,
+        "notes": row.notes,
+        "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+        "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+        **extra,
+    }
+
+
+def list_backlinks(db: Session) -> list[dict[str, Any]]:
+    return [_backlink_out(row) for row in _unique_backlink_rows(db)]
 
 
 def add_backlink(
@@ -406,11 +452,45 @@ def add_backlink(
     notes: str | None = None,
     is_dofollow: bool = True,
 ) -> dict[str, Any]:
-    domain = urlparse(source_url).netloc
+    clean_source = source_url.strip()
+    clean_target = (target_url or site_url()).strip()
+    wanted_key = (
+        _canonical_backlink_url(clean_source),
+        _canonical_backlink_url(clean_target),
+    )
+    matches = [
+        row
+        for row in db.execute(
+            select(SEOBacklink).order_by(SEOBacklink.last_seen.desc())
+        ).scalars().all()
+        if _backlink_key(row) == wanted_key
+    ]
+    if matches:
+        row = matches[0]
+        row.source_url = clean_source
+        row.target_url = clean_target
+        row.domain = urlparse(clean_source).netloc.casefold()
+        row.last_seen = datetime.utcnow()
+        row.first_seen = min(
+            (match.first_seen for match in matches if match.first_seen),
+            default=row.first_seen,
+        )
+        if anchor_text is not None:
+            row.anchor_text = anchor_text
+        if notes is not None:
+            row.notes = notes
+        row.is_dofollow = is_dofollow
+        for duplicate in matches[1:]:
+            db.delete(duplicate)
+        db.commit()
+        db.refresh(row)
+        return _backlink_out(row, created=False, duplicates_removed=len(matches) - 1)
+
+    domain = urlparse(clean_source).netloc.casefold()
     row = SEOBacklink(
         id=str(uuid4()),
-        source_url=source_url.strip(),
-        target_url=(target_url or site_url()).strip(),
+        source_url=clean_source,
+        target_url=clean_target,
         anchor_text=anchor_text,
         domain=domain,
         first_seen=datetime.utcnow(),
@@ -421,12 +501,7 @@ def add_backlink(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return {
-        "id": row.id,
-        "source_url": row.source_url,
-        "target_url": row.target_url,
-        "domain": row.domain,
-    }
+    return _backlink_out(row, created=True, duplicates_removed=0)
 
 
 def discover_backlinks_basic(db: Session) -> dict[str, Any]:
@@ -439,6 +514,8 @@ def discover_backlinks_basic(db: Session) -> dict[str, Any]:
         return {"found": 0, "message": "SITE_URL not configured"}
     # Query Bing/HTML is blocked often; instead verify self-references from sitemap social
     found = 0
+    refreshed = 0
+    duplicates_removed = 0
     social = get_social_settings(db)
     for label, url in social.items():
         if url and url.startswith("http"):
@@ -446,40 +523,72 @@ def discover_backlinks_basic(db: Session) -> dict[str, Any]:
                 with httpx.Client(timeout=10.0, follow_redirects=True) as client:
                     r = client.get(url)
                     if domain in r.text:
-                        add_backlink(
+                        result = add_backlink(
                             db,
                             source_url=url,
                             target_url=site_url(),
                             anchor_text=label,
                             notes="Discovered via social profile scan",
                         )
-                        found += 1
+                        if result["created"]:
+                            found += 1
+                        else:
+                            refreshed += 1
+                        duplicates_removed += int(result["duplicates_removed"])
             except Exception:
                 continue
     return {
         "found": found,
-        "message": f"Scanned social profiles; added {found} backlink(s). Add more manually or connect GSC.",
+        "refreshed": refreshed,
+        "duplicates_removed": duplicates_removed,
+        "message": (
+            f"Social scan complete: {found} new, {refreshed} refreshed, "
+            f"{duplicates_removed} duplicate record(s) removed."
+        ),
     }
 
 
 def entity_rank_summary(db: Session) -> list[dict[str, Any]]:
-    """Which job/page appears on which Google search page (from latest ranks)."""
+    """Aggregate Search Console query rows into impression-weighted URL metrics."""
     rows = list_keyword_ranks(db, limit=200)
     by_url: dict[str, dict[str, Any]] = {}
     for r in rows:
         u = r["url"]
+        impressions = int(r.get("impressions") or 0)
+        weight = impressions if impressions > 0 else 1
         if u not in by_url:
             by_url[u] = {
                 "url": u,
                 "entity_type": r.get("entity_type"),
                 "entity_id": r.get("entity_id"),
-                "best_position": r["position"],
-                "search_page": r["search_page"],
+                "average_position": 0.0,
+                "impressions": 0,
+                "clicks": 0,
+                "ctr": 0.0,
+                "_position_total": 0.0,
+                "_position_weight": 0,
                 "keywords": [],
             }
-        by_url[u]["best_position"] = min(by_url[u]["best_position"], r["position"])
-        by_url[u]["search_page"] = max(1, int((by_url[u]["best_position"] - 1) // 10) + 1)
+        by_url[u]["_position_total"] += float(r["position"]) * weight
+        by_url[u]["_position_weight"] += weight
+        by_url[u]["impressions"] += impressions
+        by_url[u]["clicks"] += int(r.get("clicks") or 0)
         by_url[u]["keywords"].append(
-            {"keyword": r["keyword"], "position": r["position"], "search_page": r["search_page"]}
+            {
+                "keyword": r["keyword"],
+                "average_position": r["position"],
+                "impressions": impressions,
+                "clicks": int(r.get("clicks") or 0),
+            }
         )
-    return sorted(by_url.values(), key=lambda x: x["best_position"])
+    for item in by_url.values():
+        item["average_position"] = round(
+            item.pop("_position_total") / max(item.pop("_position_weight"), 1),
+            2,
+        )
+        item["ctr"] = (
+            round(item["clicks"] / item["impressions"], 6)
+            if item["impressions"] > 0
+            else 0.0
+        )
+    return sorted(by_url.values(), key=lambda x: x["average_position"])
