@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AdminShell } from "@/components/AdminShell";
+import { EditorDraftStatus } from "@/components/EditorDraftStatus";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { TagInput } from "@/components/TagInput";
 import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
@@ -17,6 +18,12 @@ import {
   API_BASE,
 } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
+import {
+  cloneDraftData,
+  deleteEditorDraft,
+  readEditorDraft,
+  saveEditorDraft,
+} from "@/lib/editorDrafts";
 import type { JobQnA, TaxonomyTerm } from "@/lib/types";
 import { dateInputToApiValue, toDateInputValue, todayInPakistan } from "@/lib/format";
 
@@ -37,6 +44,19 @@ const empty = {
   provinces: [] as string[],
   tags: [] as string[],
   keywords: "",
+};
+
+const emptySeo: YoastSEOValue = {
+  focus_keyword: "",
+  meta_title: "",
+  meta_description: "",
+  meta_keywords: "",
+};
+
+type JobEditorSnapshot = {
+  form: typeof empty;
+  seo: YoastSEOValue;
+  attachmentCount: number;
 };
 
 function asString(value: unknown): string {
@@ -69,6 +89,79 @@ function asStringList(value: unknown): string[] {
   return result;
 }
 
+function emptyJobSnapshot(): JobEditorSnapshot {
+  return {
+    form: {
+      ...empty,
+      skills: [],
+      cities: [],
+      provinces: [],
+      tags: [],
+    },
+    seo: { ...emptySeo },
+    attachmentCount: 0,
+  };
+}
+
+function normalizeJobDraft(
+  value: unknown,
+  fallback: JobEditorSnapshot
+): JobEditorSnapshot {
+  if (!value || typeof value !== "object") return cloneDraftData(fallback);
+  const candidate = value as Partial<JobEditorSnapshot>;
+  const candidateForm =
+    candidate.form && typeof candidate.form === "object"
+      ? (candidate.form as Partial<typeof empty>)
+      : {};
+  const candidateSeo =
+    candidate.seo && typeof candidate.seo === "object"
+      ? (candidate.seo as Partial<YoastSEOValue>)
+      : {};
+  return {
+    form: {
+      ...fallback.form,
+      ...candidateForm,
+      skills: asStringList(candidateForm.skills ?? fallback.form.skills),
+      cities: asStringList(candidateForm.cities ?? fallback.form.cities),
+      provinces: asStringList(candidateForm.provinces ?? fallback.form.provinces),
+      tags: asStringList(candidateForm.tags ?? fallback.form.tags),
+    },
+    seo: {
+      ...fallback.seo,
+      ...candidateSeo,
+    },
+    attachmentCount:
+      typeof candidate.attachmentCount === "number" &&
+      Number.isFinite(candidate.attachmentCount)
+        ? Math.max(0, candidate.attachmentCount)
+        : fallback.attachmentCount,
+  };
+}
+
+function hasMeaningfulJobDraft(snapshot: JobEditorSnapshot) {
+  const { form, seo } = snapshot;
+  const richText = `${form.description} ${form.keywords}`
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
+  return Boolean(
+    form.title.trim() ||
+      richText ||
+      form.deadline_date ||
+      form.salary_range.trim() ||
+      form.source.trim() ||
+      form.reference_url.trim() ||
+      form.application_url.trim() ||
+      form.experience_required.trim() ||
+      form.education_required.trim() ||
+      form.skills.length ||
+      form.cities.length ||
+      form.provinces.length ||
+      form.tags.length ||
+      Object.values(seo).some((value) => value.trim())
+  );
+}
+
 export default function JobFormPage() {
   const params = useParams<{ id?: string }>();
   const router = useRouter();
@@ -88,15 +181,22 @@ export default function JobFormPage() {
   const [timer, setTimer] = useState(0);
   const [savedId, setSavedId] = useState<string | null>(jobId);
   const [attachmentCount, setAttachmentCount] = useState(0);
-  const [formReady, setFormReady] = useState(isNew);
+  const [formReady, setFormReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [seo, setSeo] = useState<YoastSEOValue>({
-    focus_keyword: "",
-    meta_title: "",
-    meta_description: "",
-    meta_keywords: "",
-  });
+  const [seo, setSeo] = useState<YoastSEOValue>(emptySeo);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const [draftUpdatedAt, setDraftUpdatedAt] = useState<string | null>(null);
+  const [draftStorageError, setDraftStorageError] = useState<string | null>(null);
+  const draftRecordId = jobId || "new";
+  const baselineDataRef = useRef<JobEditorSnapshot>(emptyJobSnapshot());
+  const baselineSerializedRef = useRef(JSON.stringify(baselineDataRef.current));
+
+  const editorSnapshot = useMemo<JobEditorSnapshot>(
+    () => ({ form, seo, attachmentCount }),
+    [attachmentCount, form, seo]
+  );
 
   useEffect(() => {
     fetchFilters().then((f) => {
@@ -109,76 +209,189 @@ export default function JobFormPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!jobId) {
-      setFormReady(true);
-      return;
-    }
     let cancelled = false;
     setFormReady(false);
+    setDraftReady(false);
     setLoadError(null);
-    fetchJob(jobId)
-      .then((job) => {
-        if (cancelled) return;
-        if (!job) {
-          setLoadError("Job not found");
-          setFormReady(true);
-          return;
-        }
+
+    async function hydrateEditor() {
+      let baseline = emptyJobSnapshot();
+      if (jobId) {
+        const job = await fetchJob(jobId);
+        if (!job) throw new Error("Job not found");
         const skills = asStringList(job.skills);
         const cities = asStringList(job.cities);
         const provinces = asStringList(job.provinces);
         const tags = asStringList(job.tags);
-        setSavedId(asString(job.id));
-        setForm({
+        const serverForm = {
+          ...empty,
           title: asString(job.title),
           description: asString(job.description),
           published_date: toDateInputValue(job.published_date) || "",
-          deadline_date: toDateInputValue(job.deadline_date || job.application_deadline) || "",
+          deadline_date:
+            toDateInputValue(job.deadline_date || job.application_deadline) || "",
           salary_range: asString(job.salary_range),
           source: asString(job.source || job.source_name),
           reference_url: asString(job.reference_url || job.source_url),
           application_url: asString(job.application_url),
-          experience_required: asString(job.experience_required).replace(/\s*year\(s\)/i, ""),
+          experience_required: asString(job.experience_required).replace(
+            /\s*year\(s\)/i,
+            ""
+          ),
           education_required: asString(job.education_required),
           skills,
-          job_type: asString(job.job_type) || (job.source_type === "govt" ? "government" : "private"),
+          job_type:
+            asString(job.job_type) ||
+            (job.source_type === "govt" ? "government" : "private"),
           cities: cities.length ? cities : asStringList(job.city),
           provinces: provinces.length ? provinces : asStringList(job.province),
           tags: tags.filter(
-            (t) => !["government", "private", "govt"].includes(t.toLowerCase())
+            (tag) => !["government", "private", "govt"].includes(tag.toLowerCase())
           ),
           keywords: asString(job.keywords),
-        });
-        setQna(Array.isArray(job.qna) ? job.qna : []);
-        setAttachmentCount(
-          (Array.isArray(job.attachments) ? job.attachments : []).filter(
-            (attachment) => attachment && !attachment.is_inline_image
-          ).length
-        );
-        // Load existing Yoast SEO meta if present
-        fetch(`${API_BASE}/api/seo/job/${job.id}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((meta) => {
-            if (!meta) return;
-            setSeo({
+        };
+        const serverAttachmentCount = (
+          Array.isArray(job.attachments) ? job.attachments : []
+        ).filter(
+          (attachment) => attachment && !attachment.is_inline_image
+        ).length;
+        let serverSeo = { ...emptySeo };
+        try {
+          const response = await fetch(`${API_BASE}/api/seo/job/${job.id}`, {
+            cache: "no-store",
+          });
+          const meta = response.ok ? await response.json() : null;
+          if (meta) {
+            serverSeo = {
               focus_keyword: meta.focus_keyword || "",
               meta_title: meta.meta_title || "",
               meta_description: meta.meta_description || "",
               meta_keywords: meta.meta_keywords || "",
-            });
-          })
-          .catch(() => undefined);
-        setFormReady(true);
-      })
-      .catch((err) => {
+            };
+          }
+        } catch {
+          // SEO is optional; the post and any local draft still remain editable.
+        }
+        baseline = {
+          form: serverForm,
+          seo: serverSeo,
+          attachmentCount: serverAttachmentCount,
+        };
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Failed to load job");
-        setFormReady(true);
-      });
+        setSavedId(asString(job.id));
+        setQna(Array.isArray(job.qna) ? job.qna : []);
+      }
+
+      if (cancelled) return;
+      baselineDataRef.current = cloneDraftData(baseline);
+      baselineSerializedRef.current = JSON.stringify(baseline);
+      const localDraft = readEditorDraft<JobEditorSnapshot>("job", draftRecordId);
+      const initial = localDraft
+        ? normalizeJobDraft(localDraft.data, baseline)
+        : cloneDraftData(baseline);
+
+      setForm(initial.form);
+      setSeo(initial.seo);
+      setAttachmentCount(initial.attachmentCount);
+      setDraftRecovered(Boolean(localDraft));
+      setDraftUpdatedAt(localDraft?.updatedAt || null);
+      setDraftStorageError(null);
+      setDraftReady(true);
+      setFormReady(true);
+    }
+
+    hydrateEditor().catch((err) => {
+      if (cancelled) return;
+      setLoadError(err instanceof Error ? err.message : "Failed to load job");
+      setDraftReady(true);
+      setFormReady(true);
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [jobId]);
+  }, [draftRecordId, jobId]);
+
+  useEffect(() => {
+    if (!draftReady || !formReady || saving) return;
+    const serialized = JSON.stringify(editorSnapshot);
+    const unchanged = serialized === baselineSerializedRef.current;
+    const meaningful = hasMeaningfulJobDraft(editorSnapshot);
+
+    if (unchanged || !meaningful) {
+      deleteEditorDraft("job", draftRecordId);
+      setDraftRecovered(false);
+      setDraftUpdatedAt(null);
+      setDraftStorageError(null);
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      const savedDraft = saveEditorDraft({
+        kind: "job",
+        recordId: draftRecordId,
+        title: form.title || "Untitled job post",
+        data: editorSnapshot,
+      });
+      if (!savedDraft) {
+        setDraftStorageError(
+          "Browser storage is unavailable or full. Copy your content before leaving this page."
+        );
+        return;
+      }
+      setDraftStorageError(null);
+      setDraftUpdatedAt(savedDraft.updatedAt);
+    }, 500);
+    return () => window.clearTimeout(timerId);
+  }, [draftReady, draftRecordId, editorSnapshot, form.title, formReady, saving]);
+
+  useEffect(() => {
+    if (!draftReady || !formReady) return;
+    const persistImmediately = () => {
+      const serialized = JSON.stringify(editorSnapshot);
+      if (
+        serialized === baselineSerializedRef.current ||
+        !hasMeaningfulJobDraft(editorSnapshot)
+      ) {
+        return;
+      }
+      saveEditorDraft({
+        kind: "job",
+        recordId: draftRecordId,
+        title: form.title || "Untitled job post",
+        data: editorSnapshot,
+      });
+    };
+    const persistBeforeLinkNavigation = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest<HTMLAnchorElement>("a[href]");
+      if (!link) return;
+      const destination = new URL(link.href, window.location.href);
+      if (destination.origin === window.location.origin) persistImmediately();
+    };
+    window.addEventListener("pagehide", persistImmediately);
+    window.addEventListener("beforeunload", persistImmediately);
+    document.addEventListener("click", persistBeforeLinkNavigation, true);
+    return () => {
+      window.removeEventListener("pagehide", persistImmediately);
+      window.removeEventListener("beforeunload", persistImmediately);
+      document.removeEventListener("click", persistBeforeLinkNavigation, true);
+    };
+  }, [draftReady, draftRecordId, editorSnapshot, form.title, formReady]);
+
+  function discardDraft() {
+    deleteEditorDraft("job", draftRecordId);
+    const baseline = cloneDraftData(baselineDataRef.current);
+    setForm(baseline.form);
+    setSeo(baseline.seo);
+    setAttachmentCount(baseline.attachmentCount);
+    setDraftRecovered(false);
+    setDraftUpdatedAt(null);
+    setDraftStorageError(null);
+    setError(null);
+    setSuccess(null);
+  }
 
   useEffect(() => {
     if (!qnaLoading) return;
@@ -229,6 +442,13 @@ export default function JobFormPage() {
       const job = savedId
         ? await adminUpdateJob(token, savedId, payload)
         : await adminCreateJob(token, payload);
+      const savedSnapshot = cloneDraftData(editorSnapshot);
+      baselineDataRef.current = savedSnapshot;
+      baselineSerializedRef.current = JSON.stringify(savedSnapshot);
+      deleteEditorDraft("job", draftRecordId);
+      setDraftRecovered(false);
+      setDraftUpdatedAt(null);
+      setDraftStorageError(null);
       setSavedId(job.id);
       setSuccess(savedId ? "Job post updated successfully." : "Job post saved successfully.");
       if (!savedId) router.replace(`/admin/jobs/${job.id}`);
@@ -324,11 +544,18 @@ export default function JobFormPage() {
         </div>
         {error && <p className="field-error">{error}</p>}
         {success && <p className="text-sm text-[var(--success)] font-medium">{success}</p>}
+        <EditorDraftStatus
+          updatedAt={draftUpdatedAt}
+          recovered={draftRecovered}
+          storageError={draftStorageError}
+          onDiscard={discardDraft}
+        />
 
         <div>
           <label className="field-label">Job title *</label>
           <input
             className="input"
+            aria-label="Job title"
             value={form.title}
             onChange={(e) => setField("title", e.target.value)}
             required

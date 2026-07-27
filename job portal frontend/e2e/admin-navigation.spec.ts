@@ -68,22 +68,120 @@ test("all remaining admin navigation pages render", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test("a stale Next.js chunk triggers one automatic recovery", async ({ page }) => {
+test("a stale Next.js chunk never refreshes the current page automatically", async ({
+  page,
+}) => {
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  const recoveryNavigation = page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame());
   await page.evaluate(() => {
-    sessionStorage.removeItem("pakjobs-chunk-recovery:/admin");
+    (window as typeof window & { __preservedEditorMarker?: string }).__preservedEditorMarker =
+      "keep-current-page";
+  });
+  await page.evaluate(() => {
     setTimeout(() => Promise.reject(new Error("ChunkLoadError: Loading chunk 123 failed")), 0);
   });
-  await recoveryNavigation;
+  const updateAlert = page
+    .getByRole("alert")
+    .filter({ hasText: "A website update is available." });
+  await expect(updateAlert).toBeVisible();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { __preservedEditorMarker?: string })
+            .__preservedEditorMarker
+      )
+    )
+    .toBe("keep-current-page");
+  await page.getByRole("button", { name: "Not now" }).click();
+  await expect(updateAlert).toHaveCount(0);
+});
 
-  const recoveryTimestamp = await page.evaluate(() =>
-    Number(sessionStorage.getItem("pakjobs-chunk-recovery:/admin") || "0"),
+test("a stale chunk during admin navigation completes the requested destination", async ({
+  page,
+}) => {
+  await page.goto("/admin");
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      "pakjobs-admin-navigation-target",
+      `${window.location.origin}/admin/blog`
+    );
+    setTimeout(() => Promise.reject(new Error("ChunkLoadError: Loading chunk 456 failed")), 0);
+  });
+  await expect(page).toHaveURL(/\/admin\/blog$/);
+  await expect(page.getByRole("heading", { name: "Blog posts" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        sessionStorage.getItem("pakjobs-admin-navigation-target")
+      )
+    )
+    .toBeNull();
+});
+
+test("job and blog drafts survive refresh and can be edited or deleted", async ({
+  page,
+}) => {
+  await page.goto("/admin/jobs/new");
+  await page.getByLabel("Job title").fill("Recovered infrastructure role");
+  const jobDescription = page.locator(".ql-editor").first();
+  await jobDescription.fill("This description must survive an unexpected refresh.");
+  await expect(page.getByTestId("editor-draft-status")).toContainText(
+    "Draft auto-saved locally."
   );
-  expect(recoveryTimestamp).toBeGreaterThan(0);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText(/Application error: a client-side exception/i)).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("Job title")).toHaveValue(
+    "Recovered infrastructure role"
+  );
+  await expect(page.locator(".ql-editor").first()).toContainText(
+    "This description must survive an unexpected refresh."
+  );
+  await expect(page.getByTestId("editor-draft-status")).toContainText(
+    "Recovered your auto-saved draft."
+  );
+
+  await page.goto("/admin/jobs");
+  const jobDrafts = page.getByRole("region", { name: "Saved job drafts" });
+  await expect(jobDrafts.getByText("Recovered infrastructure role")).toBeVisible();
+  await jobDrafts.getByRole("link", { name: "Edit draft" }).click();
+  await expect(page.getByLabel("Job title")).toHaveValue(
+    "Recovered infrastructure role"
+  );
+  await page.goto("/admin/jobs");
+  page.once("dialog", (dialog) => dialog.accept());
+  await jobDrafts.getByRole("button", { name: "Delete draft" }).click();
+  await expect(jobDrafts).toHaveCount(0);
+
+  await page.goto("/admin/blog/new");
+  await page.getByLabel("Blog title").fill("Recovered career guide");
+  const blogContent = page.locator(".ql-editor").first();
+  await blogContent.fill("This article content must also survive refresh.");
+  await page.getByRole("link", { name: "← All posts" }).click();
+  const immediateBlogDrafts = page.getByRole("region", {
+    name: "Saved blog drafts",
+  });
+  await expect(immediateBlogDrafts.getByText("Recovered career guide")).toBeVisible();
+  await immediateBlogDrafts.getByRole("link", { name: "Edit draft" }).click();
+  await expect(page.getByLabel("Blog title")).toHaveValue("Recovered career guide");
+  await expect(page.locator(".ql-editor").first()).toContainText(
+    "This article content must also survive refresh."
+  );
+  await page.reload();
+  await expect(page.getByLabel("Blog title")).toHaveValue("Recovered career guide");
+  await expect(page.locator(".ql-editor").first()).toContainText(
+    "This article content must also survive refresh."
+  );
+  await expect(page.getByTestId("editor-draft-status")).toContainText(
+    "Recovered your auto-saved draft."
+  );
+
+  await page.goto("/admin/blog");
+  const blogDrafts = page.getByRole("region", { name: "Saved blog drafts" });
+  await expect(blogDrafts.getByText("Recovered career guide")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await blogDrafts.getByRole("button", { name: "Delete draft" }).click();
+  await expect(blogDrafts).toHaveCount(0);
 });
 
 test("core CMS pages are visible in the dashboard", async ({ page }) => {

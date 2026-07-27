@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { AdminShell } from "@/components/AdminShell";
+import { EditorDraftsPanel } from "@/components/EditorDraftsPanel";
 import { adminDeleteJob, adminListJobs } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 import type { JobSummary } from "@/lib/types";
@@ -45,6 +46,7 @@ export default function AdminJobsPage() {
 
   return (
     <AdminShell>
+      <EditorDraftsPanel kind="job" />
       <div className="card-panel">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="font-semibold text-[var(--navy-100)]">Job posts</h2>

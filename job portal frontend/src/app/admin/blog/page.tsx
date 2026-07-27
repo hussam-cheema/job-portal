@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AdminRouteLink } from "@/components/AdminRouteLink";
 import { AdminShell } from "@/components/AdminShell";
+import { EditorDraftsPanel } from "@/components/EditorDraftsPanel";
 import { adminDeleteBlogPost, adminListBlogPosts } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 import { formatDate } from "@/lib/format";
@@ -34,6 +35,7 @@ export default function AdminBlogPage() {
   }
 
   return <AdminShell>
+    <EditorDraftsPanel kind="blog" />
     <div className="card-panel overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div><h2 className="font-semibold text-[var(--navy-100)]">Blog posts</h2><p className="text-xs text-[var(--muted)]">Create, publish, and optimize articles</p></div>
