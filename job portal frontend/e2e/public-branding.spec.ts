@@ -15,7 +15,15 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
     /jobs in Pakistan.*government jobs Pakistan.*private jobs Pakistan/,
   );
   await expect(page.locator("header").getByText("Pakistan Jobs Market", { exact: true })).toBeVisible();
-  await expect(page.locator("header img")).toHaveAttribute("src", /pakistan-jobs-market-logo\.png/);
+  const headerLogo = page.locator("header img");
+  const tabIcon = page.locator('link[rel="icon"]').first();
+  await expect(headerLogo).toHaveAttribute("src", /pakistan-jobs-market-logo\.png/);
+  await expect(tabIcon).toHaveAttribute("href", /pakistan-jobs-market-logo\.png/);
+  const [headerLogoPath, tabIconPath] = await Promise.all([
+    headerLogo.evaluate((element: HTMLImageElement) => new URL(element.src).pathname),
+    tabIcon.evaluate((element: HTMLLinkElement) => new URL(element.href).pathname),
+  ]);
+  expect(tabIconPath).toBe(headerLogoPath);
   await expect(page.locator("main h1")).toHaveCSS("text-align", "center");
   await expect(page.locator("main h1 + p")).toHaveCSS("text-align", "center");
   await expect(

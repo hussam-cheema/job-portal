@@ -87,6 +87,9 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
   await docxButton.click();
   const docxDownload = await docxDownloadPromise;
   expect(docxDownload.suggestedFilename()).toBe("mary-leannon-resume.docx");
+  if (process.env.RESUME_DOCX_OUTPUT) {
+    await docxDownload.saveAs(process.env.RESUME_DOCX_OUTPUT);
+  }
   const docxPath = await docxDownload.path();
   expect(docxPath).toBeTruthy();
   const docxBytes = await readFile(docxPath!);
@@ -99,6 +102,48 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
   expect(documentXml).toContain("Data Analyst");
   expect(documentXml).toContain("<w:numPr>");
   expect(pageErrors).toEqual([]);
+});
+
+test("Resume Builder includes only the selected sections without discarding their data", async ({
+  page,
+}) => {
+  await page.goto("/resume-builder");
+  const preview = page.getByTestId("resume-preview");
+  const projectsToggle = page.getByRole("checkbox", { name: /^University projects/ });
+  const languagesToggle = page.getByRole("checkbox", { name: "Language skills" });
+
+  await page.getByLabel("Project title").fill("Student forecasting project");
+  await page.getByRole("textbox", { name: "Language skills" }).fill("English and Urdu");
+  await expect(projectsToggle).toBeChecked();
+  await expect(languagesToggle).toBeChecked();
+
+  await projectsToggle.uncheck();
+  await languagesToggle.uncheck();
+  await expect(page.getByTestId("resume-projects-form")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Language skills" })).toHaveCount(0);
+  await expect(preview.getByRole("heading", { name: "University Projects" })).toHaveCount(0);
+  await expect(preview).not.toContainText("Language Skills:");
+  await expect(preview.getByRole("heading", { name: "Activities" })).toBeVisible();
+
+  await projectsToggle.check();
+  await languagesToggle.check();
+  await expect(page.getByLabel("Project title")).toHaveValue("Student forecasting project");
+  await expect(page.getByRole("textbox", { name: "Language skills" })).toHaveValue(
+    "English and Urdu"
+  );
+
+  await projectsToggle.uncheck();
+  await languagesToggle.uncheck();
+  const docxDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download Resume as DOCX" }).click();
+  const docxDownload = await docxDownloadPromise;
+  const docxPath = await docxDownload.path();
+  expect(docxPath).toBeTruthy();
+  const archive = await JSZip.loadAsync(await readFile(docxPath!));
+  const documentXml = await archive.file("word/document.xml")!.async("string");
+  expect(documentXml).not.toContain("University Projects");
+  expect(documentXml).not.toContain("Language Skills");
+  expect(documentXml).toContain("Activities");
 });
 
 test("job listings use the canonical deadline without shifting to the previous day", async ({

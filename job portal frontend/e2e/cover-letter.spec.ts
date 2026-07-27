@@ -92,6 +92,9 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
   await docxButton.click();
   const docxDownload = await docxDownloadPromise;
   expect(docxDownload.suggestedFilename()).toBe("mary-leannon-cover-letter.docx");
+  if (process.env.COVER_LETTER_DOCX_OUTPUT) {
+    await docxDownload.saveAs(process.env.COVER_LETTER_DOCX_OUTPUT);
+  }
   const docxPath = await docxDownload.path();
   expect(docxPath).toBeTruthy();
   const docxBytes = await readFile(docxPath!);

@@ -32,6 +32,11 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description,
     keywords: parseKeywords(branding.homepage_meta_keywords),
+    icons: {
+      icon: logo,
+      shortcut: logo,
+      apple: logo,
+    },
     openGraph: {
       title,
       description,

@@ -6,6 +6,8 @@ import {
   createResumeDocx,
   safeDocumentName,
   saveDocumentBlob,
+  type ResumeAdditionalSelection,
+  type ResumeSectionSelection,
 } from "@/lib/documentDownloads";
 
 type Education = {
@@ -43,6 +45,26 @@ type Activity = {
 };
 
 const inputClass = "builder-input";
+const sectionOptions: Array<{
+  key: keyof ResumeSectionSelection;
+  label: string;
+  description: string;
+}> = [
+  { key: "education", label: "Education", description: "Degrees, schools and coursework" },
+  { key: "experience", label: "Experience", description: "Roles, employers and achievements" },
+  { key: "projects", label: "University projects", description: "Academic and student projects" },
+  { key: "activities", label: "Activities", description: "Clubs, societies and leadership" },
+  { key: "additional", label: "Additional information", description: "Skills, volunteering and interests" },
+];
+const additionalOptions: Array<{
+  key: keyof ResumeAdditionalSelection;
+  label: string;
+}> = [
+  { key: "languages", label: "Language skills" },
+  { key: "technicalSkills", label: "Technical skills" },
+  { key: "volunteerExperience", label: "Volunteer experience" },
+  { key: "interests", label: "Interests / hobbies" },
+];
 
 const emptyEducation = (): Education => ({
   school: "",
@@ -104,6 +126,49 @@ function RemoveButton({ onClick, label }: { onClick: () => void; label: string }
   );
 }
 
+function SectionToggle({
+  label,
+  description,
+  checked,
+  compact = false,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  compact?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className={`resume-section-option ${compact ? "is-compact" : ""} ${
+        checked ? "is-selected" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="resume-section-toggle-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="m3.5 8.2 2.7 2.7 6.3-6.3"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      <span className="min-w-0">
+        <strong>{label}</strong>
+        {description && <small>{description}</small>}
+      </span>
+    </label>
+  );
+}
+
 export function ResumeBuilder() {
   const {
     documentRef: previewRef,
@@ -132,6 +197,19 @@ export function ResumeBuilder() {
     technicalSkills: "",
     volunteerExperience: "",
     interests: "",
+  });
+  const [includedSections, setIncludedSections] = useState<ResumeSectionSelection>({
+    education: true,
+    experience: true,
+    projects: true,
+    activities: true,
+    additional: true,
+  });
+  const [includedAdditional, setIncludedAdditional] = useState<ResumeAdditionalSelection>({
+    languages: true,
+    technicalSkills: true,
+    volunteerExperience: true,
+    interests: true,
   });
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -207,6 +285,8 @@ export function ResumeBuilder() {
         projects,
         activities,
         additional,
+        includedSections,
+        includedAdditional,
       });
       saveDocumentBlob(blob, `${safeDocumentName(personal.fullName)}-resume.docx`);
     } catch (error) {
@@ -234,6 +314,59 @@ export function ResumeBuilder() {
 
       <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
         <div className="builder-form-stack space-y-5">
+          <section className="builder-form-card resume-section-picker">
+            <div>
+              <p className="resume-section-picker-kicker">Build it your way</p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">
+                Choose resume sections
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Include only what supports your application. Hidden information stays saved here
+                and returns when you switch the section back on.
+              </p>
+            </div>
+            <fieldset className="mt-4">
+              <legend className="sr-only">Resume sections to include</legend>
+              <div className="resume-section-options">
+                {sectionOptions.map((option) => (
+                  <SectionToggle
+                    key={option.key}
+                    label={option.label}
+                    description={option.description}
+                    checked={includedSections[option.key]}
+                    onChange={(checked) =>
+                      setIncludedSections((current) => ({
+                        ...current,
+                        [option.key]: checked,
+                      }))
+                    }
+                  />
+                ))}
+              </div>
+            </fieldset>
+            {includedSections.additional && (
+              <fieldset className="resume-additional-picker mt-4">
+                <legend>Additional details</legend>
+                <div className="resume-additional-options mt-3">
+                  {additionalOptions.map((option) => (
+                    <SectionToggle
+                      key={option.key}
+                      compact
+                      label={option.label}
+                      checked={includedAdditional[option.key]}
+                      onChange={(checked) =>
+                        setIncludedAdditional((current) => ({
+                          ...current,
+                          [option.key]: checked,
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </fieldset>
+            )}
+          </section>
+
           <section className="builder-form-card">
             <h2 className="text-lg font-semibold text-[var(--navy-100)]">Contact information</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -244,7 +377,8 @@ export function ResumeBuilder() {
             </div>
           </section>
 
-          <section className="builder-form-card">
+          {includedSections.education && (
+          <section className="builder-form-card" data-testid="resume-education-form">
             <EditorHeading title="Education" onAdd={() => setEducation((items) => [...items, emptyEducation()])} />
             <div className="mt-4 space-y-5">
               {education.map((item, index) => (
@@ -265,8 +399,10 @@ export function ResumeBuilder() {
               ))}
             </div>
           </section>
+          )}
 
-          <section className="builder-form-card">
+          {includedSections.experience && (
+          <section className="builder-form-card" data-testid="resume-experience-form">
             <EditorHeading title="Experience" onAdd={() => setExperience((items) => [...items, emptyExperience()])} />
             <div className="mt-4 space-y-5">
               {experience.map((item, index) => (
@@ -286,8 +422,10 @@ export function ResumeBuilder() {
               ))}
             </div>
           </section>
+          )}
 
-          <section className="builder-form-card">
+          {includedSections.projects && (
+          <section className="builder-form-card" data-testid="resume-projects-form">
             <EditorHeading title="University projects" onAdd={() => setProjects((items) => [...items, emptyProject()])} />
             <div className="mt-4 space-y-5">
               {projects.map((item, index) => (
@@ -308,8 +446,10 @@ export function ResumeBuilder() {
               ))}
             </div>
           </section>
+          )}
 
-          <section className="builder-form-card">
+          {includedSections.activities && (
+          <section className="builder-form-card" data-testid="resume-activities-form">
             <EditorHeading title="Activities" onAdd={() => setActivities((items) => [...items, emptyActivity()])} />
             <div className="mt-4 space-y-5">
               {activities.map((item, index) => (
@@ -329,16 +469,19 @@ export function ResumeBuilder() {
               ))}
             </div>
           </section>
+          )}
 
-          <section className="builder-form-card">
+          {includedSections.additional && Object.values(includedAdditional).some(Boolean) && (
+          <section className="builder-form-card" data-testid="resume-additional-form">
             <h2 className="text-lg font-semibold text-[var(--navy-100)]">Additional information</h2>
             <div className="mt-4 grid gap-4">
-              <Field label="Language skills" value={additional.languages} onChange={(value) => setAdditional((item) => ({ ...item, languages: value }))} />
-              <Field label="Technical skills" value={additional.technicalSkills} onChange={(value) => setAdditional((item) => ({ ...item, technicalSkills: value }))} />
-              <Field label="Volunteer experience" value={additional.volunteerExperience} onChange={(value) => setAdditional((item) => ({ ...item, volunteerExperience: value }))} />
-              <Field label="Interests / hobbies" value={additional.interests} onChange={(value) => setAdditional((item) => ({ ...item, interests: value }))} />
+              {includedAdditional.languages && <Field label="Language skills" value={additional.languages} onChange={(value) => setAdditional((item) => ({ ...item, languages: value }))} />}
+              {includedAdditional.technicalSkills && <Field label="Technical skills" value={additional.technicalSkills} onChange={(value) => setAdditional((item) => ({ ...item, technicalSkills: value }))} />}
+              {includedAdditional.volunteerExperience && <Field label="Volunteer experience" value={additional.volunteerExperience} onChange={(value) => setAdditional((item) => ({ ...item, volunteerExperience: value }))} />}
+              {includedAdditional.interests && <Field label="Interests / hobbies" value={additional.interests} onChange={(value) => setAdditional((item) => ({ ...item, interests: value }))} />}
             </div>
           </section>
+          )}
         </div>
 
         <aside className="builder-preview-panel xl:sticky xl:top-20">
@@ -362,6 +505,7 @@ export function ResumeBuilder() {
                 </p>
               </header>
 
+              {includedSections.education && (
               <ResumeSection title="Education">
                 {education.map((item, index) => (
                   <div className="resume-entry" key={index}>
@@ -386,7 +530,9 @@ export function ResumeBuilder() {
                   </div>
                 ))}
               </ResumeSection>
+              )}
 
+              {includedSections.experience && (
               <ResumeSection title="Experience">
                 {experience.map((item, index) => (
                   <div className="resume-entry" key={index}>
@@ -411,7 +557,9 @@ export function ResumeBuilder() {
                   </div>
                 ))}
               </ResumeSection>
+              )}
 
+              {includedSections.projects && (
               <ResumeSection title="University Projects">
                 {projects.map((item, index) => (
                   <div className="resume-entry" key={index}>
@@ -428,7 +576,9 @@ export function ResumeBuilder() {
                   </div>
                 ))}
               </ResumeSection>
+              )}
 
+              {includedSections.activities && (
               <ResumeSection title="Activities">
                 {activities.map((item, index) => (
                   <div className="resume-entry" key={index}>
@@ -444,15 +594,18 @@ export function ResumeBuilder() {
                   </div>
                 ))}
               </ResumeSection>
+              )}
 
+              {includedSections.additional && Object.values(includedAdditional).some(Boolean) && (
               <ResumeSection title="Additional">
                 <div className="resume-additional">
-                  <p><strong>Language Skills:</strong> {additional.languages || "[List any languages you speak fluently or proficiently.]"}</p>
-                  <p><strong>Technical Skills:</strong> {additional.technicalSkills || "[List any relevant technical skills or software proficiencies.]"}</p>
-                  <p><strong>Volunteer Experience:</strong> {additional.volunteerExperience || "[Briefly mention any volunteer work you have done, highlighting skills or experiences gained.]"}</p>
-                  <p><strong>Interests/Hobbies:</strong> {additional.interests || "[Include any interests or hobbies that demonstrate relevant skills or qualities, or provide insight into your personality.]"}</p>
+                  {includedAdditional.languages && <p><strong>Language Skills:</strong> {additional.languages || "[List any languages you speak fluently or proficiently.]"}</p>}
+                  {includedAdditional.technicalSkills && <p><strong>Technical Skills:</strong> {additional.technicalSkills || "[List any relevant technical skills or software proficiencies.]"}</p>}
+                  {includedAdditional.volunteerExperience && <p><strong>Volunteer Experience:</strong> {additional.volunteerExperience || "[Briefly mention any volunteer work you have done, highlighting skills or experiences gained.]"}</p>}
+                  {includedAdditional.interests && <p><strong>Interests/Hobbies:</strong> {additional.interests || "[Include any interests or hobbies that demonstrate relevant skills or qualities, or provide insight into your personality.]"}</p>}
                 </div>
               </ResumeSection>
+              )}
               </div>
             </div>
           </div>

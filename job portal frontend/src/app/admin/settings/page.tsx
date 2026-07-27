@@ -313,7 +313,10 @@ export default function SettingsPage() {
             className="input"
             onChange={(event) => setLogoFile(event.target.files?.[0] || null)}
           />
-          <p className="mt-2 text-xs text-[var(--muted)]">PNG, JPG, WebP, or GIF. Maximum 2MB.</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            PNG, JPG, WebP, or GIF. Maximum 2MB. The same image is used in the website header and
+            browser tab.
+          </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <button type="submit" className="btn btn-primary" disabled={busy || !logoFile}>Upload logo</button>
             {logoUrl && (
