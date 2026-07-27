@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useA4PreviewScale } from "@/hooks/useA4PreviewScale";
+import {
+  createCoverLetterDocx,
+  safeDocumentName,
+  saveDocumentBlob,
+} from "@/lib/documentDownloads";
 
 type CoverLetterData = {
   documentTitle: string;
@@ -61,7 +66,7 @@ export function CoverLetterBuilder() {
     stageStyle,
   } = useA4PreviewScale();
   const [data, setData] = useState(initialData);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   function update<K extends keyof CoverLetterData>(key: K, value: CoverLetterData[K]) {
@@ -72,7 +77,7 @@ export function CoverLetterBuilder() {
     if (!previewRef.current) return;
     const preview = previewRef.current;
     const previewTransform = preview.style.transform;
-    setDownloading(true);
+    setDownloading("pdf");
     setDownloadError(null);
     try {
       // The live preview is scaled only to fit the browser panel. Capture the
@@ -100,17 +105,25 @@ export function CoverLetterBuilder() {
         if (page > 0) pdf.addPage("a4", "portrait");
         pdf.addImage(image, "JPEG", 0, -(page * pageHeight), pageWidth, imageHeight, undefined, "FAST");
       }
-      const safeName = (data.fullName || "professional")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      pdf.save(`${safeName || "professional"}-cover-letter.pdf`);
+      pdf.save(`${safeDocumentName(data.fullName)}-cover-letter.pdf`);
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "The PDF could not be created.");
     } finally {
       preview.style.transform = previewTransform;
-      setDownloading(false);
+      setDownloading(null);
+    }
+  }
+
+  async function downloadDocx() {
+    setDownloading("docx");
+    setDownloadError(null);
+    try {
+      const blob = await createCoverLetterDocx(data, formatLetterDate(data.letterDate));
+      saveDocumentBlob(blob, `${safeDocumentName(data.fullName)}-cover-letter.docx`);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "The Word document could not be created.");
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -124,8 +137,9 @@ export function CoverLetterBuilder() {
           Cover Letter
         </h1>
         <p className="mt-3 text-[var(--muted)]">
-          Enter your information, review the live A4 letter, and download the finished PDF. Your
-          information remains in this browser and is not submitted to Pakistan Jobs Market.
+          Enter your information, review the live A4 letter, and download a finished PDF or
+          editable Word document. Your information remains in this browser and is not submitted
+          to Pakistan Jobs Market.
         </p>
       </div>
 
@@ -173,7 +187,9 @@ export function CoverLetterBuilder() {
         <aside className="builder-preview-panel xl:sticky xl:top-20">
           <div className="builder-preview-heading mb-3">
             <h2 className="font-semibold text-[var(--navy-100)]">A4 cover letter preview</h2>
-            <p className="text-xs text-[var(--muted)]">The downloaded PDF uses this exact layout.</p>
+            <p className="text-xs text-[var(--muted)]">
+              Download a print-ready PDF or an editable Word document.
+            </p>
           </div>
           <div ref={shellRef} className="cover-letter-preview-shell" data-testid="cover-letter-preview-shell">
             <div className="document-preview-stage" style={stageStyle}>
@@ -224,27 +240,49 @@ export function CoverLetterBuilder() {
             </div>
           </div>
           {downloadError && <p className="field-error mt-3">{downloadError}</p>}
-          <button
-            type="button"
-            className="download-pdf-button mt-4 w-full"
-            onClick={downloadPdf}
-            disabled={downloading}
-            aria-label="Download Cover Letter as PDF"
-          >
-            <span className="download-pdf-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-            <span className="download-pdf-copy">
-              <strong>{downloading ? "Creating your PDF…" : "Download Cover Letter as PDF"}</strong>
-              <small>Print-ready A4 document</small>
-            </span>
-            <span className="download-pdf-arrow" aria-hidden="true">→</span>
-          </button>
+          <div className="builder-download-actions mt-4">
+            <button
+              type="button"
+              className="download-document-button download-pdf-button w-full"
+              onClick={downloadPdf}
+              disabled={downloading !== null}
+              aria-label="Download Cover Letter as PDF"
+            >
+              <DownloadIcon />
+              <span className="download-document-copy">
+                <strong>{downloading === "pdf" ? "Creating your PDF…" : "Download Cover Letter as PDF"}</strong>
+                <small>Print-ready A4 document</small>
+              </span>
+              <span className="download-document-arrow" aria-hidden="true">→</span>
+            </button>
+            <button
+              type="button"
+              className="download-document-button download-docx-button w-full"
+              onClick={downloadDocx}
+              disabled={downloading !== null}
+              aria-label="Download Cover Letter as DOCX"
+            >
+              <DownloadIcon />
+              <span className="download-document-copy">
+                <strong>{downloading === "docx" ? "Creating your DOCX…" : "Download Cover Letter as DOCX"}</strong>
+                <small>Editable Microsoft Word document</small>
+              </span>
+              <span className="download-document-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
         </aside>
       </div>
     </div>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <span className="download-document-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
   );
 }
 

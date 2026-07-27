@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import JSZip from "jszip";
 
-test("Resume Builder is in the header and downloads the populated A4 resume as a PDF", async ({
+test("Resume Builder downloads the populated resume as PDF and editable DOCX", async ({
   page,
 }) => {
   const pageErrors: string[] = [];
@@ -77,6 +78,26 @@ test("Resume Builder is in the header and downloads the populated A4 resume as a
   const bytes = await readFile(path!);
   expect(bytes.subarray(0, 4).toString()).toBe("%PDF");
   expect(bytes.length).toBeGreaterThan(20_000);
+
+  const docxButton = page.getByRole("button", { name: "Download Resume as DOCX" });
+  await expect(docxButton.locator("svg")).toBeVisible();
+  await expect(docxButton).toBeEnabled();
+
+  const docxDownloadPromise = page.waitForEvent("download");
+  await docxButton.click();
+  const docxDownload = await docxDownloadPromise;
+  expect(docxDownload.suggestedFilename()).toBe("mary-leannon-resume.docx");
+  const docxPath = await docxDownload.path();
+  expect(docxPath).toBeTruthy();
+  const docxBytes = await readFile(docxPath!);
+  expect(docxBytes.subarray(0, 4).toString("hex")).toBe("504b0304");
+  expect(docxBytes.length).toBeGreaterThan(8_000);
+  const archive = await JSZip.loadAsync(docxBytes);
+  const documentXml = await archive.file("word/document.xml")!.async("string");
+  expect(documentXml).toContain("Mary Leannon");
+  expect(documentXml).toContain("University of Idaho");
+  expect(documentXml).toContain("Data Analyst");
+  expect(documentXml).toContain("<w:numPr>");
   expect(pageErrors).toEqual([]);
 });
 

@@ -1881,7 +1881,12 @@ iframe {
   transform: translateY(-1px);
 }
 
-.download-pdf-button {
+.builder-download-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.download-document-button {
   position: relative;
   display: grid;
   grid-template-columns: 2.7rem minmax(0, 1fr) auto;
@@ -1890,7 +1895,6 @@ iframe {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 1rem;
-  background: linear-gradient(115deg, #3568cf 0%, #5689ee 58%, #70a0fb 100%);
   padding: 0.78rem 0.9rem;
   color: #fff;
   text-align: left;
@@ -1898,7 +1902,16 @@ iframe {
   transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
 }
 
-.download-pdf-button::after {
+.download-pdf-button {
+  background: linear-gradient(115deg, #3568cf 0%, #5689ee 58%, #70a0fb 100%);
+}
+
+.download-docx-button {
+  background: linear-gradient(115deg, #087f5b 0%, #12a875 58%, #43c995 100%);
+  box-shadow: 0 15px 32px rgba(8, 127, 91, 0.28), 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+.download-document-button::after {
   position: absolute;
   top: -70%;
   left: -25%;
@@ -1910,27 +1923,27 @@ iframe {
   transition: left 300ms ease;
 }
 
-.download-pdf-button:hover:not(:disabled) {
+.download-document-button:hover:not(:disabled) {
   transform: translateY(-2px);
   filter: saturate(1.08);
   box-shadow: 0 19px 38px rgba(53, 104, 207, 0.38), 0 1px 0 rgba(255, 255, 255, 0.25) inset;
 }
 
-.download-pdf-button:hover:not(:disabled)::after {
+.download-document-button:hover:not(:disabled)::after {
   left: 112%;
 }
 
-.download-pdf-button:focus-visible {
+.download-document-button:focus-visible {
   outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 
-.download-pdf-button:disabled {
+.download-document-button:disabled {
   cursor: wait;
   opacity: 0.72;
 }
 
-.download-pdf-icon {
+.download-document-icon {
   display: inline-flex;
   width: 2.7rem;
   height: 2.7rem;
@@ -1941,29 +1954,29 @@ iframe {
   background: rgba(255, 255, 255, 0.14);
 }
 
-.download-pdf-icon svg {
+.download-document-icon svg {
   width: 1.25rem;
   height: 1.25rem;
 }
 
-.download-pdf-copy {
+.download-document-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 0.08rem;
 }
 
-.download-pdf-copy strong {
+.download-document-copy strong {
   font-size: 0.92rem;
   line-height: 1.25;
 }
 
-.download-pdf-copy small {
+.download-document-copy small {
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.7rem;
 }
 
-.download-pdf-arrow {
+.download-document-arrow {
   padding-right: 0.25rem;
   font-size: 1.2rem;
 }
