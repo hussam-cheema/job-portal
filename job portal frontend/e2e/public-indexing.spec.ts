@@ -25,7 +25,7 @@ test("public pages expose self-canonicals and private pages are noindex", async 
   }
 
   await page.goto("/admin");
-  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
     "content",
     /noindex.*nofollow/i
   );
