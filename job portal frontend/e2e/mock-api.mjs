@@ -31,6 +31,9 @@ const server = createServer((request, response) => {
     return;
   }
   if (path === "/ready") return json(response, { status: "ready" });
+  if (path === "/api/auth/login" && request.method === "POST") {
+    return json(response, { access_token: "e2e-token", username: "e2e-admin" });
+  }
   if (path === "/api/settings/branding") {
     return json(response, {
       site_name: "Pakistan Jobs Market",

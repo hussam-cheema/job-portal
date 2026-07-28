@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/format";
 export default function AdminJobsPage() {
   const { token } = useAdminAuth();
   const [items, setItems] = useState<JobSummary[]>([]);
+  const [draftCount, setDraftCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +47,6 @@ export default function AdminJobsPage() {
 
   return (
     <AdminShell>
-      <EditorDraftsPanel kind="job" />
       <div className="card-panel">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="font-semibold text-[var(--navy-100)]">Job posts</h2>
@@ -56,10 +56,11 @@ export default function AdminJobsPage() {
         </div>
         {loading && <p className="p-5 text-sm text-[var(--muted)]">Loading…</p>}
         {error && <p className="p-5 field-error">{error}</p>}
-        {!loading && items.length === 0 && (
+        {!loading && items.length === 0 && draftCount === 0 && (
           <p className="p-5 text-sm text-[var(--muted)]">No jobs yet. Create your first post.</p>
         )}
         <div className="divide-y divide-[var(--border)]">
+          <EditorDraftsPanel kind="job" onCountChange={setDraftCount} />
           {items.map((job) => (
             <div key={job.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
               <div>

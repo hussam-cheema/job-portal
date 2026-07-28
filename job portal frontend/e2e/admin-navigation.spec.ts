@@ -68,7 +68,7 @@ test("all remaining admin navigation pages render", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test("a stale Next.js chunk never refreshes the current page automatically", async ({
+test("a stale Next.js chunk is handled silently without refreshing the current page", async ({
   page,
 }) => {
   await page.goto("/admin");
@@ -80,10 +80,9 @@ test("a stale Next.js chunk never refreshes the current page automatically", asy
   await page.evaluate(() => {
     setTimeout(() => Promise.reject(new Error("ChunkLoadError: Loading chunk 123 failed")), 0);
   });
-  const updateAlert = page
-    .getByRole("alert")
-    .filter({ hasText: "A website update is available." });
-  await expect(updateAlert).toBeVisible();
+  await page.waitForTimeout(250);
+  await expect(page.getByText("A website update is available.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Update website" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/admin$/);
   await expect
     .poll(() =>
@@ -94,8 +93,6 @@ test("a stale Next.js chunk never refreshes the current page automatically", asy
       )
     )
     .toBe("keep-current-page");
-  await page.getByRole("button", { name: "Not now" }).click();
-  await expect(updateAlert).toHaveCount(0);
 });
 
 test("a stale chunk during admin navigation completes the requested destination", async ({
@@ -144,13 +141,14 @@ test("job and blog drafts survive refresh and can be edited or deleted", async (
   await page.goto("/admin/jobs");
   const jobDrafts = page.getByRole("region", { name: "Saved job drafts" });
   await expect(jobDrafts.getByText("Recovered infrastructure role")).toBeVisible();
-  await jobDrafts.getByRole("link", { name: "Edit draft" }).click();
+  await expect(jobDrafts.getByText("Local draft")).toBeVisible();
+  await jobDrafts.getByRole("link", { name: "Edit" }).click();
   await expect(page.getByLabel("Job title")).toHaveValue(
     "Recovered infrastructure role"
   );
   await page.goto("/admin/jobs");
   page.once("dialog", (dialog) => dialog.accept());
-  await jobDrafts.getByRole("button", { name: "Delete draft" }).click();
+  await jobDrafts.getByRole("button", { name: "Delete" }).click();
   await expect(jobDrafts).toHaveCount(0);
 
   await page.goto("/admin/blog/new");
@@ -162,7 +160,8 @@ test("job and blog drafts survive refresh and can be edited or deleted", async (
     name: "Saved blog drafts",
   });
   await expect(immediateBlogDrafts.getByText("Recovered career guide")).toBeVisible();
-  await immediateBlogDrafts.getByRole("link", { name: "Edit draft" }).click();
+  await expect(immediateBlogDrafts.getByText("Local draft")).toBeVisible();
+  await immediateBlogDrafts.getByRole("link", { name: "Edit" }).click();
   await expect(page.getByLabel("Blog title")).toHaveValue("Recovered career guide");
   await expect(page.locator(".ql-editor").first()).toContainText(
     "This article content must also survive refresh."
@@ -180,7 +179,7 @@ test("job and blog drafts survive refresh and can be edited or deleted", async (
   const blogDrafts = page.getByRole("region", { name: "Saved blog drafts" });
   await expect(blogDrafts.getByText("Recovered career guide")).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
-  await blogDrafts.getByRole("button", { name: "Delete draft" }).click();
+  await blogDrafts.getByRole("button", { name: "Delete" }).click();
   await expect(blogDrafts).toHaveCount(0);
 });
 

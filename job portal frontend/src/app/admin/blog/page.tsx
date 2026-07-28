@@ -13,6 +13,7 @@ import type { BlogListResponse } from "@/lib/types";
 export default function AdminBlogPage() {
   const { token } = useAdminAuth();
   const [result, setResult] = useState<BlogListResponse>({ items: [], total: 0, page: 1, page_size: 25, pages: 0 });
+  const [draftCount, setDraftCount] = useState(0);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -35,7 +36,6 @@ export default function AdminBlogPage() {
   }
 
   return <AdminShell>
-    <EditorDraftsPanel kind="blog" />
     <div className="card-panel overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div><h2 className="font-semibold text-[var(--navy-100)]">Blog posts</h2><p className="text-xs text-[var(--muted)]">Create, publish, and optimize articles</p></div>
@@ -48,8 +48,9 @@ export default function AdminBlogPage() {
       </form>
       {loading && <p className="p-5 text-sm text-[var(--muted)]">Loading…</p>}
       {error && <p className="p-5 field-error">{error}</p>}
-      {!loading && !result.items.length && <p className="p-5 text-sm text-[var(--muted)]">No blog posts yet.</p>}
+      {!loading && !result.items.length && draftCount === 0 && <p className="p-5 text-sm text-[var(--muted)]">No blog posts yet.</p>}
       <div className="divide-y divide-[var(--border)]">
+        <EditorDraftsPanel kind="blog" onCountChange={setDraftCount} />
         {result.items.map((post) => <div key={post.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0"><div className="font-medium text-[var(--navy-100)]">{post.title}</div><div className="mt-1 text-xs text-[var(--muted)]">/{post.slug} · {post.is_published ? "Published" : "Draft"} · Updated {formatDate(post.updated_at)}</div></div>
           <div className="flex gap-2">{post.is_published && <Link href={`/blog/${post.slug}`} className="btn btn-ghost">View</Link>}<AdminRouteLink href={`/admin/blog/${post.id}`} className="btn btn-ghost">Edit</AdminRouteLink><button type="button" className="btn btn-ghost" onClick={() => void remove(post.id)}>Delete</button></div>
