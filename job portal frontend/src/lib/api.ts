@@ -8,6 +8,7 @@ import type {
   JobListResponse,
   JobQuery,
   PageItem,
+  PublicSeoMeta,
   QnAFetchResult,
   SEODashboard,
   StatsResponse,
@@ -287,6 +288,16 @@ export async function trackVisit(visitorId: string, path: string): Promise<void>
 
 export async function fetchPage(slug: string): Promise<PageItem | null> {
   return getJson<PageItem | null>(`/api/pages/${slug}`, null);
+}
+
+export async function fetchPublicSeo(
+  entityType: string,
+  entityId: string
+): Promise<PublicSeoMeta | null> {
+  return getJson<PublicSeoMeta | null>(
+    `/api/seo/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+    null
+  );
 }
 
 export async function submitContact(data: {

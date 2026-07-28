@@ -31,6 +31,8 @@ export async function generateMetadata({ params }: Props) {
     description:
       stripHtml(job.description).slice(0, 160) ||
       `${job.title} at ${job.company || job.source || "—"}`,
+    alternates: { canonical: `/jobs/${job.slug || job.id}` },
+    robots: { index: true, follow: true },
   };
 }
 

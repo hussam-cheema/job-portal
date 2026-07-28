@@ -23,6 +23,8 @@ export async function generateMetadata({ params }: Props) {
   return {
     title: `${label} jobs in Pakistan`,
     description: `Browse current ${label} job openings across Pakistan.`,
+    alternates: { canonical: `/categories/${category}` },
+    robots: { index: true, follow: true },
   };
 }
 

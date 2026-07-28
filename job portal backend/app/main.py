@@ -203,6 +203,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def prevent_api_indexing(request: Request, call_next):
+    """Keep JSON/API utility URLs out of search without blocking crawlers from seeing the rule."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/media/"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
+
+
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
@@ -263,9 +273,10 @@ def root_sitemap():
 def root_robots():
     from fastapi.responses import PlainTextResponse
 
-    from app.services.seo_tools import robots_txt
-
-    return PlainTextResponse(robots_txt())
+    # The public website owns the canonical sitemap and its own robots.txt.
+    # This host is an API, so let crawlers reach responses and read their
+    # X-Robots-Tag instead of advertising frontend URLs from the API origin.
+    return PlainTextResponse("User-agent: *\nAllow: /\n")
 
 
 @app.get("/", tags=["meta"])

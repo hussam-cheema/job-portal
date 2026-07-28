@@ -23,6 +23,8 @@ export async function generateMetadata({ params }: Props) {
   return {
     title: `${label} Jobs in Pakistan | Pakistan Jobs Market`,
     description: `Browse Pakistan job openings tagged ${label}.`,
+    alternates: { canonical: `/tags/${tag}` },
+    robots: { index: true, follow: true },
   };
 }
 

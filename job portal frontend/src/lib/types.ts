@@ -204,6 +204,15 @@ export type PageItem = {
   updated_at?: string | null;
 };
 
+export type PublicSeoMeta = {
+  meta_title?: string | null;
+  meta_description?: string | null;
+  meta_keywords?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image?: string | null;
+};
+
 export type BlogPost = {
   id: string;
   slug: string;

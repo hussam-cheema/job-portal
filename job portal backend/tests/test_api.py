@@ -67,6 +67,18 @@ def test_health(client: TestClient):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] in {"ok", "degraded"}
+    assert r.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
+
+
+def test_api_host_robots_allows_crawlers_to_read_noindex_headers(client: TestClient):
+    root = client.get("/")
+    robots = client.get("/robots.txt")
+
+    assert root.status_code == 200
+    assert root.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
+    assert robots.status_code == 200
+    assert robots.text == "User-agent: *\nAllow: /\n"
+    assert "Sitemap:" not in robots.text
 
 
 def test_readiness(client: TestClient):
@@ -2448,6 +2460,42 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
     sitemap = client.get("/api/sitemap-data")
     assert sitemap.status_code == 200
     assert any(url["loc"].endswith(f"/jobs/{slug}") for url in sitemap.json()["urls"])
+
+
+def test_sitemap_data_only_includes_published_custom_pages(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    published = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Published Resource",
+            "slug": "published-resource",
+            "content": "<p>Useful public content.</p>",
+            "is_published": True,
+        },
+    )
+    draft = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Private Draft",
+            "slug": "private-draft",
+            "content": "<p>Not ready for search.</p>",
+            "is_published": False,
+        },
+    )
+    assert published.status_code == 200
+    assert draft.status_code == 200
+
+    urls = {
+        item["loc"]
+        for item in client.get("/api/sitemap-data").json()["urls"]
+    }
+    assert any(url.endswith("/p/published-resource") for url in urls)
+    assert not any(url.endswith("/p/private-draft") for url in urls)
 
 
 def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):

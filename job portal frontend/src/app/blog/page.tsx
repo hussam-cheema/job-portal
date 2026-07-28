@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { fetchBlogFilters, fetchBlogPosts } from "@/lib/api";
@@ -8,6 +9,14 @@ type Props = {
 };
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Career Guidance and Job Updates",
+  description:
+    "Read practical guidance for job applications, interviews, careers and employment opportunities across Pakistan.",
+  alternates: { canonical: "/blog" },
+  robots: { index: true, follow: true },
+};
 
 export default async function BlogPage({ searchParams }: Props) {
   const query = await searchParams;

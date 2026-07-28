@@ -199,6 +199,27 @@ const server = createServer((request, response) => {
       { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", is_published: true },
     ]);
   }
+  if (path === "/api/pages/custom-seo-page") {
+    return json(response, {
+      id: "custom-seo-page-id",
+      slug: "custom-seo-page",
+      title: "Custom public page",
+      content: "<p>A published CMS page that is safe for search indexing.</p>",
+      is_published: true,
+      created_at: "2026-07-28T00:00:00Z",
+      updated_at: "2026-07-28T00:00:00Z",
+    });
+  }
+  if (path === "/api/seo/page/custom-seo-page-id") {
+    return json(response, {
+      meta_title: "Custom SEO title",
+      meta_description: "Custom SEO description for the published CMS page.",
+      meta_keywords: "custom page, Pakistan jobs",
+      og_title: "Custom social title",
+      og_description: "Custom social description.",
+      og_image: null,
+    });
+  }
   if (path === "/api/admin/contact") return json(response, []);
   if (path === "/api/admin/analytics/realtime") {
     return json(response, {

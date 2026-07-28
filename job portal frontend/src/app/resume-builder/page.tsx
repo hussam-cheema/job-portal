@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   title: "Free Resume Builder",
   description:
     "Create a clean, professional resume online and download it as a PDF or editable DOCX.",
+  alternates: { canonical: "/resume-builder" },
+  robots: { index: true, follow: true },
 };
 
 export default function ResumeBuilderPage() {

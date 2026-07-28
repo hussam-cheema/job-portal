@@ -9,6 +9,7 @@ export const metadata: Metadata = {
     "Pakistan jobs support",
     "job listing correction Pakistan",
   ],
+  alternates: { canonical: "/contact" },
   robots: { index: true, follow: true },
 };
 
