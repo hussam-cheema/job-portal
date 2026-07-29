@@ -137,6 +137,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             watermarks_upgraded = migrate_legacy_job_watermarks(db)
+            career_guides_created = []
+            if os.getenv("JOBPORTAL_TESTING", "").lower() not in {"1", "true", "yes"}:
+                from app.services.career_guide_seed import publish_career_guides_once
+
+                career_guides_created = publish_career_guides_once(db)
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))
@@ -152,6 +157,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info(
                     "legacy job description watermarks upgraded count=%s",
                     watermarks_upgraded,
+                )
+            if career_guides_created:
+                logger.info(
+                    "career guide articles published count=%s",
+                    len(career_guides_created),
                 )
         finally:
             db.close()
