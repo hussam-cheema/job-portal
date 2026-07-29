@@ -66,11 +66,17 @@ application deadline, education, experience, location and original application o
   Closed notice help visitors identify active opportunities.</li>
   <li><strong>Job alerts:</strong> visitors can subscribe to receive an email when a new job is
   published and can unsubscribe whenever they choose.</li>
-  <li><strong>Career resources:</strong> the blog, resume builder and cover-letter builder offer
-  practical tools for applicants.</li>
+  <li><strong>Career resources:</strong> the blog, ATS-standard resume builder with an on-page
+  readiness score, and cover-letter builder offer practical tools for applicants.</li>
   <li><strong>Interview Q&amp;A:</strong> some job pages may contain questions and answers extracted
   from relevant public video transcripts or comments to support further research.</li>
 </ul>
+
+<h2>ATS-standard resume tools</h2>
+<p>Our Resume Builder uses conventional headings, searchable text, a clean single-column reading
+order and recruiter-friendly formatting. Visitors can check a transparent ATS-readiness score for
+the resume currently in the form, review category-level feedback, and download the same
+professional layout as a searchable PDF or editable Word document.</p>
 
 <h2>Our editorial approach</h2>
 <p>We aim to publish clear, useful and source-attributed information. Job advertisements may be
@@ -122,6 +128,12 @@ the feature you use, we may collect the following limited information:</p>
 alerts, responding to messages, preventing abuse, diagnosing errors, protecting the service,
 understanding aggregate usage and improving content and performance. We do not ask visitors to
 submit a CV or sensitive financial credentials in order to browse the website.</p>
+
+<h2>Resume Builder and ATS score</h2>
+<p>Information entered in the Resume Builder and the resulting ATS-readiness score are processed
+in your browser to create the preview, score and downloads. Pakistan Jobs Market does not receive
+or store that resume content or score. Closing or refreshing the page may remove the information
+unless your browser preserves it independently.</p>
 
 <h2>Email alerts and unsubscribe choices</h2>
 <p>If you subscribe to job alerts, Pakistan Jobs Market uses the submitted address to send messages
@@ -214,11 +226,13 @@ tools from publicly available video transcripts or comments. Such material may c
 outdated statements, language errors or incomplete context. It is supplementary study material,
 not official recruitment guidance, and should be checked against authoritative sources.</p>
 
-<h2>Career tools and editorial content</h2>
-<p>Blog articles, resume templates, cover-letter tools and other career resources are general
-information only. They do not constitute legal, financial, immigration, education or professional
-advice and do not guarantee an interview, selection or employment outcome. Users remain
-responsible for reviewing and adapting generated documents before use.</p>
+<h2>Career tools and ATS score</h2>
+<p>The Resume Builder follows common ATS-readable practices and provides an on-device readiness
+estimate based on completeness, standard sections, achievements, measurable impact, skills,
+keywords and readability. Applicant-tracking systems and job requirements vary, so the score is
+guidance rather than a test performed by an employer and does not guarantee parsing, shortlisting,
+an interview or employment. Users should tailor every resume to the official job description and
+review all generated documents before applying.</p>
 
 <h2>Copyright, corrections and availability</h2>
 <p>Advertisements, logos and source materials may belong to their respective owners and are used
@@ -371,6 +385,31 @@ def sync_core_page_content_v2(db) -> list[Page]:
     return changed
 
 
+def sync_core_page_content_v3(db) -> list[Page]:
+    """Publish the ATS Resume Builder disclosures to the managed core pages once."""
+    marker_key = "core_pages_ats_resume_content_v3"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    defaults = {slug: (title, content) for slug, title, content in DEFAULT_PAGES}
+    changed: list[Page] = []
+    for slug in ("about", "privacy", "disclaimer"):
+        title, content = defaults[slug]
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO[slug])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
 def sync_homepage_branding_seo_v1(db) -> list[str]:
     """Apply the new public brand and homepage SEO once, without overwriting future edits."""
     marker_key = "homepage_branding_seo_v1"
@@ -444,6 +483,7 @@ def seed_if_empty() -> None:
         ensure_default_pages(db)
         sync_local_core_pages_once(db)
         sync_core_page_content_v2(db)
+        sync_core_page_content_v3(db)
         sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 

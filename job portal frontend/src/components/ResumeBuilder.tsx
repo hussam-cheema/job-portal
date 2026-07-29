@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useA4PreviewScale } from "@/hooks/useA4PreviewScale";
+import { scoreResumeForAts, type AtsScoreResult } from "@/lib/atsResumeScore";
 import {
+  buildResumeAtsText,
   createResumeDocx,
   safeDocumentName,
   saveDocumentBlob,
+  type ResumeDocumentData,
   type ResumeAdditionalSelection,
   type ResumeSectionSelection,
 } from "@/lib/documentDownloads";
@@ -213,6 +216,21 @@ export function ResumeBuilder() {
   });
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [atsResult, setAtsResult] = useState<AtsScoreResult | null>(null);
+  const [atsFingerprint, setAtsFingerprint] = useState<string | null>(null);
+  const atsResultRef = useRef<HTMLDivElement>(null);
+  const resumeData: ResumeDocumentData = {
+    personal,
+    education,
+    experience,
+    projects,
+    activities,
+    additional,
+    includedSections,
+    includedAdditional,
+  };
+  const currentFingerprint = JSON.stringify(resumeData);
+  const atsResultIsStale = atsResult !== null && atsFingerprint !== currentFingerprint;
 
   function updateItem<T>(
     setter: React.Dispatch<React.SetStateAction<T[]>>,
@@ -257,11 +275,35 @@ export function ResumeBuilder() {
       const imageHeight =
         naturalImageHeight <= pageHeight * 1.01 ? pageHeight : naturalImageHeight;
       const pages = Math.max(1, Math.ceil((imageHeight - 0.1) / pageHeight));
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: false });
       const image = canvas.toDataURL("image/jpeg", 0.98);
+      const atsText = buildResumeAtsText(resumeData).flatMap((line) =>
+        pdf.splitTextToSize(line.replace(/[^\x20-\x7E]/g, " "), 182)
+      );
+      const lineHeight = 4.2;
+      const textLinesPerPage = Math.floor((pageHeight - 24) / lineHeight);
+      pdf.setProperties({
+        title: `${personal.fullName.trim() || "Professional"} Resume`,
+        subject: "ATS-readable resume created with Pakistan Jobs Market Resume Builder",
+        creator: "Pakistan Jobs Market Resume Builder",
+      });
 
       for (let page = 0; page < pages; page += 1) {
         if (page > 0) pdf.addPage("a4", "portrait");
+        // Add a correctly ordered, searchable text layer before the exact
+        // visual capture. The image laid over it preserves the existing
+        // template pixel-for-pixel, while ATS/PDF extractors can read the
+        // underlying text instead of receiving an image-only document.
+        const pageText = atsText.slice(
+          page * textLinesPerPage,
+          (page + 1) * textLinesPerPage
+        );
+        if (pageText.length) {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(pageText, 14, 14, { lineHeightFactor: 1.25 });
+        }
         pdf.addImage(image, "JPEG", 0, -(page * pageHeight), pageWidth, imageHeight, undefined, "FAST");
       }
 
@@ -279,14 +321,7 @@ export function ResumeBuilder() {
     setDownloadError(null);
     try {
       const blob = await createResumeDocx({
-        personal,
-        education,
-        experience,
-        projects,
-        activities,
-        additional,
-        includedSections,
-        includedAdditional,
+        ...resumeData,
       });
       saveDocumentBlob(blob, `${safeDocumentName(personal.fullName)}-resume.docx`);
     } catch (error) {
@@ -294,6 +329,14 @@ export function ResumeBuilder() {
     } finally {
       setDownloading(null);
     }
+  }
+
+  function checkAtsScore() {
+    setAtsResult(scoreResumeForAts(resumeData));
+    setAtsFingerprint(currentFingerprint);
+    window.requestAnimationFrame(() => {
+      atsResultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }
 
   return (
@@ -306,9 +349,10 @@ export function ResumeBuilder() {
           Resume Builder
         </h1>
         <p className="mt-3 text-[var(--muted)]">
-          Enter your information, review the live A4 preview, and download a professional PDF or
-          editable Word document.
-          Your information stays in this browser and is not submitted to Pakistan Jobs Market.
+          Build an ATS-standard resume with clear headings, searchable text and recruiter-friendly
+          formatting, while keeping this professional A4 layout. Review the live preview, check
+          your ATS score on this page, and download a PDF or editable Word document. Your
+          information and score stay in this browser and are not submitted to Pakistan Jobs Market.
         </p>
       </div>
 
@@ -609,6 +653,84 @@ export function ResumeBuilder() {
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            className="ats-check-button mt-4 w-full"
+            onClick={checkAtsScore}
+            aria-label="Check Resume ATS Score"
+          >
+            <span className="ats-check-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 19V9m6 10V5m6 14v-7m4 7H2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>
+              <strong>Check my ATS score</strong>
+              <small>Analyse the resume currently shown above</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+
+          {atsResult && (
+            <div
+              ref={atsResultRef}
+              className={`ats-score-card ats-score-${atsResult.band.toLowerCase()}`}
+              data-testid="ats-score-result"
+              aria-live="polite"
+            >
+              <div className="ats-score-summary">
+                <div
+                  className="ats-score-ring"
+                  style={{ "--ats-score": atsResult.score } as React.CSSProperties}
+                  aria-label={`ATS score ${atsResult.score} out of 100`}
+                >
+                  <strong>{atsResult.score}</strong>
+                  <span>/ 100</span>
+                </div>
+                <div>
+                  <p className="ats-score-kicker">ATS readiness</p>
+                  <h3>{atsResult.band}</h3>
+                  <p>{atsResult.summary}</p>
+                </div>
+              </div>
+
+              {atsResultIsStale && (
+                <p className="ats-score-stale">
+                  Resume changed since this check. Select “Check my ATS score” again for an updated
+                  result.
+                </p>
+              )}
+
+              <div className="ats-score-categories" aria-label="ATS score breakdown">
+                {atsResult.categories.map((item) => (
+                  <div className="ats-score-category" key={item.label}>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <span>{item.score}/{item.maximum}</span>
+                    </div>
+                    <div className="ats-score-category-track" aria-hidden="true">
+                      <span style={{ width: `${(item.score / item.maximum) * 100}%` }} />
+                    </div>
+                    <p>{item.feedback}</p>
+                  </div>
+                ))}
+              </div>
+
+              {atsResult.recommendations.length > 0 && (
+                <div className="ats-score-recommendations">
+                  <h4>Highest-impact improvements</h4>
+                  <ul>
+                    {atsResult.recommendations.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+              )}
+              <p className="ats-score-note">
+                This score is an on-device readiness estimate. Employer systems and job-specific
+                keyword requirements vary, so no score can guarantee screening or selection.
+              </p>
+            </div>
+          )}
 
           {downloadError && <p className="field-error mt-3">{downloadError}</p>}
           <div className="builder-download-actions mt-4">

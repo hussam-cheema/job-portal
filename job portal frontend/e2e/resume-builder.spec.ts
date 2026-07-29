@@ -78,6 +78,11 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
   const bytes = await readFile(path!);
   expect(bytes.subarray(0, 4).toString()).toBe("%PDF");
   expect(bytes.length).toBeGreaterThan(20_000);
+  // The PDF keeps the exact visual capture but must also expose a searchable
+  // text layer so applicant-tracking systems do not receive an image only.
+  expect(bytes.toString("latin1")).toContain("Mary Leannon");
+  expect(bytes.toString("latin1")).toContain("University of Idaho");
+  expect(bytes.toString("latin1")).toContain("Data Analyst");
 
   const docxButton = page.getByRole("button", { name: "Download Resume as DOCX" });
   await expect(docxButton.locator("svg")).toBeVisible();
@@ -149,6 +154,54 @@ test("Resume Builder includes only the selected sections without discarding thei
   expect(documentXml).not.toContain("University Projects");
   expect(documentXml).not.toContain("Language Skills");
   expect(documentXml).toContain("Activities");
+});
+
+test("Resume Builder scores the current form and highlights ATS improvements", async ({
+  page,
+}) => {
+  await page.goto("/resume-builder");
+  await expect(page.getByText(/Build an ATS-standard resume/i)).toBeVisible();
+
+  await page.getByLabel("Full name").fill("Ayesha Khan");
+  await page.getByLabel("Email").fill("ayesha.khan@example.com");
+  await page.getByLabel("Address").fill("Lahore, Punjab");
+  await page.getByLabel("Phone").fill("+92 300 1234567");
+  await page.getByLabel("University / school").first().fill("University of the Punjab");
+  await page.getByLabel("Location").first().fill("Lahore");
+  await page.getByLabel("Degree / programme").first().fill("BS Computer Science");
+  await page.getByLabel("Graduation year").first().fill("2025");
+  await page.getByLabel("Relevant coursework").first().fill("Machine Learning, Statistics");
+  await page.getByLabel("Job title").first().fill("Data Analyst");
+  await page.getByLabel("Company").first().fill("Example Analytics");
+  await page.getByLabel("Employment dates").first().fill("Jan 2025 - Present");
+  await page.getByLabel("Achievements (one bullet per line)").first().fill(
+    [
+      "Automated weekly reporting and reduced preparation time by 40%.",
+      "Built 12 dashboards used by sales and operations teams.",
+      "Analyzed customer data and improved campaign conversion by 18%.",
+      "Collaborated with 4 departments to standardize KPI definitions.",
+    ].join("\n")
+  );
+  await page.getByLabel("Project title").fill("Graduate demand forecasting");
+  await page.getByLabel("Dates").first().fill("2024");
+  await page.getByLabel("Description").first().fill("Forecasted monthly graduate hiring demand.");
+  await page.getByLabel("Technologies used").fill("Python, Pandas, scikit-learn");
+  await page.getByLabel("Outcome").fill("Improved validation accuracy by 15%.");
+  await page.getByRole("textbox", { name: "Technical skills" }).fill(
+    "Python, SQL, Power BI, Excel, statistics, data visualization"
+  );
+
+  await page.getByRole("button", { name: "Check Resume ATS Score" }).click();
+  const result = page.getByTestId("ats-score-result");
+  await expect(result).toBeVisible();
+  await expect(result.getByText("ATS readiness")).toBeVisible();
+  await expect(result.getByText("Highest-impact improvements")).toBeVisible();
+  const scoreLabel = await result.locator(".ats-score-ring").getAttribute("aria-label");
+  expect(scoreLabel).not.toBeNull();
+  expect(Number(scoreLabel!.match(/\d+/)?.[0])).toBeGreaterThanOrEqual(85);
+
+  await page.getByLabel("Full name").fill("Ayesha Noor Khan");
+  await expect(result).toContainText("Resume changed since this check");
 });
 
 test("job listings use the canonical deadline without shifting to the previous day", async ({

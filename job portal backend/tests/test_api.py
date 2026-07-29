@@ -231,6 +231,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         HOMEPAGE_BRANDING,
         PRIVACY_HTML,
         sync_core_page_content_v2,
+        sync_core_page_content_v3,
         sync_homepage_branding_seo_v1,
     )
 
@@ -268,6 +269,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         session.commit()
 
         assert len(sync_core_page_content_v2(session)) == 3
+        assert len(sync_core_page_content_v3(session)) == 3
         assert len(sync_homepage_branding_seo_v1(session)) == len(HOMEPAGE_BRANDING)
         session.commit()
 
@@ -278,6 +280,13 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         }
         for page in session.query(Page).all():
             assert page.content == expected_content[page.slug]
+            if page.slug == "about":
+                assert "ATS-standard resume tools" in page.content
+            elif page.slug == "privacy":
+                assert "ATS-readiness score are processed" in page.content
+                assert "does not receive" in page.content
+            elif page.slug == "disclaimer":
+                assert "does not guarantee parsing" in page.content
             seo = (
                 session.query(SEOMeta)
                 .filter(
@@ -296,6 +305,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
             assert session.get(SiteSetting, key).value == value
 
         assert sync_core_page_content_v2(session) == []
+        assert sync_core_page_content_v3(session) == []
         assert sync_homepage_branding_seo_v1(session) == []
     finally:
         session.close()

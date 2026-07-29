@@ -117,6 +117,112 @@ export function saveDocumentBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
+export function buildResumeAtsText(data: ResumeDocumentData) {
+  const includedSections: ResumeSectionSelection = {
+    education: true,
+    experience: true,
+    projects: true,
+    activities: true,
+    additional: true,
+    ...data.includedSections,
+  };
+  const includedAdditional: ResumeAdditionalSelection = {
+    languages: true,
+    technicalSkills: true,
+    volunteerExperience: true,
+    interests: true,
+    ...data.includedAdditional,
+  };
+  const output: string[] = [];
+  const add = (...values: string[]) => {
+    for (const value of values) {
+      const normalized = value.trim();
+      if (normalized) output.push(normalized);
+    }
+  };
+
+  add(data.personal.fullName);
+  add([data.personal.address, data.personal.phone, data.personal.email].filter(Boolean).join(" | "));
+
+  if (includedSections.education) {
+    add("EDUCATION");
+    for (const item of data.education) {
+      add(
+        item.school,
+        item.degree,
+        [item.location, item.graduationYear].filter(Boolean).join(" | "),
+        item.details,
+        item.coursework ? `Relevant coursework: ${item.coursework}` : ""
+      );
+    }
+  }
+
+  if (includedSections.experience) {
+    add("EXPERIENCE");
+    for (const item of data.experience) {
+      add(
+        item.jobTitle,
+        item.company,
+        [item.location, item.dates].filter(Boolean).join(" | ")
+      );
+      add(...populatedLines(item.achievements, []));
+    }
+  }
+
+  if (includedSections.projects) {
+    add("UNIVERSITY PROJECTS");
+    for (const item of data.projects) {
+      add(
+        item.title,
+        item.dates,
+        item.description ? `Description: ${item.description}` : "",
+        item.role ? `Role: ${item.role}` : "",
+        item.technologies ? `Technologies used: ${item.technologies}` : "",
+        item.outcome ? `Outcome: ${item.outcome}` : ""
+      );
+    }
+  }
+
+  if (includedSections.activities) {
+    add("ACTIVITIES");
+    for (const item of data.activities) {
+      add(
+        item.name,
+        item.dates,
+        item.description ? `Description: ${item.description}` : "",
+        item.skills ? `Skills developed: ${item.skills}` : "",
+        item.achievements ? `Achievements: ${item.achievements}` : ""
+      );
+    }
+  }
+
+  if (includedSections.additional && Object.values(includedAdditional).some(Boolean)) {
+    add("ADDITIONAL");
+    if (includedAdditional.languages) {
+      add(data.additional.languages ? `Language skills: ${data.additional.languages}` : "");
+    }
+    if (includedAdditional.technicalSkills) {
+      add(
+        data.additional.technicalSkills
+          ? `Technical skills: ${data.additional.technicalSkills}`
+          : ""
+      );
+    }
+    if (includedAdditional.volunteerExperience) {
+      add(
+        data.additional.volunteerExperience
+          ? `Volunteer experience: ${data.additional.volunteerExperience}`
+          : ""
+      );
+    }
+    if (includedAdditional.interests) {
+      add(data.additional.interests ? `Interests and hobbies: ${data.additional.interests}` : "");
+    }
+  }
+
+  return output;
+}
+
 export async function createResumeDocx(data: ResumeDocumentData) {
   const {
     AlignmentType,
