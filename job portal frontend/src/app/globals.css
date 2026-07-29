@@ -1764,6 +1764,14 @@ iframe {
 /* Career document builders: modern editing UI around unchanged A4 documents. */
 .career-builder {
   --builder-radius: 1.15rem;
+  min-width: 0;
+}
+
+.builder-workspace,
+.builder-form-stack,
+.builder-workspace > *,
+.builder-preview-panel {
+  min-width: 0;
 }
 
 .builder-intro {
@@ -2132,6 +2140,8 @@ iframe {
 .resume-preview-shell {
   display: flex;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   justify-content: center;
   overflow: hidden;
   border-radius: 0.9rem;
@@ -2511,6 +2521,8 @@ iframe {
 .cover-letter-preview-shell {
   display: flex;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   justify-content: center;
   overflow: hidden;
   border-radius: 0.9rem;
@@ -2538,6 +2550,7 @@ iframe {
 }
 
 .cover-letter-document-header {
+  margin-bottom: 3.5mm;
   text-align: center;
 }
 
@@ -2549,13 +2562,6 @@ iframe {
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
-}
-
-.cover-letter-document-header p {
-  margin: 0.8mm 0 3.5mm;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 8pt;
-  letter-spacing: 0.04em;
 }
 
 .cover-letter-contact-line {

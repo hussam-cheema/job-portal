@@ -70,7 +70,6 @@ export type ResumeDocumentData = {
 
 export type CoverLetterDocumentData = {
   documentTitle: string;
-  subtitle: string;
   fullName: string;
   phone: string;
   email: string;
@@ -897,7 +896,6 @@ export async function createCoverLetterDocx(
     ...populatedLines(data.companyAddress, ["(Company Address)"]),
   ];
   const title = (data.documentTitle || "GOOGLE COVER LETTER").toUpperCase();
-  const subtitle = data.subtitle || "by CV Genius";
   const phone = data.phone || "07123 456 789";
   const email = data.email || "your.email@gmail.com";
   const address = data.address || "26 Springfield Road, London, N39 6CU";
@@ -1093,17 +1091,6 @@ export async function createCoverLetterDocx(
               }),
             ],
             Math.max(3_600, title.length * 200),
-            45
-          ),
-          centeredBand(
-            [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [bodyRun(subtitle, { font: headingFont, size: 16, color: ink })],
-                spacing: { after: 0, line: 264, lineRule: LineRuleType.AUTO },
-              }),
-            ],
-            Math.max(1_800, subtitle.length * 130),
             198
           ),
           contactLine,

@@ -33,7 +33,7 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
   await expect(signatureName).toHaveText("(YOUR NAME)");
   await expect(signatureName).toHaveCSS("color", "rgb(0, 0, 0)");
   await page.getByLabel("Cover letter title").fill("Google Cover Letter");
-  await page.getByLabel("Subtitle").fill("by CV Genius");
+  await expect(page.getByLabel("Subtitle")).toHaveCount(0);
   await page.getByLabel("Full name").fill("Mary Leannon");
   await page.getByLabel("Phone").fill("07123 456 789");
   await page.getByLabel("Email").fill("mary@example.com");
@@ -48,6 +48,7 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
 
   const preview = page.getByTestId("cover-letter-preview");
   await expect(preview.getByRole("heading", { name: "GOOGLE COVER LETTER" })).toBeVisible();
+  await expect(preview).not.toContainText("by CV Genius");
   await expect(preview).toContainText("31 August 2026");
   await expect(preview).toContainText("Dear Morgan,");
   await expect(preview).toContainText("I am applying for the Senior Software Engineer position.");
@@ -104,9 +105,10 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
   const documentXml = await archive.file("word/document.xml")!.async("string");
   expect(documentXml).toContain("Mary Leannon");
   expect(documentXml).toContain("GOOGLE COVER LETTER");
+  expect(documentXml).not.toContain("by CV Genius");
   expect(documentXml).toContain("I am applying for the Senior Software Engineer position.");
   expect(documentXml).toContain("31 August 2026");
-  expect((documentXml.match(/<w:tbl>/g) ?? []).length).toBeGreaterThanOrEqual(6);
+  expect((documentXml.match(/<w:tbl>/g) ?? []).length).toBeGreaterThanOrEqual(5);
   expect(documentXml).toContain(
     '<w:gridCol w:w="567"/><w:gridCol w:w="9864"/><w:gridCol w:w="567"/>'
   );

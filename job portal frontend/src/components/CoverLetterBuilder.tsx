@@ -10,7 +10,6 @@ import {
 
 type CoverLetterData = {
   documentTitle: string;
-  subtitle: string;
   fullName: string;
   phone: string;
   email: string;
@@ -29,7 +28,6 @@ type CoverLetterData = {
 
 const initialData: CoverLetterData = {
   documentTitle: "",
-  subtitle: "",
   fullName: "",
   phone: "",
   email: "",
@@ -146,10 +144,7 @@ export function CoverLetterBuilder() {
       <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
         <div className="builder-form-stack space-y-5">
           <FormSection title="Document heading">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Cover letter title" value={data.documentTitle} placeholder="Google Cover Letter" onChange={(value) => update("documentTitle", value)} />
-              <Field label="Subtitle" value={data.subtitle} placeholder="by CV Genius" onChange={(value) => update("subtitle", value)} />
-            </div>
+            <Field label="Cover letter title" value={data.documentTitle} placeholder="Google Cover Letter" onChange={(value) => update("documentTitle", value)} />
           </FormSection>
 
           <FormSection title="Your contact information">
@@ -196,7 +191,6 @@ export function CoverLetterBuilder() {
               <div ref={previewRef} className="cover-letter-paper" style={documentStyle} data-testid="cover-letter-preview">
               <header className="cover-letter-document-header">
                 <h1>{data.documentTitle || "GOOGLE COVER LETTER"}</h1>
-                <p>{data.subtitle || "by CV Genius"}</p>
               </header>
               <div className="cover-letter-contact-line">
                 <span>{data.phone || "07123 456 789"}</span>
