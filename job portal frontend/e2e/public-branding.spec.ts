@@ -14,6 +14,20 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
     "content",
     /jobs in Pakistan.*government jobs Pakistan.*private jobs Pakistan/,
   );
+  const adsense = page.locator(
+    'head script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
+  );
+  await expect(adsense).toHaveCount(1);
+  await expect(adsense).toHaveAttribute(
+    "src",
+    "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1209296651546868"
+  );
+  await expect(adsense).toHaveAttribute("crossorigin", "anonymous");
+  await expect(adsense).toHaveAttribute("async", "");
+  await expect(page.locator('meta[name="google-adsense-account"]')).toHaveAttribute(
+    "content",
+    "ca-pub-1209296651546868"
+  );
   await expect(page.locator("header").getByText("Pakistan Jobs Market", { exact: true })).toBeVisible();
   const headerLogo = page.locator("header img");
   const tabIcon = page.locator('link[rel="icon"]').first();
@@ -54,4 +68,13 @@ test("job description R2 images render through the public API media route", asyn
   await expect
     .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
     .toBeGreaterThan(0);
+});
+
+test("AdSense ads.txt is published at the site root", async ({ request }) => {
+  const response = await request.get("/ads.txt");
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["content-type"]).toMatch(/^text\/plain/);
+  expect((await response.text()).trim()).toBe(
+    "google.com, pub-1209296651546868, DIRECT, f08c47fec0942fa0"
+  );
 });
