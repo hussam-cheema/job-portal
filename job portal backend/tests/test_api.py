@@ -124,12 +124,19 @@ def test_login_and_create_job(client: TestClient):
     assert r.status_code == 200
     token = r.json()["access_token"]
 
+    job_description = (
+        "<p>Build APIs in Pakistan.</p>"
+        "<table><tbody>"
+        "<tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr>"
+        "<tr><td>DEV-101</td><td>Python Developer</td></tr>"
+        "</tbody></table>"
+    )
     r = client.post(
         "/api/admin/jobs",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "Python Developer",
-            "description": "<p>Build APIs in Pakistan.</p>",
+            "description": job_description,
             "published_date": "2026-07-01T00:00:00",
             "job_type": "private",
             "cities": ["Karachi", "Lahore"],
@@ -144,6 +151,7 @@ def test_login_and_create_job(client: TestClient):
     r = client.get(f"/api/jobs/{job_id}")
     assert r.status_code == 200
     assert r.json()["title"] == "Python Developer"
+    assert r.json()["description"] == job_description
     assert r.json()["cities"] == ["Karachi", "Lahore"]
     assert r.json()["provinces"] == ["Sindh", "Punjab"]
     assert "Karachi" in r.json()["location"]
@@ -2513,6 +2521,12 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
     )
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    article_content = (
+        "<h2>Preparation</h2>"
+        "<p>Build a focused study plan for FPSC exams.</p>"
+        "<table><thead><tr><th>Stage</th><th>Focus</th></tr></thead>"
+        "<tbody><tr><td>Screening</td><td>Past papers</td></tr></tbody></table>"
+    )
     published = client.post(
         "/api/admin/blog",
         headers=auth,
@@ -2520,7 +2534,7 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
             "slug": "how-to-prepare-for-fpsc",
             "title": "How to Prepare for FPSC Jobs",
             "excerpt": "A practical preparation guide.",
-            "content": "<h2>Preparation</h2><p>Build a focused study plan for FPSC exams.</p>",
+            "content": article_content,
             "author": "PakistanJobs Editorial Team",
             "category": "Career Advice",
             "tags": ["FPSC", "Exam Preparation"],
@@ -2540,9 +2554,7 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
     assert admin_detail.status_code == 200
     assert admin_detail.json()["title"] == "How to Prepare for FPSC Jobs"
     assert admin_detail.json()["excerpt"] == "A practical preparation guide."
-    assert admin_detail.json()["content"] == (
-        "<h2>Preparation</h2><p>Build a focused study plan for FPSC exams.</p>"
-    )
+    assert admin_detail.json()["content"] == article_content
     assert admin_detail.json()["author"] == "PakistanJobs Editorial Team"
     assert admin_detail.json()["category"] == "Career Advice"
     assert admin_detail.json()["tags"] == ["FPSC", "Exam Preparation"]
@@ -2574,6 +2586,7 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
     detail = client.get(f"/api/blog/{post['slug']}")
     assert detail.status_code == 200
     assert detail.json()["author"] == "PakistanJobs Editorial Team"
+    assert detail.json()["content"] == article_content
     assert client.get("/api/blog/private-draft").status_code == 404
 
     seo = client.get(f"/api/seo/blog/{post['id']}")

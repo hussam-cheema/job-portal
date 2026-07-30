@@ -13,6 +13,7 @@ import {
 } from "@/lib/format";
 import { toSeoSlug } from "@/lib/slug";
 import { rewriteJobDescriptionImages } from "@/lib/media";
+import { wrapRichTextTables } from "@/lib/richText";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -175,8 +176,10 @@ export default async function JobDetailPage({ params }: Props) {
           <div
             className="prose-job text-[0.95rem]"
             dangerouslySetInnerHTML={{
-              __html: rewriteJobDescriptionImages(
-                job.description || "<p>No description provided.</p>"
+              __html: wrapRichTextTables(
+                rewriteJobDescriptionImages(
+                  job.description || "<p>No description provided.</p>"
+                ),
               ),
             }}
           />

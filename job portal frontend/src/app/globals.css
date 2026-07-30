@@ -521,11 +521,62 @@ a {
   white-space: pre-wrap;
 }
 
-.prose-job table {
-  display: block;
+.prose-job .rich-table-scroll {
   width: 100% !important;
+  margin: 1.15rem 0;
   overflow-x: auto;
-  border-collapse: collapse;
+  overscroll-behavior-inline: contain;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.75rem;
+  background: var(--card);
+  scrollbar-width: thin;
+}
+
+.prose-job .rich-table-scroll table {
+  display: table;
+  width: 100% !important;
+  min-width: 100%;
+  max-width: none !important;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.prose-job :is(th, td) {
+  min-width: 10rem;
+  padding: 0.7rem 0.85rem;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--navy-200);
+  line-height: 1.5;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.prose-job th {
+  background: var(--accent-soft);
+  color: var(--navy-100);
+  font-weight: 700;
+}
+
+/* Quill converts pasted <th> elements into editable table cells while
+   retaining their bold text. Give that first header-like row the same visual
+   treatment as a semantic <thead>. */
+.prose-job tbody tr:first-child:has(> td > strong) > td {
+  background: var(--accent-soft);
+  color: var(--navy-100);
+}
+
+.prose-job tr > :last-child {
+  border-right: 0;
+}
+
+.prose-job :is(tbody, thead, tfoot):last-child tr:last-child > * {
+  border-bottom: 0;
 }
 
 .prose-job iframe,
@@ -613,10 +664,7 @@ a {
 }
 
 .blog-content table {
-  display: block;
   width: 100% !important;
-  overflow-x: auto;
-  border-collapse: collapse;
 }
 
 .blog-content iframe,
@@ -649,6 +697,21 @@ a {
 [data-theme="dark"] .blog-content :is(pre, .ql-syntax) {
   background-color: var(--navy-850) !important;
   color: var(--navy-200) !important;
+}
+
+[data-theme="dark"] .prose-job .rich-table-scroll,
+[data-theme="dark"] .blog-content .rich-table-scroll,
+[data-theme="dark"] .prose-job .rich-table-scroll table,
+[data-theme="dark"] .blog-content .rich-table-scroll table {
+  background-color: var(--card) !important;
+}
+
+[data-theme="dark"] .prose-job th,
+[data-theme="dark"] .blog-content th,
+[data-theme="dark"] .prose-job tbody tr:first-child:has(> td > strong) > td,
+[data-theme="dark"] .blog-content tbody tr:first-child:has(> td > strong) > td {
+  background-color: var(--accent-soft) !important;
+  color: var(--navy-100) !important;
 }
 
 .logo-mark {
@@ -909,6 +972,52 @@ h2.text-white {
 .quill-wrap .ql-editor img {
   max-width: 100%;
   height: auto;
+}
+
+.quill-wrap .ql-editor table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.9rem 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid #c9ced6;
+  border-radius: 0.45rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  scrollbar-width: thin;
+}
+
+.quill-wrap .ql-editor table > :is(thead, tbody, tfoot) {
+  display: table;
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.quill-wrap .ql-editor table td {
+  min-width: 10rem;
+  padding: 0.6rem 0.7rem;
+  border-right: 1px solid #d9dde3;
+  border-bottom: 1px solid #d9dde3;
+  line-height: 1.4;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.quill-wrap .ql-editor table tr:first-child td {
+  background: #eef4ff;
+  font-weight: 700;
+}
+
+.quill-wrap .ql-editor table tr > td:last-child {
+  border-right: 0;
+}
+
+.quill-wrap .ql-editor table tr:last-child > td {
+  border-bottom: 0;
 }
 
 .quill-wrap .ql-editor a {

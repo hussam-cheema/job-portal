@@ -35,6 +35,15 @@ test("job rich text headings, location tags, and overflow render correctly", asy
   ).toContain("•");
   await expect(description.locator("ul > li")).toHaveCSS("list-style-type", "disc");
 
+  const table = description.locator("table");
+  const tableFrame = description.locator(".rich-table-scroll");
+  await expect(table).toBeVisible();
+  await expect(table.locator("tr")).toHaveCount(3);
+  await expect(table).toContainText("Recruitment Manager");
+  await expect(table).toHaveCSS("display", "table");
+  await expect(tableFrame).toHaveCSS("overflow-x", "auto");
+  await expect(table.locator("td").first()).toHaveCSS("border-bottom-style", "solid");
+
   const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
   const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(documentWidth).toBeLessThanOrEqual(viewportWidth);

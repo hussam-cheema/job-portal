@@ -291,6 +291,65 @@ test("toolbar upload and clipboard paste keep working in the same editor", async
   }
 });
 
+test("HTML tables pasted from external sources remain tables in job and blog editors", async ({
+  page,
+}) => {
+  const pasteTable = async (path: string, titleLabel: string, title: string) => {
+    await page.goto(path);
+    await page.getByLabel(titleLabel).fill(title);
+    const editor = page.locator(".ql-editor").first();
+    await expect(editor).toBeVisible();
+    await editor.click();
+    await editor.evaluate((element) => {
+      const clipboard = new DataTransfer();
+      clipboard.setData(
+        "text/html",
+        [
+          "<h2>Available Positions</h2>",
+          "<table>",
+          "<thead><tr><th>Job ID</th><th>Position</th></tr></thead>",
+          "<tbody>",
+          "<tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr>",
+          "<tr><td>PDA-J0150</td><td>AI Associate</td></tr>",
+          "</tbody>",
+          "</table>",
+        ].join(""),
+      );
+      clipboard.setData(
+        "text/plain",
+        "Available Positions\nJob ID\tPosition\nPDA-J0149\tRecruitment Manager\nPDA-J0150\tAI Associate",
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        }),
+      );
+    });
+
+    const table = editor.locator("table");
+    await expect(table).toHaveCount(1);
+    await expect(table.locator("tr")).toHaveCount(3);
+    await expect(table).toContainText("Job ID");
+    await expect(table).toContainText("Recruitment Manager");
+    await expect(table).toContainText("AI Associate");
+    await expect(table).toHaveCSS("overflow-x", "auto");
+    await expect(table.locator("td").first()).toHaveCSS("border-bottom-style", "solid");
+
+    await expect(page.getByTestId("editor-draft-status")).toContainText(
+      "Draft auto-saved locally.",
+    );
+    await page.reload();
+    await expect(page.getByLabel(titleLabel)).toHaveValue(title);
+    await expect(page.locator(".ql-editor").first().locator("table")).toHaveCount(1);
+    await expect(page.locator(".ql-editor").first()).toContainText("PDA-J0150");
+  };
+
+  await pasteTable("/admin/jobs/new", "Job title", "Table paste job draft");
+  await pasteTable("/admin/blog/new", "Blog title", "Table paste blog draft");
+});
+
 test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
   await page.goto("/admin/seo");
   await expect(page.getByText("Daily job alert subscriptions")).toHaveCount(0);

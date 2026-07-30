@@ -37,6 +37,15 @@ test("blog navigation, filters, article, and share links work", async ({ page })
   expect(layout.contentRight).toBeLessThanOrEqual(layout.articleRight + 1);
   expect(layout.overflowWrap).toBe("anywhere");
 
+  const table = page.locator(".blog-content table");
+  const tableFrame = page.locator(".blog-content .rich-table-scroll");
+  await expect(table).toBeVisible();
+  await expect(table.locator("tr")).toHaveCount(3);
+  await expect(table).toContainText("Past papers and the official syllabus");
+  await expect(table).toHaveCSS("display", "table");
+  await expect(tableFrame).toHaveCSS("overflow-x", "auto");
+  await expect(table.locator("th").first()).toHaveCSS("font-weight", "700");
+
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   const pastedText = page.locator('[data-testid="pasted-rich-text"]');
   await expect(pastedText).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");

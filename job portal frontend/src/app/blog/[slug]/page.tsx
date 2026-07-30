@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { JobShareButtons } from "@/components/JobShareButtons";
 import { fetchBlogPost } from "@/lib/api";
 import { formatDate, stripHtml } from "@/lib/format";
+import { wrapRichTextTables } from "@/lib/richText";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -41,7 +42,10 @@ export default async function BlogPostPage({ params }: Props) {
           <JobShareButtons path={`/blog/${post.slug}`} title={post.title} entityLabel="post" />
         </header>
         <div className="min-w-0 px-5 py-7 sm:px-9 sm:py-9">
-          <div className="prose-job blog-content min-w-0 max-w-full" dangerouslySetInnerHTML={{ __html: post.content }} />
+          <div
+            className="prose-job blog-content min-w-0 max-w-full"
+            dangerouslySetInnerHTML={{ __html: wrapRichTextTables(post.content) }}
+          />
           {post.tags.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-2 border-t border-[var(--border)] pt-5">
               {post.tags.map((tag) => <Link key={tag} href={`/blog?tag=${encodeURIComponent(tag)}`} className="tag tag-blue">{tag}</Link>)}

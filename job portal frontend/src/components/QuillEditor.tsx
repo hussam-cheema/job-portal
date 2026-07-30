@@ -298,6 +298,7 @@ export function QuillEditor({
     "indent",
     "direction",
     "align",
+    "table",
     "link",
     "image",
     "video",
