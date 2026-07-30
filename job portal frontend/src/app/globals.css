@@ -566,7 +566,7 @@ a {
 /* Quill converts pasted <th> elements into editable table cells while
    retaining their bold text. Give that first header-like row the same visual
    treatment as a semantic <thead>. */
-.prose-job tbody tr:first-child:has(> td > strong) > td {
+.prose-job tbody tr:first-child:has(> td strong) > td {
   background: var(--accent-soft);
   color: var(--navy-100);
 }
@@ -708,8 +708,8 @@ a {
 
 [data-theme="dark"] .prose-job th,
 [data-theme="dark"] .blog-content th,
-[data-theme="dark"] .prose-job tbody tr:first-child:has(> td > strong) > td,
-[data-theme="dark"] .blog-content tbody tr:first-child:has(> td > strong) > td {
+[data-theme="dark"] .prose-job tbody tr:first-child:has(> td strong) > td,
+[data-theme="dark"] .blog-content tbody tr:first-child:has(> td strong) > td {
   background-color: var(--accent-soft) !important;
   color: var(--navy-100) !important;
 }

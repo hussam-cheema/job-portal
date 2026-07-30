@@ -80,6 +80,128 @@ const TOOLBAR = [
   ["clean"],
 ];
 
+function normalizeHtmlTablesForQuill(html: string): string | null {
+  if (!html || !/<table\b/i.test(html)) return null;
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const tables = Array.from(parsed.body.querySelectorAll("table"));
+  if (!tables.length) return null;
+
+  for (const table of tables) {
+    const rows = Array.from(table.rows);
+    const body = parsed.createElement("tbody");
+
+    rows.forEach((sourceRow) => {
+      const row = parsed.createElement("tr");
+
+      Array.from(sourceRow.cells).forEach((sourceCell) => {
+        // Quill 2 collapses a pasted <thead> containing multiple <th> nodes
+        // into one cell. Import each header as its own editable <td> and retain
+        // header intent with <strong>, which also survives save/reload.
+        const cell = parsed.createElement("td");
+        for (const attributeName of ["colspan", "rowspan"]) {
+          const attributeValue = sourceCell.getAttribute(attributeName);
+          if (attributeValue) cell.setAttribute(attributeName, attributeValue);
+        }
+        if (sourceCell.tagName === "TH") {
+          const strong = parsed.createElement("strong");
+          strong.innerHTML = sourceCell.innerHTML;
+          cell.appendChild(strong);
+        } else {
+          cell.innerHTML = sourceCell.innerHTML;
+        }
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+
+    table.replaceChildren(body);
+  }
+
+  return parsed.body.innerHTML;
+}
+
+function parseMarkdownRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+
+  for (const character of trimmed) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === "|") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function escapeTableText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function markdownTableToHtml(text: string): string | null {
+  const lines = text.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (!lines[index].includes("|") || !lines[index + 1].includes("|")) continue;
+    const headers = parseMarkdownRow(lines[index]);
+    const separators = parseMarkdownRow(lines[index + 1]);
+    const isSeparator =
+      headers.length >= 2 &&
+      separators.length === headers.length &&
+      separators.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s/g, "")));
+    if (!isSeparator) continue;
+
+    const rows: string[][] = [];
+    let end = index + 2;
+    while (end < lines.length && lines[end].includes("|")) {
+      const cells = parseMarkdownRow(lines[end]);
+      if (cells.length !== headers.length) break;
+      rows.push(cells);
+      end += 1;
+    }
+
+    const before = lines
+      .slice(0, index)
+      .filter((line) => line.trim())
+      .map((line) => `<p>${escapeTableText(line.trim())}</p>`)
+      .join("");
+    const after = lines
+      .slice(end)
+      .filter((line) => line.trim())
+      .map((line) => `<p>${escapeTableText(line.trim())}</p>`)
+      .join("");
+    const headerMarkup = headers
+      .map((header) => `<td><strong>${escapeTableText(header)}</strong></td>`)
+      .join("");
+    const rowMarkup = rows
+      .map(
+        (row) =>
+          `<tr>${row
+            .map((cell) => `<td>${escapeTableText(cell)}</td>`)
+            .join("")}</tr>`,
+      )
+      .join("");
+
+    return `${before}<table><tbody><tr>${headerMarkup}</tr>${rowMarkup}</tbody></table>${after}`;
+  }
+
+  return null;
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -178,6 +300,24 @@ export function QuillEditor({
     [uploadAndInsertImage],
   );
 
+  const insertPastedTable = useCallback((html: string) => {
+    const editor = quillRef.current?.getEditor?.();
+    if (!editor) return false;
+    const clipboard = editor.getModule("clipboard") as {
+      dangerouslyPasteHTML?: (
+        index: number,
+        html: string,
+        source?: "api" | "silent" | "user",
+      ) => void;
+    } | null;
+    if (!clipboard?.dangerouslyPasteHTML) return false;
+    const range = editor.getSelection(true);
+    const index = range?.index ?? Math.max(0, editor.getLength() - 1);
+    clipboard.dangerouslyPasteHTML(index, html, "user");
+    editor.setSelection(Math.max(0, editor.getLength() - 1), 0, "silent");
+    return true;
+  }, []);
+
   const handlePasteCapture = useCallback(
     (event: React.ClipboardEvent<HTMLDivElement>) => {
       const clipboard = event.clipboardData;
@@ -197,12 +337,22 @@ export function QuillEditor({
               candidate.type === file.type
           ) === index
       );
-      if (!files.length) return;
-      event.preventDefault();
-      event.stopPropagation();
-      uploadFiles(files);
+      if (files.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        uploadFiles(files);
+        return;
+      }
+
+      const pastedTable =
+        normalizeHtmlTablesForQuill(clipboard.getData("text/html")) ||
+        markdownTableToHtml(clipboard.getData("text/plain"));
+      if (pastedTable && insertPastedTable(pastedTable)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     },
-    [uploadFiles],
+    [insertPastedTable, uploadFiles],
   );
 
   const insertAttachmentLink = useCallback((url: string, name: string) => {

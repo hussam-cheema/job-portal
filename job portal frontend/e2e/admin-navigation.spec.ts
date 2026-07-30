@@ -291,33 +291,53 @@ test("toolbar upload and clipboard paste keep working in the same editor", async
   }
 });
 
-test("HTML tables pasted from external sources remain tables in job and blog editors", async ({
+test("HTML and Markdown tables keep separate header cells in job and blog editors", async ({
   page,
 }) => {
-  const pasteTable = async (path: string, titleLabel: string, title: string) => {
+  const pasteTable = async (
+    path: string,
+    titleLabel: string,
+    title: string,
+    includeHtml: boolean,
+  ) => {
     await page.goto(path);
     await page.getByLabel(titleLabel).fill(title);
     const editor = page.locator(".ql-editor").first();
     await expect(editor).toBeVisible();
     await editor.click();
-    await editor.evaluate((element) => {
+    await editor.evaluate((element, hasHtml) => {
       const clipboard = new DataTransfer();
-      clipboard.setData(
-        "text/html",
-        [
-          "<h2>Available Positions</h2>",
-          "<table>",
-          "<thead><tr><th>Job ID</th><th>Position</th></tr></thead>",
-          "<tbody>",
-          "<tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr>",
-          "<tr><td>PDA-J0150</td><td>AI Associate</td></tr>",
-          "</tbody>",
-          "</table>",
-        ].join(""),
-      );
+      if (hasHtml) {
+        clipboard.setData(
+          "text/html",
+          [
+            "<table>",
+            "<thead><tr>",
+            "<th>Region</th>",
+            "<th>Requests/min</th>",
+            "<th>Avg. latency</th>",
+            "<th>Status</th>",
+            "</tr></thead>",
+            "<tbody>",
+            "<tr><td>UAE North</td><td>1,250</td><td>85 ms</td><td>Healthy</td></tr>",
+            "<tr><td>West Europe</td><td>980</td><td>120 ms</td><td>Healthy</td></tr>",
+            "<tr><td>East US</td><td>720</td><td>190 ms</td><td>Healthy</td></tr>",
+            "<tr><td>Southeast Asia</td><td>430</td><td>145 ms</td><td>Degraded</td></tr>",
+            "</tbody>",
+            "</table>",
+          ].join(""),
+        );
+      }
       clipboard.setData(
         "text/plain",
-        "Available Positions\nJob ID\tPosition\nPDA-J0149\tRecruitment Manager\nPDA-J0150\tAI Associate",
+        [
+          "| Region | Requests/min | Avg. latency | Status |",
+          "| --- | ---: | ---: | --- |",
+          "| UAE North | 1,250 | 85 ms | Healthy |",
+          "| West Europe | 980 | 120 ms | Healthy |",
+          "| East US | 720 | 190 ms | Healthy |",
+          "| Southeast Asia | 430 | 145 ms | Degraded |",
+        ].join("\n"),
       );
       element.dispatchEvent(
         new ClipboardEvent("paste", {
@@ -326,14 +346,27 @@ test("HTML tables pasted from external sources remain tables in job and blog edi
           clipboardData: clipboard,
         }),
       );
-    });
+    }, includeHtml);
 
     const table = editor.locator("table");
     await expect(table).toHaveCount(1);
-    await expect(table.locator("tr")).toHaveCount(3);
-    await expect(table).toContainText("Job ID");
-    await expect(table).toContainText("Recruitment Manager");
-    await expect(table).toContainText("AI Associate");
+    await expect(table.locator("tr")).toHaveCount(5);
+    const headerCells = table.locator("tr").first().locator("th, td");
+    await expect(headerCells).toHaveCount(4);
+    await expect(headerCells).toHaveText([
+      "Region",
+      "Requests/min",
+      "Avg. latency",
+      "Status",
+    ]);
+    await expect(table.locator("tr").nth(1).locator("th, td")).toHaveText([
+      "UAE North",
+      "1,250",
+      "85 ms",
+      "Healthy",
+    ]);
+    await expect(table).toContainText("Southeast Asia");
+    await expect(table).toContainText("Degraded");
     await expect(table).toHaveCSS("overflow-x", "auto");
     await expect(table.locator("td").first()).toHaveCSS("border-bottom-style", "solid");
 
@@ -343,11 +376,14 @@ test("HTML tables pasted from external sources remain tables in job and blog edi
     await page.reload();
     await expect(page.getByLabel(titleLabel)).toHaveValue(title);
     await expect(page.locator(".ql-editor").first().locator("table")).toHaveCount(1);
-    await expect(page.locator(".ql-editor").first()).toContainText("PDA-J0150");
+    await expect(
+      page.locator(".ql-editor").first().locator("table tr").first().locator("th, td"),
+    ).toHaveText(["Region", "Requests/min", "Avg. latency", "Status"]);
+    await expect(page.locator(".ql-editor").first()).toContainText("Southeast Asia");
   };
 
-  await pasteTable("/admin/jobs/new", "Job title", "Table paste job draft");
-  await pasteTable("/admin/blog/new", "Blog title", "Table paste blog draft");
+  await pasteTable("/admin/jobs/new", "Job title", "Table paste job draft", true);
+  await pasteTable("/admin/blog/new", "Blog title", "Table paste blog draft", false);
 });
 
 test("newsletter page shows subscription count and editable alert template", async ({ page }) => {
