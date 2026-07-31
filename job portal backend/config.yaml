@@ -47,7 +47,7 @@ llm:
   tasks:
     qna_extraction:
       provider: deepseek
-      model: deepseek-v4-pro
+      model: deepseek-v4-flash
       # Structured extraction is faster and more reliable without spending the
       # output budget on V4's default thinking trace.
       thinking: false
@@ -63,7 +63,7 @@ llm:
       model: "gpt-4o-mini"
     deepseek:
       enabled: true
-      model: "deepseek-v4-pro"
+      model: "deepseek-v4-flash"
     meta:
       enabled: false
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -79,15 +79,15 @@ llm:
 
 youtube_qna:
   enabled: true
-  max_qna: 20
+  max_qna: 15
   # Permit several genuinely different questions within a broad topic (for
   # example maximum age, age relaxation, and post-specific age limits) while
   # still removing semantic duplicates.
   max_qna_per_topic: 4
   # Search this many YouTube candidates before embedding-based ranking.
-  max_youtube_search_results: 50
+  max_youtube_search_results: 25
   # Retain at most this many ranked titles at/above min_title_similarity.
-  max_youtube_videos: 10
+  max_youtube_videos: 5
   max_comments: 50
   # Keep top-level YouTube comments together with their replies so English,
   # Urdu, and Roman-Urdu questions can be paired with real source answers.
@@ -95,15 +95,15 @@ youtube_qna:
   max_replies_per_thread: 10
   extract_transcripts: true
   extract_comments: true
-  timeout_seconds: 120
-  ai_timeout_seconds: 120
+  timeout_seconds: 100
+  ai_timeout_seconds: 100
   source_timeout_seconds: 60
   source_collection_timeout_seconds: 60
   source_workers: 5
   # Calibrated embedding + role-token similarity cutoff for retaining a YouTube
   # title. Lower values broaden the match; higher values are stricter. This remains
   # the single threshold controlling which ranked titles enter source collection.
-  min_title_similarity: 0.35
+  min_title_similarity: 0.4
   # YOUTUBE_API_KEY in .env
 
 # Semantic embeddings used to compare job titles with YouTube titles.

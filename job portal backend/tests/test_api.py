@@ -1925,7 +1925,7 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     assert result["count"] == 1
     assert result["videos_scanned"] == 2
     assert result["error"] is None
-    assert searched["max_results"] == 50
+    assert searched["max_results"] == 25
     assert extracted_titles == [
         "FIA Inspector interview",
         "FIA Inspector preparation",
