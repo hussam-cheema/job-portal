@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -15,6 +16,40 @@ from app.logging_config import get_logger
 from app.models import BlogPost, Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting
 
 logger = get_logger("jobportal.seo_tools")
+
+
+def gsc_credentials_configured() -> bool:
+    """Return whether either file-based or environment-based GSC credentials exist."""
+    return bool(
+        env("GSC_SERVICE_ACCOUNT_JSON")
+        or env("GOOGLE_SERVICE_ACCOUNT_JSON")
+        or env("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+
+
+def _build_gsc_credentials(scopes: list[str]):
+    """Build Google credentials from a serverless secret or mounted JSON file."""
+    from google.oauth2 import service_account
+
+    raw_credentials = env("GSC_SERVICE_ACCOUNT_JSON") or env(
+        "GOOGLE_SERVICE_ACCOUNT_JSON"
+    )
+    if raw_credentials:
+        credential_info = json.loads(raw_credentials)
+        if not isinstance(credential_info, dict):
+            raise ValueError("Google service-account JSON must be an object")
+        return service_account.Credentials.from_service_account_info(
+            credential_info,
+            scopes=scopes,
+        )
+
+    credentials_path = env("GOOGLE_APPLICATION_CREDENTIALS")
+    if credentials_path and os.path.exists(credentials_path):
+        return service_account.Credentials.from_service_account_file(
+            credentials_path,
+            scopes=scopes,
+        )
+    return None
 
 
 def get_setting(db: Session, key: str, default: str | None = None) -> str | None:
@@ -230,24 +265,29 @@ def authority_score(db: Session) -> dict[str, Any]:
 
 def sync_gsc_data(db: Session) -> dict[str, Any]:
     """
-    Pull Search Console search analytics when GOOGLE_APPLICATION_CREDENTIALS
-    + GSC_SITE_URL are configured (service account with GSC access).
+    Pull Search Console search analytics when GSC_SITE_URL and either a
+    service-account JSON environment secret or credential file are configured.
     """
     site = env("GSC_SITE_URL") or get_setting(db, "gsc_site_url")
-    creds_path = env("GOOGLE_APPLICATION_CREDENTIALS")
-    if not site or not creds_path or not os.path.exists(creds_path):
+    if not site or not gsc_credentials_configured():
         return {
             "connected": False,
-            "message": "Connect Google Search Console: set GSC_SITE_URL and GOOGLE_APPLICATION_CREDENTIALS (service account JSON path).",
+            "message": "Connect Google Search Console: set GSC_SITE_URL and GSC_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS).",
             "keywords": [],
             "pages": [],
         }
     try:
-        from google.oauth2 import service_account
         from googleapiclient.discovery import build
 
         scopes = ["https://www.googleapis.com/auth/webmasters.readonly"]
-        credentials = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
+        credentials = _build_gsc_credentials(scopes)
+        if credentials is None:
+            return {
+                "connected": False,
+                "message": "The configured Google credential file is unavailable.",
+                "keywords": [],
+                "pages": [],
+            }
         service = build("searchconsole", "v1", credentials=credentials, cache_discovery=False)
         # Use an exact 28-day window and avoid today's still-changing data.
         end = datetime.utcnow().date() - timedelta(days=1)

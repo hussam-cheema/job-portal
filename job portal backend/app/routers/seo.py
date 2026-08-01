@@ -25,6 +25,7 @@ from app.services.seo_tools import (
     build_sitemap_urls,
     discover_backlinks_basic,
     entity_rank_summary,
+    gsc_credentials_configured,
     get_setting,
     get_social_settings,
     list_backlinks,
@@ -59,8 +60,8 @@ def seo_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_a
             ),
             "message": (
                 "GSC ready — use Sync Search Console."
-                if os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-                else "Set GSC_SITE_URL + GOOGLE_APPLICATION_CREDENTIALS to connect Search Console."
+                if gsc_credentials_configured()
+                else "Set GSC_SITE_URL + GSC_SERVICE_ACCOUNT_JSON to connect Search Console."
             ),
         }
         data.update(
