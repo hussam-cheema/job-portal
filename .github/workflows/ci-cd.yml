@@ -57,7 +57,10 @@ jobs:
 
   deploy-backend:
     name: Deploy backend to Azure Container Apps
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      vars.BACKEND_DEPLOY_TARGET != 'railway'
     needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
     environment: production
@@ -184,7 +187,13 @@ jobs:
 
   deploy-frontend:
     name: Deploy frontend to Azure Static Web Apps
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      needs.backend-tests.result == 'success' &&
+      needs.frontend-tests.result == 'success' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     needs: [backend-tests, frontend-tests, deploy-backend]
     runs-on: ubuntu-latest
     environment: production

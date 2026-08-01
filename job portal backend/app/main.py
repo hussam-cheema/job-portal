@@ -219,6 +219,30 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def enforce_write_freeze(request: Request, call_next):
+    """Temporarily reject writes while a final database snapshot is copied.
+
+    Public reads remain available throughout the cutover. The flag is normally
+    false and is enabled only for the short final synchronization window.
+    """
+    freeze_enabled = os.getenv("WRITE_FREEZE_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if freeze_enabled and request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "A brief maintenance synchronization is in progress. Please retry.",
+                "code": "write_freeze",
+            },
+            headers={"Retry-After": "30"},
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def prevent_api_indexing(request: Request, call_next):
     """Keep JSON/API utility URLs out of search without blocking crawlers from seeing the rule."""
     response = await call_next(request)

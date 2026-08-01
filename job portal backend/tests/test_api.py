@@ -87,6 +87,21 @@ def test_readiness(client: TestClient):
     assert r.json() == {"status": "ready", "database": "up"}
 
 
+def test_write_freeze_keeps_reads_available_and_rejects_writes(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("WRITE_FREEZE_ENABLED", "true")
+
+    read_response = client.get("/ready")
+    write_response = client.post("/api/contact", json={})
+
+    assert read_response.status_code == 200
+    assert write_response.status_code == 503
+    assert write_response.json()["code"] == "write_freeze"
+    assert write_response.headers["retry-after"] == "30"
+
+
 def test_unhandled_exceptions_return_a_safe_generic_response():
     request = Request(
         {

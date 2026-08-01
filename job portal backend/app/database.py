@@ -7,6 +7,7 @@ from urllib.parse import quote_plus
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.logging_config import get_logger
 
@@ -63,26 +64,47 @@ def resolve_database_url() -> str:
 
 
 DATABASE_URL = resolve_database_url()
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine_kwargs: dict = {"pool_pre_ping": True, "connect_args": connect_args}
-if DATABASE_URL.startswith("postgresql"):
+
+
+def build_engine_options(url: str) -> dict:
+    """Build SQLAlchemy options for local, dedicated, or serverless Postgres.
+
+    Neon supplies its own PgBouncer-compatible pooled hostname. ``NullPool``
+    prevents an idle Railway API process from holding TCP connections open and
+    therefore allows Railway Serverless to sleep. Azure and local development
+    retain the existing SQLAlchemy queue-pool behavior by default.
+    """
+    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    options: dict = {"pool_pre_ping": True, "connect_args": connect_args}
+    if not url.startswith("postgresql"):
+        return options
+
+    pool_mode = os.getenv("DB_POOL_MODE", "queue").strip().lower()
+    serverless = pool_mode in {"null", "serverless"}
     sslmode = os.getenv("DB_SSLMODE", "").strip()
     if sslmode:
-        connect_args.update(
-            {
-                "sslmode": sslmode,
-                "keepalives": 1,
-                "keepalives_idle": 30,
-                "keepalives_interval": 10,
-                "keepalives_count": 5,
-            }
-        )
-    engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
-    engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "5"))
-    engine_kwargs["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "30"))
-    engine_kwargs["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
+        connect_args["sslmode"] = sslmode
+        if not serverless:
+            connect_args.update(
+                {
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                }
+            )
 
-engine = create_engine(DATABASE_URL, **engine_kwargs)
+    if serverless:
+        options["poolclass"] = NullPool
+    else:
+        options["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+        options["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+        options["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+        options["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
+    return options
+
+
+engine = create_engine(DATABASE_URL, **build_engine_options(DATABASE_URL))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 logger.info(
@@ -259,7 +281,6 @@ def init_db() -> None:
 def configure_engine(url: str) -> None:
     global DATABASE_URL, engine, SessionLocal
     DATABASE_URL = url
-    connect = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    engine = create_engine(url, connect_args=connect, pool_pre_ping=True)
+    engine = create_engine(url, **build_engine_options(url))
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     logger.info("engine reconfigured url=%s", url)

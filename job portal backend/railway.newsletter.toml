@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["app/**", "config.yaml", "requirements.txt", "Dockerfile"]
+
+[deploy]
+startCommand = "python -m app.commands.newsletter_retry"
+cronSchedule = "*/15 * * * *"
+restartPolicyType = "NEVER"

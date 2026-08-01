@@ -219,6 +219,7 @@ def _r2_storage(force_refresh: bool) -> InfrastructureStorageMetric:
 
 def _database_storage(db: Session) -> InfrastructureStorageMetric:
     total_bytes = int((_env_float("DB_STORAGE_LIMIT_GB", 32.0) or 0) * GIB) or None
+    database_provider = env("DATABASE_PROVIDER", "Azure PostgreSQL") or "Azure PostgreSQL"
     try:
         dialect = db.get_bind().dialect.name
         if dialect == "postgresql":
@@ -235,7 +236,7 @@ def _database_storage(db: Session) -> InfrastructureStorageMetric:
         return InfrastructureStorageMetric(
             id="database",
             name="Database storage",
-            provider="Azure PostgreSQL" if dialect == "postgresql" else "Local database",
+            provider=database_provider if dialect == "postgresql" else "Local database",
             used_bytes=used_bytes,
             total_bytes=total_bytes,
             utilization_percent=utilization,
@@ -248,7 +249,7 @@ def _database_storage(db: Session) -> InfrastructureStorageMetric:
         return InfrastructureStorageMetric(
             id="database",
             name="Database storage",
-            provider="Azure PostgreSQL",
+            provider=database_provider,
             total_bytes=total_bytes,
             status="unavailable",
             source="database",
@@ -283,6 +284,11 @@ def _database_connections(db: Session) -> InfrastructureConnectionMetric:
 
 
 def _compute_metrics() -> list[InfrastructureComputeMetric]:
+    backend_provider = env("BACKEND_PROVIDER", "Azure Container Apps") or "Azure Container Apps"
+    backend_runtime = (
+        env("BACKEND_RUNTIME_MODEL", "Dedicated per replica")
+        or "Dedicated per replica"
+    )
     cpu_allocation = _cgroup_cpu_limit() or _env_float("BACKEND_CPU_LIMIT_CORES", 0.5) or 0.5
     memory_allocation = _cgroup_memory_limit()
     if memory_allocation is None:
@@ -296,8 +302,8 @@ def _compute_metrics() -> list[InfrastructureComputeMetric]:
         InfrastructureComputeMetric(
             id="backend",
             name="Backend API",
-            provider="Azure Container Apps",
-            runtime_model="Dedicated per replica",
+            provider=backend_provider,
+            runtime_model=backend_runtime,
             cpu_used_percent=cpu_percent,
             cpu_allocated_cores=round(cpu_allocation, 2),
             memory_used_bytes=memory_used,
@@ -558,6 +564,10 @@ def _cost_summary(
     *,
     force_refresh: bool,
 ) -> InfrastructureCostSummary:
+    backend_provider = env("BACKEND_PROVIDER", "Azure Container Apps") or "Azure Container Apps"
+    database_provider = env("DATABASE_PROVIDER", "Azure PostgreSQL") or "Azure PostgreSQL"
+    backend_is_azure = backend_provider.casefold().startswith("azure")
+    database_is_azure = database_provider.casefold().startswith("azure")
     # Cloudflare R2 Standard pricing, last verified 2026-07: first 10 GB-month free,
     # then USD 0.015/GB-month. This snapshot is directional, not an invoice.
     r2_gb = (r2_metric.used_bytes or 0) / GIB
@@ -584,6 +594,10 @@ def _cost_summary(
     azure_live = _azure_month_to_date_costs(force_refresh)
     if azure_live:
         for key in configured_costs:
+            if key == "backend" and not backend_is_azure:
+                continue
+            if key == "database" and not database_is_azure:
+                continue
             configured_costs[key] = float(
                 (azure_live.get("category_costs") or {}).get(key, 0.0)
             )
@@ -604,7 +618,14 @@ def _cost_summary(
         default_free: bool = False,
     ) -> InfrastructureCostItem:
         value = configured_costs[item_id]
-        configured = azure_live is not None or env(env_name) is not None or default_free
+        provider_is_azure = provider.casefold().startswith(
+            ("azure", "microsoft azure")
+        )
+        configured = (
+            (azure_live is not None and provider_is_azure)
+            or env(env_name) is not None
+            or default_free
+        )
         resource_ids = list((resources or {}).get(item_id) or [])
         return InfrastructureCostItem(
             id=item_id,
@@ -625,7 +646,7 @@ def _cost_summary(
             configured=True,
             detail="Snapshot estimate: first 10 GB-month free, then $0.015 per GB-month; operations are separate.",
         ),
-        azure_item("backend", "Container App", "Azure Container Apps", "BACKEND_MONTHLY_COST_USD"),
+        azure_item("backend", "Backend API", backend_provider, "BACKEND_MONTHLY_COST_USD"),
         azure_item(
             "container_environment",
             "Container Apps environment",
@@ -633,7 +654,7 @@ def _cost_summary(
             "AZURE_CONTAINER_ENV_MONTHLY_COST_USD",
             default_free=True,
         ),
-        azure_item("database", "Database", "Azure PostgreSQL", "DB_MONTHLY_COST_USD"),
+        azure_item("database", "Database", database_provider, "DB_MONTHLY_COST_USD"),
         azure_item(
             "frontend",
             "Frontend hosting",
@@ -685,6 +706,44 @@ def _cost_summary(
             "AZURE_OTHER_MONTHLY_COST_USD",
         ),
     ]
+    if azure_live and not backend_is_azure:
+        legacy_backend_cost = float(
+            (azure_live.get("category_costs") or {}).get("backend", 0.0)
+        )
+        if legacy_backend_cost:
+            items.append(
+                InfrastructureCostItem(
+                    id="legacy_azure_backend",
+                    name="Legacy backend (month to date)",
+                    provider="Azure Container Apps",
+                    monthly_estimate_usd=legacy_backend_cost,
+                    configured=True,
+                    resource_id=", ".join(
+                        list((resources or {}).get("backend") or [])[:3]
+                    )
+                    or None,
+                    detail="Historical month-to-date cost retained during the migration rollback window.",
+                )
+            )
+    if azure_live and not database_is_azure:
+        legacy_database_cost = float(
+            (azure_live.get("category_costs") or {}).get("database", 0.0)
+        )
+        if legacy_database_cost:
+            items.append(
+                InfrastructureCostItem(
+                    id="legacy_azure_database",
+                    name="Legacy database (month to date)",
+                    provider="Azure PostgreSQL",
+                    monthly_estimate_usd=legacy_database_cost,
+                    configured=True,
+                    resource_id=", ".join(
+                        list((resources or {}).get("database") or [])[:3]
+                    )
+                    or None,
+                    detail="Historical month-to-date cost retained during the migration rollback window.",
+                )
+            )
     tracked = round(sum(item.monthly_estimate_usd or 0 for item in items if item.configured), 2)
     budget = _env_float("INFRA_MONTHLY_BUDGET_USD", 25.0) or 25.0
     missing = sum(not item.configured for item in items)
@@ -748,9 +807,9 @@ def _alerts(
                 severity="warning",
                 title="Scale-to-zero can slow the first page load",
                 detail=(
-                    "Low CPU/RAM does not rule out latency: an idle Container App must cold-start "
-                    "before serving traffic. Set BACKEND_MIN_REPLICAS=1 when consistent response "
-                    "time is worth the additional compute cost."
+                    f"Low CPU/RAM does not rule out latency: an idle {backend.provider} instance "
+                    "must cold-start before serving traffic. Keep one minimum replica when "
+                    "consistent response time is worth the additional compute cost."
                 ),
             )
         )
