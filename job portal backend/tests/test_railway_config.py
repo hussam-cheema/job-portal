@@ -11,6 +11,7 @@ def test_api_deployment_teardown_values_are_numeric():
 
     deploy = config["deploy"]
 
+    assert "railway.api.toml" in config["build"]["watchPatterns"]
     assert "startCommand" not in deploy
     assert deploy["overlapSeconds"] == 30
     assert deploy["drainingSeconds"] == 30
