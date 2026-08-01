@@ -4,7 +4,6 @@ dockerfilePath = "Dockerfile.railway"
 watchPatterns = ["app/**", "config.yaml", "requirements.txt", "Dockerfile.railway"]
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1"
 healthcheckPath = "/ready"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
