@@ -51,6 +51,21 @@ copy; only writes are briefly paused.
 The newsletter cron receives the same database and SMTP variables. It does not
 need the API process's embedding model, analytics, or HTTP-only variables.
 
+## Safe Railway variable export
+
+The migration helper resolves the current Azure Container App variables and
+secrets, removes Azure-only database and volume settings, and emits JSON that
+Railway's Raw Editor accepts:
+
+```bash
+python "job portal backend/migration/export_railway_env.py" --service api | pbcopy
+python "job portal backend/migration/export_railway_env.py" --service newsletter | pbcopy
+```
+
+The output contains production secrets and must be piped directly to the
+clipboard. Replace `PASTE_NEON_POOLED_URL_HERE` inside Railway before saving.
+Never redirect the output into the repository or paste it into chat.
+
 ## Migration image safety
 
 `migration/migrate-postgres.sh` accepts only a direct Neon target URL, rejects a
