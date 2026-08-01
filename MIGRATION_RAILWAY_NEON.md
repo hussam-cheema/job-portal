@@ -58,13 +58,14 @@ secrets, removes Azure-only database and volume settings, and emits JSON that
 Railway's Raw Editor accepts:
 
 ```bash
-python "job portal backend/migration/export_railway_env.py" --service api | pbcopy
-python "job portal backend/migration/export_railway_env.py" --service newsletter | pbcopy
+python "job portal backend/migration/export_railway_env.py" --service api --copy
+python "job portal backend/migration/export_railway_env.py" --service newsletter --copy
 ```
 
-The output contains production secrets and must be piped directly to the
-clipboard. Replace `PASTE_NEON_POOLED_URL_HERE` inside Railway before saving.
-Never redirect the output into the repository or paste it into chat.
+Each command copies one complete JSON object to the macOS clipboard and reports
+only the variable count. Replace `PASTE_NEON_POOLED_URL_HERE` inside Railway
+before saving. The clipboard contains production secrets: never paste it into
+chat or redirect it into the repository, and overwrite it after importing.
 
 ## Migration image safety
 

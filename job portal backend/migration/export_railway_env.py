@@ -178,11 +178,21 @@ def build_export(
     return dict(sorted(exported.items()))
 
 
+def render_json(exported: dict[str, str]) -> str:
+    """Render the complete object accepted by Railway's JSON Raw Editor."""
+    return json.dumps(exported, ensure_ascii=True, indent=2) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--service", choices=("api", "newsletter"), required=True)
     parser.add_argument("--resource-group", default="job-portal-prod-rg")
     parser.add_argument("--container-app", default="job-portal-api")
+    parser.add_argument(
+        "--copy",
+        action="store_true",
+        help="copy the complete JSON object to the macOS clipboard",
+    )
     args = parser.parse_args()
 
     variables, secrets = _resolved_azure_variables(
@@ -190,12 +200,25 @@ def main() -> int:
         container_app=args.container_app,
     )
     exported = build_export(args.service, variables, secrets)
-    print(
-        "WARNING: stdout contains production secrets; pipe it directly to the clipboard.",
-        file=sys.stderr,
-    )
-    json.dump(exported, sys.stdout, ensure_ascii=True, indent=2)
-    sys.stdout.write("\n")
+    payload = render_json(exported)
+    if args.copy:
+        subprocess.run(
+            ["pbcopy"],
+            input=payload,
+            check=True,
+            text=True,
+        )
+        print(
+            f"Copied {len(exported)} {args.service} variables as JSON. "
+            "The clipboard now contains production secrets; overwrite it after pasting.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "WARNING: stdout contains production secrets; do not save or share it.",
+            file=sys.stderr,
+        )
+        sys.stdout.write(payload)
     return 0
 
 

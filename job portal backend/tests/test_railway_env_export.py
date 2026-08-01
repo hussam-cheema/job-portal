@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -55,3 +56,16 @@ def test_newsletter_export_contains_only_delivery_configuration():
     assert result["R2_LOGS_ENABLED"] == "false"
     assert "JWT_SECRET" not in result
     assert "R2_ACCESS_KEY_ID" not in result
+
+
+def test_render_json_is_a_complete_railway_raw_editor_object():
+    variables = {
+        "DATABASE_URL": "postgresql://user:secret@example.test/database",
+        "JWT_SECRET": "secret-with-special-characters-$#",
+    }
+
+    payload = export_railway_env.render_json(variables)
+
+    assert json.loads(payload) == variables
+    assert payload.startswith("{\n")
+    assert payload.endswith("}\n")
