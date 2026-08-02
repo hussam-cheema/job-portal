@@ -174,6 +174,7 @@ def _reset_app_tables() -> None:
         "users",
         "password_reset_attempts",
         "analytics_visits",
+        "infrastructure_cost_snapshots",
         "taxonomy_terms",
         "email_subscribers",
         "subscription_email_deliveries",

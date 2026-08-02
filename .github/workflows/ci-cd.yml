@@ -55,136 +55,6 @@ jobs:
       - name: Smoke-test every admin dashboard route
         run: npm run test:e2e
 
-  deploy-backend:
-    name: Deploy backend to Azure Container Apps
-    if: >-
-      github.event_name != 'pull_request' &&
-      github.ref == 'refs/heads/main' &&
-      vars.BACKEND_DEPLOY_TARGET != 'railway'
-    needs: [backend-tests, frontend-tests]
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate immutable image metadata
-        id: image
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/job-portal-backend
-          tags: type=sha,format=long,prefix=
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: job portal backend
-          file: job portal backend/Dockerfile
-          push: true
-          tags: ${{ steps.image.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Log in to Azure with OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Verify persistent Qwen3 Embedding storage
-        run: |
-          MODEL_MOUNT=$(az containerapp show \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query "properties.template.containers[0].volumeMounts[?mountPath=='/models'].mountPath | [0]" \
-            --output tsv)
-          if [ "$MODEL_MOUNT" != "/models" ]; then
-            echo "Missing persistent Azure Files volume mounted at /models."
-            echo "Complete the Qwen3 Embedding storage step in deployment.md before deploying."
-            exit 1
-          fi
-
-      - name: Deploy immutable backend revision
-        run: |
-          MANAGED_ENVIRONMENT_ID=$(az containerapp show \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query properties.managedEnvironmentId \
-            --output tsv)
-          MANAGED_ENVIRONMENT_NAME=${MANAGED_ENVIRONMENT_ID##*/}
-          MANAGED_RESOURCE_GROUP=$(az containerapp env show \
-            --name "$MANAGED_ENVIRONMENT_NAME" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query properties.infrastructureResourceGroup \
-            --output tsv)
-          if [ -z "$MANAGED_RESOURCE_GROUP" ]; then
-            echo "Unable to resolve the Container Apps managed resource group."
-            exit 1
-          fi
-
-          az containerapp revision set-mode \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --mode single
-
-          az containerapp ingress update \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --target-port 8000
-
-          az containerapp update \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "${{ steps.image.outputs.tags }}" \
-            --cpu 0.5 \
-            --memory 1.0Gi \
-            --min-replicas "${{ vars.BACKEND_MIN_REPLICAS || '0' }}" \
-            --max-replicas 2 \
-            --set-env-vars \
-              APP_ENV=production \
-              BACKEND_CPU_LIMIT_CORES=0.5 \
-              BACKEND_MEMORY_LIMIT_MB=1024 \
-              BACKEND_MIN_REPLICAS=${{ vars.BACKEND_MIN_REPLICAS || '0' }} \
-              BACKEND_MAX_REPLICAS=2 \
-              AZURE_COST_MANAGEMENT_ENABLED=${{ vars.AZURE_COST_MANAGEMENT_ENABLED || 'false' }} \
-              AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }} \
-              AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} \
-              AZURE_MANAGED_RESOURCE_GROUP=$MANAGED_RESOURCE_GROUP \
-              PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} \
-              R2_LOGS_ENABLED=true \
-              R2_LOG_PREFIX=production-logs \
-              R2_LOG_MAX_BYTES=104857600 \
-              R2_LOG_RETENTION_DAYS=2 \
-              QWEN3_EMBEDDING_MODEL_PATH=/models/Qwen3-Embedding-0.6B-Q8_0.gguf \
-              QWEN3_EMBEDDING_MODEL_MOUNT_PATH=/models \
-              QWEN3_EMBEDDING_REQUIRE_PERSISTENT_STORAGE=true \
-              QWEN3_EMBEDDING_CACHE_BACKGROUND=true \
-              QWEN3_EMBEDDING_THREADS=1
-
-      - name: Verify backend readiness
-        run: |
-          FQDN=$(az containerapp show \
-            --name "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          # Public readiness no longer waits for the optional 639 MB embedding
-          # model; the admin Q&A cache warms in the background.
-          curl --fail --retry 30 --retry-delay 10 --retry-all-errors "https://${FQDN}/ready"
-
   deploy-frontend:
     name: Deploy frontend to Azure Static Web Apps
     if: >-
@@ -192,9 +62,8 @@ jobs:
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
       needs.backend-tests.result == 'success' &&
-      needs.frontend-tests.result == 'success' &&
-      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
-    needs: [backend-tests, frontend-tests, deploy-backend]
+      needs.frontend-tests.result == 'success'
+    needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
     environment: production
     steps:

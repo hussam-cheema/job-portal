@@ -130,6 +130,47 @@ def upload_bytes(
         raise
 
 
+def delete_objects(object_keys: list[str]) -> int:
+    """Delete owned application objects from R2.
+
+    Keys are validated before the request so an admin-facing cleanup endpoint
+    cannot delete objects outside this application's configured prefix.
+    """
+    unique_keys = list(dict.fromkeys(key.strip().lstrip("/") for key in object_keys if key))
+    prefix = f"{_prefix()}/"
+    if not unique_keys:
+        return 0
+    if any(
+        not key.startswith(prefix) or ".." in Path(key).parts for key in unique_keys
+    ):
+        raise ValueError("Invalid R2 object key")
+    if not (
+        r2_enabled()
+        and _bucket()
+        and env("R2_ACCESS_KEY_ID")
+        and env("R2_SECRET_ACCESS_KEY")
+    ):
+        raise RuntimeError("R2 is not configured")
+
+    response = _r2_client().delete_objects(
+        Bucket=_bucket(),
+        Delete={
+            "Objects": [{"Key": key} for key in unique_keys],
+            "Quiet": True,
+        },
+    )
+    errors = response.get("Errors") or []
+    if errors:
+        failed = ", ".join(str(item.get("Key") or "unknown") for item in errors[:3])
+        raise RuntimeError(f"R2 object deletion failed for: {failed}")
+    logger.info("r2_delete ok objects=%s", len(unique_keys))
+    return len(unique_keys)
+
+
+def delete_object(object_key: str) -> bool:
+    return delete_objects([object_key]) == 1
+
+
 def read_public_object(
     public_url: str,
     *,

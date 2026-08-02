@@ -95,6 +95,86 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
   );
 }
 
+const providerColors: Record<string, string> = {
+  Railway: "#a855f7",
+  Neon: "#2dd4bf",
+  "Microsoft Azure": "#60a5fa",
+  "Cloudflare R2": "#f59e0b",
+};
+
+function CostHistoryChart({
+  points,
+}: {
+  points: InfrastructureDashboard["costs"]["history"];
+}) {
+  const maximum = Math.max(1, ...points.map((point) => point.total_usd ?? 0));
+  const providers = Object.keys(providerColors).filter((provider) =>
+    points.some((point) => provider in point.provider_costs),
+  );
+  return (
+    <div className="mt-6 border-t border-[var(--border)] pt-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-[var(--navy-200)]">Monthly cost history</h4>
+          <p className="mt-1 text-xs text-[var(--muted)]">Stored snapshots and invoice backfills; unavailable months are shown as a dash.</p>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {providers.map((provider) => (
+            <span key={provider} className="inline-flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: providerColors[provider] }} />
+              {provider}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="mt-5 flex h-40 items-end gap-1.5 overflow-x-auto border-b border-[var(--border-strong)] pb-1 sm:gap-2">
+        {points.map((point) => {
+          const total = point.total_usd;
+          const paid = point.paid_usd ?? 0;
+          const outstanding = point.outstanding_usd ?? total;
+          const height = total !== null && total > 0 ? Math.max(6, (total / maximum) * 100) : 2;
+          return (
+            <div key={point.month} className="group flex min-w-10 flex-1 flex-col items-center justify-end sm:min-w-12">
+              <p className="mb-1 text-[9px] tabular-nums text-[var(--muted)]">
+                {total === null ? "—" : `$${total.toFixed(2)}`}
+              </p>
+              <div
+                className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md bg-[var(--navy-800)] transition-opacity group-hover:opacity-80"
+                style={{ height: `${height}%` }}
+                title={`${point.month}: ${total === null ? "cost unavailable" : `$${total.toFixed(2)} billed · $${paid.toFixed(2)} paid · $${(outstanding ?? 0).toFixed(2)} due`} · ${point.source}${point.estimated ? " (estimated)" : ""}`}
+              >
+                {Object.entries(point.provider_costs)
+                  .filter(([, cost]) => cost > 0)
+                  .map(([provider, cost]) => (
+                    <div
+                      key={provider}
+                      style={{
+                        backgroundColor: providerColors[provider] || "#94a3b8",
+                        flexGrow: cost,
+                      }}
+                    />
+                  ))}
+              </div>
+              {total !== null && (
+                <span className={`mt-1 text-[8px] ${outstanding === 0 && total > 0 ? "text-emerald-300" : "text-[var(--muted)]"}`}>
+                  {outstanding === 0 && total > 0 ? "Paid" : `$${(outstanding ?? 0).toFixed(2)} due`}
+                </span>
+              )}
+              <span className="mt-2 text-[9px] text-[var(--muted)]">
+                {new Date(`${point.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+                  month: "short",
+                  year: points.length > 12 ? "2-digit" : undefined,
+                  timeZone: "UTC",
+                })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StorageCard({ metric }: { metric?: InfrastructureStorageMetric }) {
   if (!metric) return null;
   const color = metric.status === "critical" ? "var(--danger)" : metric.status === "warning" ? "var(--gold)" : "var(--accent)";
@@ -124,24 +204,6 @@ function StorageCard({ metric }: { metric?: InfrastructureStorageMetric }) {
 
 function ComputeCard({ metric, history }: { metric?: InfrastructureComputeMetric; history: Sample[] }) {
   if (!metric) return null;
-  if (metric.id === "frontend") {
-    return (
-      <article className="card-panel p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">{metric.provider}</p>
-            <h3 className="mt-1 font-semibold text-[var(--navy-100)]">{metric.name}</h3>
-          </div>
-          <StatusBadge status={metric.status} />
-        </div>
-        <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-5 text-center">
-          <p className="text-3xl font-semibold text-[var(--navy-100)]">Managed</p>
-          <p className="mt-2 text-sm text-[var(--muted)]">No fixed CPU or RAM allocation</p>
-        </div>
-        <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{metric.detail}</p>
-      </article>
-    );
-  }
   return (
     <article className="card-panel p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -215,7 +277,6 @@ export default function InfrastructureAnalyticsPage() {
     r2: data?.storage.find((item) => item.id === "r2"),
     database: data?.storage.find((item) => item.id === "database"),
     backend: data?.compute.find((item) => item.id === "backend"),
-    frontend: data?.compute.find((item) => item.id === "frontend"),
   }), [data]);
 
   return (
@@ -226,7 +287,7 @@ export default function InfrastructureAnalyticsPage() {
             <h2 className="text-xl font-semibold text-[var(--navy-100)]">Infrastructure analytics</h2>
             {data && <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.7)]" aria-label="Live telemetry" />}
           </div>
-          <p className="mt-1 text-sm text-[var(--muted)]">Capacity, runtime pressure, service quotas, and cost signals.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Live capacity, backend performance, and paid-versus-outstanding infrastructure costs.</p>
         </div>
         <div className="flex items-center gap-3">
           {data && <p className="text-xs text-[var(--muted)]">Updated {new Date(data.collected_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>}
@@ -246,34 +307,47 @@ export default function InfrastructureAnalyticsPage() {
             <StorageCard metric={resources.database} />
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,.65fr)]">
+          <section>
             <ComputeCard metric={resources.backend} history={history} />
-            <ComputeCard metric={resources.frontend} history={history} />
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,.9fr)]">
+          <section>
             <article className="card-panel p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">FinOps</p>
                   <h3 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">
-                    {data.costs.basis === "month_to_date_actual"
-                      ? "Azure month-to-date costs"
-                      : "Monthly cost radar"}
+                    Monthly infrastructure cost
                   </h3>
                   <p className="mt-1 text-xs text-[var(--muted)]">{data.costs.source}</p>
                 </div>
-                <p className="text-right"><span className="text-2xl font-semibold tabular-nums text-[var(--navy-100)]">${data.costs.tracked_monthly_estimate_usd.toFixed(2)}</span><span className="text-xs text-[var(--muted)]"> / ${data.costs.monthly_budget_usd.toFixed(0)}</span></p>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">Current outstanding</p>
+                  <p><span className="text-2xl font-semibold tabular-nums text-[var(--navy-100)]">${(data.costs.current_outstanding_usd ?? data.costs.tracked_monthly_estimate_usd).toFixed(2)}</span><span className="text-xs text-[var(--muted)]"> / ${data.costs.monthly_budget_usd.toFixed(0)}</span></p>
+                </div>
               </div>
               {data.costs.forecast_monthly_cost_usd !== null && (
                 <p className="mt-3 text-sm text-[var(--muted)]">
-                  Azure forecast:{" "}
+                  Provider forecast:{" "}
                   <strong className="text-[var(--navy-200)]">
                     ${data.costs.forecast_monthly_cost_usd.toFixed(2)}
                   </strong>
                 </p>
               )}
               <div className="mt-5"><Progress value={data.costs.budget_utilization_percent} color="var(--gold)" /></div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Current billed", data.costs.current_month_cost_usd ?? data.costs.tracked_monthly_estimate_usd],
+                  ["Current paid", data.costs.current_month_paid_usd ?? 0],
+                  ["Recorded total", data.costs.recorded_total_usd ?? data.costs.tracked_monthly_estimate_usd],
+                  ["Total outstanding", data.costs.recorded_outstanding_usd ?? data.costs.tracked_monthly_estimate_usd],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-3">
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">{label}</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--navy-100)]">${Number(value).toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
               <div className="mt-5 divide-y divide-[var(--border)]">
                 {data.costs.items.map((item) => (
                   <div key={item.id} className="flex items-start justify-between gap-4 py-3 first:pt-0">
@@ -291,39 +365,8 @@ export default function InfrastructureAnalyticsPage() {
                 ))}
               </div>
               <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{data.costs.detail}</p>
+              <CostHistoryChart points={data.costs.history ?? []} />
             </article>
-
-            <div className="space-y-4">
-              <article className="card-panel p-5">
-                <div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">PostgreSQL</p><h3 className="mt-1 font-semibold text-[var(--navy-100)]">Connection pool</h3></div><StatusBadge status={data.database_connections.status} /></div>
-                <div className="mt-5 flex items-end justify-between gap-4"><p className="text-3xl font-semibold tabular-nums text-[var(--navy-100)]">{data.database_connections.used ?? "—"}<span className="text-base font-normal text-[var(--muted)]"> / {data.database_connections.total ?? "—"}</span></p><p className="text-sm tabular-nums text-[var(--muted)]">{data.database_connections.utilization_percent === null ? "—" : `${data.database_connections.utilization_percent}%`}</p></div>
-                <div className="mt-3"><Progress value={data.database_connections.utilization_percent} color="var(--success)" /></div>
-                <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{data.database_connections.detail}</p>
-              </article>
-              <article className="card-panel p-5">
-                <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Signals</p>
-                <div className="mt-3 space-y-3">
-                  {data.alerts.map((alert, index) => (
-                    <div key={`${alert.title}-${index}`} className="flex gap-3 rounded-lg border border-[var(--border)] bg-[var(--navy-850)] p-3">
-                      <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${alert.severity === "critical" ? "bg-red-400" : alert.severity === "warning" ? "bg-amber-400" : alert.severity === "healthy" ? "bg-emerald-400" : "bg-blue-400"}`} />
-                      <div><p className="text-sm font-medium text-[var(--navy-200)]">{alert.title}</p><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{alert.detail}</p></div>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section className="card-panel p-5 sm:p-6">
-            <div><p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Managed service limits</p><h3 className="mt-1 font-semibold text-[var(--navy-100)]">Frontend quotas</h3></div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {data.quotas.map((quota) => (
-                <div key={quota.id} className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-[var(--navy-200)]">{quota.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{quota.provider}</p></div><p className="text-lg font-semibold tabular-nums text-[var(--navy-100)]">{quota.total.toLocaleString()} <span className="text-xs font-normal text-[var(--muted)]">{quota.unit}</span></p></div>
-                  <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{quota.detail}</p>
-                </div>
-              ))}
-            </div>
           </section>
         </div>
       ) : null}

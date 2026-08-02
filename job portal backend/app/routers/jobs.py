@@ -36,6 +36,7 @@ from app.schemas import (
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
 from app.services.newsletter import process_pending_job_alerts, queue_new_job_alert
 from app.services.seo import delete_seo, upsert_job_seo
+from app.services.storage import delete_objects
 from app.services.watermark import process_description_images
 from app.services.taxonomy import canonicalize_job_terms, ensure_default_taxonomy
 from app.utils import as_list, experience_label, normalize_job_type, slugify, strip_html
@@ -511,6 +512,14 @@ def delete_job(
         job = db.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        attachment_keys = (
+            db.execute(
+                select(JobAttachment.s3_path).where(JobAttachment.job_id == job_id)
+            )
+            .scalars()
+            .all()
+        )
+        delete_objects(list(attachment_keys))
         db.query(JobAttachment).filter(JobAttachment.job_id == job_id).delete()
         db.query(JobQnA).filter(JobQnA.job_id == job_id).delete()
         delete_seo(db, "job", job_id)

@@ -150,16 +150,34 @@ class InfrastructureCostItem(BaseModel):
     resource_id: Optional[str] = None
 
 
+class InfrastructureCostHistoryPoint(BaseModel):
+    month: str
+    total_usd: Optional[float] = None
+    paid_usd: float = 0.0
+    outstanding_usd: Optional[float] = None
+    provider_costs: dict[str, float] = Field(default_factory=dict)
+    source: str
+    estimated: bool = True
+    available: bool = True
+
+
 class InfrastructureCostSummary(BaseModel):
     currency: str = "USD"
     monthly_budget_usd: float
     tracked_monthly_estimate_usd: float
+    current_month_cost_usd: float
+    current_month_paid_usd: float
+    current_outstanding_usd: float
+    recorded_total_usd: float
+    recorded_paid_usd: float
+    recorded_outstanding_usd: float
     budget_utilization_percent: float
     unconfigured_services: int
     basis: str = "monthly_estimate"
     source: str = "configuration"
     forecast_monthly_cost_usd: Optional[float] = None
     items: list[InfrastructureCostItem] = Field(default_factory=list)
+    history: list[InfrastructureCostHistoryPoint] = Field(default_factory=list)
     detail: str
 
 

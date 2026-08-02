@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from PIL import Image
 from sqlalchemy import func, select
@@ -17,7 +17,12 @@ from app.database import get_db
 from app.logging_config import get_logger
 from app.models import Job, JobAttachment, User
 from app.schemas import JobAttachmentOut, UploadOut
-from app.services.storage import read_public_image_key, resolve_local_path, upload_bytes
+from app.services.storage import (
+    delete_object,
+    read_public_image_key,
+    resolve_local_path,
+    upload_bytes,
+)
 from app.services.watermark import WATERMARK_VERSION, apply_watermark
 
 router = APIRouter()
@@ -180,6 +185,7 @@ def delete_attachment(
         row = db.get(JobAttachment, attachment_id)
         if not row:
             raise HTTPException(status_code=404, detail="Attachment not found")
+        delete_object(row.s3_path)
         db.delete(row)
         db.commit()
         return {"ok": True}
@@ -188,6 +194,22 @@ def delete_attachment(
     except Exception:
         db.rollback()
         logger.exception("delete_attachment failed")
+        raise HTTPException(status_code=500, detail="Delete failed") from None
+
+
+@router.delete("/admin/upload")
+def delete_unattached_upload(
+    object_key: str = Query(..., min_length=1),
+    _: User = Depends(get_current_admin),
+):
+    """Remove an editor upload that has not been attached to a job row."""
+    try:
+        delete_object(object_key)
+        return {"ok": True, "object_key": object_key}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("delete_unattached_upload failed key=%s", object_key)
         raise HTTPException(status_code=500, detail="Delete failed") from None
 
 

@@ -241,14 +241,28 @@ const server = createServer((request, response) => {
         { id: "database", name: "Database storage", provider: "Azure PostgreSQL", used_bytes: 2097152, total_bytes: 34359738368, utilization_percent: 0.01, object_count: null, status: "healthy", source: "mock", detail: "Database test usage." },
       ],
       compute: [
-        { id: "backend", name: "Backend API", provider: "Azure Container Apps", runtime_model: "Dedicated per replica", cpu_used_percent: 4, cpu_allocated_cores: 0.5, memory_used_bytes: 134217728, memory_allocated_bytes: 1073741824, memory_used_percent: 12.5, min_replicas: 0, max_replicas: 2, uptime_seconds: 300, status: "healthy", detail: "Backend test usage." },
-        { id: "frontend", name: "Frontend", provider: "Azure Static Web Apps", runtime_model: "Provider managed", cpu_used_percent: null, cpu_allocated_cores: null, memory_used_bytes: null, memory_allocated_bytes: null, memory_used_percent: null, min_replicas: null, max_replicas: null, uptime_seconds: null, status: "managed", detail: "Provider managed." },
+        { id: "backend", name: "Backend API", provider: "Railway Serverless", runtime_model: "Serverless", cpu_used_percent: 4, cpu_allocated_cores: 0.5, memory_used_bytes: 134217728, memory_allocated_bytes: 1073741824, memory_used_percent: 12.5, min_replicas: 0, max_replicas: 1, uptime_seconds: 300, status: "healthy", detail: "Backend test usage." },
       ],
       database_connections: { used: 1, total: 10, utilization_percent: 10, status: "healthy", detail: "Connection test usage." },
-      quotas: [
-        { id: "frontend_assets", name: "Frontend app size", provider: "Azure Static Web Apps Free", used: null, total: 250, unit: "MB", utilization_percent: null, status: "unknown", detail: "Provider quota." },
-      ],
-      costs: { currency: "USD", basis: "monthly_estimate", source: "mock", monthly_budget_usd: 25, tracked_monthly_estimate_usd: 0, forecast_monthly_cost_usd: null, budget_utilization_percent: 0, unconfigured_services: 2, detail: "Test estimate.", items: [] },
+      quotas: [],
+      costs: {
+        currency: "USD", basis: "monthly_estimate", source: "mock",
+        monthly_budget_usd: 25, tracked_monthly_estimate_usd: 5,
+        current_month_cost_usd: 5, current_month_paid_usd: 0,
+        current_outstanding_usd: 5, recorded_total_usd: 17.3,
+        recorded_paid_usd: 12.3, recorded_outstanding_usd: 5,
+        forecast_monthly_cost_usd: null, budget_utilization_percent: 20,
+        unconfigured_services: 0, detail: "Test estimate.",
+        items: [
+          { id: "railway", name: "Backend API + newsletter retry", provider: "Railway Hobby", monthly_estimate_usd: 5, configured: true, detail: "Mock Railway cost." },
+          { id: "neon", name: "PostgreSQL database", provider: "Neon Free", monthly_estimate_usd: 0, configured: true, detail: "Mock Neon cost." },
+          { id: "azure_static_web_apps", name: "Frontend hosting", provider: "Azure Static Web Apps Free", monthly_estimate_usd: 0, configured: true, detail: "Mock frontend cost." },
+        ],
+        history: [
+          { month: "2026-07", total_usd: 12.3, paid_usd: 12.3, outstanding_usd: 0, provider_costs: { "Microsoft Azure": 12.3 }, source: "manual invoice backfill", estimated: false, available: true },
+          { month: "2026-08", total_usd: 5, paid_usd: 0, outstanding_usd: 5, provider_costs: { Railway: 5, Neon: 0, "Microsoft Azure": 0, "Cloudflare R2": 0 }, source: "stored monthly snapshot", estimated: true, available: true },
+        ],
+      },
       alerts: [{ severity: "healthy", title: "All measured resources are within target", detail: "No measured resource crossed the warning threshold." }],
     });
   }

@@ -58,6 +58,39 @@ test("all remaining admin navigation pages render", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
+test("infrastructure analytics only shows active services and the payment-aware cost ledger", async ({
+  page,
+}) => {
+  await page.goto("/admin/infrastructure");
+  await expect(
+    page.getByRole("heading", { name: "Infrastructure analytics", exact: true }),
+  ).toBeVisible();
+
+  for (const label of [
+    "Current outstanding",
+    "Current billed",
+    "Current paid",
+    "Recorded total",
+    "Total outstanding",
+    "Monthly cost history",
+    "Backend API + newsletter retry",
+    "PostgreSQL database",
+    "Frontend hosting",
+  ]) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText("Paid", { exact: true })).toBeVisible();
+
+  for (const removedLabel of [
+    "Connection pool",
+    "Signals",
+    "Managed service limits",
+    "Frontend quotas",
+  ]) {
+    await expect(page.getByText(removedLabel, { exact: true })).toHaveCount(0);
+  }
+});
+
 test("a stale Next.js chunk is handled silently without refreshing the current page", async ({
   page,
 }) => {

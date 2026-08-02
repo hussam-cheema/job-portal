@@ -404,6 +404,12 @@ export type InfrastructureDashboard = {
     currency: string;
     monthly_budget_usd: number;
     tracked_monthly_estimate_usd: number;
+    current_month_cost_usd?: number;
+    current_month_paid_usd?: number;
+    current_outstanding_usd?: number;
+    recorded_total_usd?: number;
+    recorded_paid_usd?: number;
+    recorded_outstanding_usd?: number;
     budget_utilization_percent: number;
     unconfigured_services: number;
     detail: string;
@@ -415,6 +421,16 @@ export type InfrastructureDashboard = {
       configured: boolean;
       detail: string;
       resource_id?: string | null;
+    }>;
+    history: Array<{
+      month: string;
+      total_usd: number | null;
+      paid_usd?: number;
+      outstanding_usd?: number | null;
+      provider_costs: Record<string, number>;
+      source: string;
+      estimated: boolean;
+      available: boolean;
     }>;
     basis: string;
     source: string;

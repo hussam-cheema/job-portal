@@ -634,6 +634,86 @@ def test_admin_upload_normalizes_extensionless_clipboard_image(
     assert response.json()["public_url"].endswith("/clipboard.png")
 
 
+def test_admin_can_delete_unattached_editor_upload(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import uploads as uploads_router
+
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        uploads_router, "delete_object", lambda object_key: deleted.append(object_key)
+    )
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    object_key = "job-portal/pending/smoke/images/example.png"
+
+    response = client.delete(
+        "/api/admin/upload",
+        headers=auth,
+        params={"object_key": object_key},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "object_key": object_key}
+    assert deleted == [object_key]
+
+
+def test_job_delete_removes_its_r2_attachments(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import jobs as jobs_router
+    from app.routers import uploads as uploads_router
+
+    deleted: list[list[str]] = []
+    monkeypatch.setattr(
+        jobs_router, "delete_objects", lambda keys: deleted.append(list(keys))
+    )
+    monkeypatch.setattr(
+        uploads_router,
+        "upload_bytes",
+        lambda data, **kwargs: {
+            "s3_path": "job-portal/job-delete/attachments/notice.pdf",
+            "public_url": "https://files.example.test/notice.pdf",
+            "file_type": kwargs["content_type"],
+            "file_size": len(data),
+            "original_name": kwargs["filename"],
+            "storage": "r2",
+        },
+    )
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Temporary R2 cleanup role",
+            "description": "<p>Temporary test role.</p>",
+            "published_date": "2026-08-02T00:00:00",
+            "job_type": "private",
+        },
+    )
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+    upload = client.post(
+        "/api/admin/upload",
+        headers=auth,
+        data={"job_id": job_id, "as_attachment": "true"},
+        files={"file": ("notice.pdf", b"%PDF-smoke", "application/pdf")},
+    )
+    assert upload.status_code == 200
+
+    response = client.delete(f"/api/admin/jobs/{job_id}", headers=auth)
+
+    assert response.status_code == 200
+    assert deleted == [["job-portal/job-delete/attachments/notice.pdf"]]
+
+
 def test_job_rejects_temporary_clipboard_image_url(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -1487,12 +1567,13 @@ def test_infrastructure_analytics_requires_admin_and_reports_capacity(
 ):
     assert client.get("/api/admin/infrastructure").status_code == 401
     monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "false")
-    monkeypatch.setenv("BACKEND_MONTHLY_COST_USD", "3.55")
-    monkeypatch.setenv("DB_MONTHLY_COST_USD", "0.20")
+    monkeypatch.setenv("RAILWAY_PLAN", "Hobby")
+    monkeypatch.setenv("RAILWAY_MONTHLY_COST_USD", "5")
+    monkeypatch.setenv("NEON_PLAN", "Free")
+    monkeypatch.setenv("NEON_MONTHLY_COST_USD", "0")
     monkeypatch.setenv("FRONTEND_MONTHLY_COST_USD", "0")
-    monkeypatch.setenv("AZURE_CONTAINER_ENV_MONTHLY_COST_USD", "0")
-    monkeypatch.setenv("AZURE_VNET_MONTHLY_COST_USD", "0")
-    monkeypatch.setenv("AZURE_PUBLIC_IP_MONTHLY_COST_USD", "1.46")
+    monkeypatch.setenv("INFRA_CURRENT_STACK_STARTED_MONTH", "2026-08")
+    monkeypatch.setenv("INFRA_CURRENT_MONTH_PAID_USD", "2")
 
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -1505,29 +1586,79 @@ def test_infrastructure_analytics_requires_admin_and_reports_capacity(
     assert response.status_code == 200
     data = response.json()
     assert {item["id"] for item in data["storage"]} == {"r2", "database"}
-    assert {item["id"] for item in data["compute"]} == {"backend", "frontend"}
+    assert {item["id"] for item in data["compute"]} == {"backend"}
     assert next(item for item in data["storage"] if item["id"] == "database")[
         "used_bytes"
     ] > 0
-    assert next(item for item in data["compute"] if item["id"] == "frontend")[
-        "runtime_model"
-    ] == "Provider managed"
     assert data["costs"]["monthly_budget_usd"] == 25.0
-    assert data["costs"]["tracked_monthly_estimate_usd"] == 5.21
-    assert {
-        "backend",
-        "container_environment",
-        "database",
-        "frontend",
-        "vnet",
-        "load_balancer",
-        "public_ip",
-        "azure_files",
-        "log_analytics",
-        "private_dns",
-        "azure_other",
-    }.issubset({item["id"] for item in data["costs"]["items"]})
+    assert data["costs"]["tracked_monthly_estimate_usd"] == 5.0
+    assert data["costs"]["current_month_cost_usd"] == 5.0
+    assert data["costs"]["current_month_paid_usd"] == 2.0
+    assert data["costs"]["current_outstanding_usd"] == 3.0
+    assert data["costs"]["recorded_total_usd"] == 5.0
+    assert data["costs"]["recorded_paid_usd"] == 2.0
+    assert data["costs"]["recorded_outstanding_usd"] == 3.0
+    assert data["costs"]["budget_utilization_percent"] == 12.0
+    assert {item["id"] for item in data["costs"]["items"]} == {
+        "r2",
+        "railway",
+        "neon",
+        "azure_static_web_apps",
+    }
+    assert len(data["costs"]["history"]) == 12
+    assert data["costs"]["history"][-2]["total_usd"] is None
+    assert data["costs"]["history"][-2]["available"] is False
+    assert data["costs"]["history"][-1]["provider_costs"]["Railway"] == 5.0
+    assert data["costs"]["history"][-1]["paid_usd"] == 2.0
+    assert data["costs"]["history"][-1]["outstanding_usd"] == 3.0
+    assert data["costs"]["history"][-1]["available"] is True
+    assert data["quotas"] == []
     assert data["refresh_after_seconds"] == 30
+
+
+def test_infrastructure_cost_total_keeps_accrued_retired_azure_charges(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import infrastructure
+
+    monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "true")
+    monkeypatch.setenv("RAILWAY_MONTHLY_COST_USD", "5")
+    monkeypatch.setenv("NEON_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("FRONTEND_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("INFRA_CURRENT_MONTH_PAID_USD", "0")
+    monkeypatch.setattr(
+        infrastructure,
+        "_azure_month_to_date_costs",
+        lambda _force_refresh: {
+            "category_costs": {"frontend": 0.0, "private_dns": 0.03, "vnet": 0.15},
+            "resource_ids": {"frontend": ["/staticSites/job-portal-web"]},
+        },
+    )
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    response = client.get(
+        "/api/admin/infrastructure?refresh=true",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+
+    assert response.status_code == 200
+    costs = response.json()["costs"]
+    assert costs["current_month_cost_usd"] == 5.18
+    assert costs["current_outstanding_usd"] == 5.18
+    assert costs["history"][-1]["provider_costs"]["Microsoft Azure"] == 0.18
+    frontend = next(
+        item for item in costs["items"] if item["id"] == "azure_static_web_apps"
+    )
+    assert frontend["monthly_estimate_usd"] == 0.0
+    assert {item["id"] for item in costs["items"]} == {
+        "r2",
+        "railway",
+        "neon",
+        "azure_static_web_apps",
+    }
 
 
 def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):

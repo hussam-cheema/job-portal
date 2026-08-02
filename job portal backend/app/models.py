@@ -47,6 +47,26 @@ class AnalyticsVisit(Base):
     visited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class InfrastructureCostSnapshot(Base):
+    """Monthly provider cost captured for the infrastructure dashboard."""
+
+    __tablename__ = "infrastructure_cost_snapshots"
+    __table_args__ = (
+        UniqueConstraint("month", "provider", name="uq_infra_cost_month_provider"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    source: Mapped[str] = mapped_column(String(200), nullable=False, default="configuration")
+    estimated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class Job(Base):
     __tablename__ = "jobs"
 

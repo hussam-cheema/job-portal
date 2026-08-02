@@ -1,15 +1,29 @@
 # Production deployment guide
 
+> **Current production note (August 2026):** the backend runs on Railway
+> Serverless, PostgreSQL runs on Neon 16, object storage is Cloudflare R2, and
+> the frontend remains on Azure Static Web Apps. The Azure Container Apps and
+> Azure PostgreSQL instructions below are retained only as legacy
+> provisioning/rollback reference; the current GitHub workflow does not deploy
+> the backend to Azure.
+
 This guide deploys the application with the following architecture:
 
 - **Frontend:** Azure Static Web Apps (hybrid Next.js)
-- **Backend:** Azure Container Apps
-- **Database:** Azure Database for PostgreSQL Flexible Server
+- **Backend:** Railway Serverless
+- **Database:** Neon PostgreSQL 16
 - **Object storage:** Cloudflare R2
 - **DNS and edge TLS:** Cloudflare
 - **CI/CD and image registry:** GitHub Actions and GitHub Container Registry (GHCR)
 
-The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). Pull requests run backend tests plus frontend lint/build checks. A successful push to `main` builds an immutable backend image, deploys a new Container Apps revision, verifies `/ready`, and then deploys the frontend. Subscriber emails are event-driven: after a new job is committed, the backend immediately emails that job to active subscribers.
+The repository includes [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).
+Pull requests run backend tests plus frontend lint/build checks. A successful
+push to `main` deploys the frontend after the checks pass. Railway's GitHub
+integration builds the API and cron services from `main`; the separate
+migration-image workflow publishes a disposable PostgreSQL migration/backup
+image when its files change. Subscriber emails are event-driven: after a new
+job is committed, the backend immediately emails that job to active
+subscribers, while the cron retries recoverable delivery failures.
 
 ## 1. Before you begin
 

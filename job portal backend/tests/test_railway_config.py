@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import tomllib
 
 
@@ -24,3 +25,18 @@ def test_railway_dockerfile_expands_the_injected_port_in_a_shell():
 
     assert 'CMD ["sh", "-c"' in dockerfile
     assert "--port ${PORT:-8000}" in dockerfile
+
+
+def test_database_migration_script_supports_verified_r2_backup():
+    script_path = BACKEND_ROOT / "migration" / "migrate-postgres.sh"
+    script = script_path.read_text()
+    dockerfile = (BACKEND_ROOT / "migration" / "Dockerfile").read_text()
+
+    subprocess.run(["sh", "-n", str(script_path)], check=True)
+    assert 'MIGRATION_MODE:-copy' in script
+    assert "BACKUP_DATABASE_URL" in script
+    assert "pg_dump" in script
+    assert "pg_restore --list" in script
+    assert "sha256sum" in script
+    assert "s3api head-object" in script
+    assert "aws-cli" in dockerfile

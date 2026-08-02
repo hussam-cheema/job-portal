@@ -68,6 +68,12 @@ API_OVERRIDES = {
     "DB_STORAGE_LIMIT_GB": "0.5",
     "BACKEND_MIN_REPLICAS": "0",
     "BACKEND_MAX_REPLICAS": "1",
+    "RAILWAY_PLAN": "Hobby",
+    "RAILWAY_MONTHLY_COST_USD": "5",
+    "NEON_PLAN": "Free",
+    "NEON_MONTHLY_COST_USD": "0",
+    "INFRA_CURRENT_STACK_STARTED_MONTH": "2026-08",
+    "INFRA_COST_HISTORY_MONTHS": "12",
     "QWEN3_EMBEDDING_MODEL_PATH": "/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
     "QWEN3_EMBEDDING_MODEL_MOUNT_PATH": "/models",
     "QWEN3_EMBEDDING_REQUIRE_PERSISTENT_STORAGE": "false",
@@ -88,6 +94,11 @@ NEWSLETTER_OVERRIDES = {
     "R2_LOGS_ENABLED": "false",
     "APP_ENV": "production",
 }
+
+# The migration service is intentionally configured separately from the API
+# and cron services. After cutover, set MIGRATION_MODE=backup and point
+# BACKUP_DATABASE_URL at the Neon direct (non-pooler) URL to create an
+# independent, checksum-verified R2 backup before deleting Azure PostgreSQL.
 
 
 def _az_json(arguments: list[str]) -> Any:

@@ -30,9 +30,46 @@ copy; only writes are briefly paused.
    - verify health, reads, authentication, uploads, newsletter outbox, and logs;
    - disable the write freeze on Railway.
 8. **Rollback window and retirement** — keep the Azure Container App and
-   PostgreSQL server intact while production is monitored. Delete them only
-   after explicit approval. Azure Static Web Apps and the other requested Azure
-   services stay in place.
+   PostgreSQL server intact until every retirement gate below passes. Then
+   remove only the retired backend/database resources. Azure Static Web Apps
+   remains the production frontend.
+
+## Current production topology
+
+- Public frontend: Azure Static Web Apps (`job-portal-web`).
+- Public API: Railway Serverless through `api.pakistanjobsmarket.com`.
+- Database: Neon PostgreSQL 16 using the pooled URL at runtime.
+- Object storage and independent database backups: Cloudflare R2.
+- Newsletter retry worker: Railway cron, every 15 minutes.
+- DNS and edge TLS: Cloudflare.
+
+The GitHub workflow no longer deploys Azure Container Apps. A push to `main`
+runs backend and frontend checks and deploys the Azure Static Web Apps
+frontend. Railway's GitHub integration builds the API and newsletter services
+from `main`; changes under `migration/` also publish the disposable migration
+image through the separate migration-image workflow.
+
+## Step 8 retirement gates
+
+Do not delete Azure PostgreSQL or Container Apps until all of these are true:
+
+1. Public production verification passes for the Railway API and frontend.
+2. Authenticated create/read/update/delete checks pass for jobs, blogs, pages,
+   taxonomy, subscribers, settings, and disposable uploads.
+3. Railway API and newsletter cron are healthy and use Neon.
+4. `api.pakistanjobsmarket.com` resolves to Railway and TLS is valid.
+5. A fresh custom-format PostgreSQL backup is uploaded to R2 with its SHA-256
+   checksum, and the remote object size is verified.
+6. The Neon direct URL is saved outside the application service for restore
+   operations; the pooled URL remains the runtime `DATABASE_URL`.
+7. The Azure Container App remains write-frozen and its newsletter retry loop
+   remains disabled until deletion.
+
+After the gates pass, delete in this order: Container App, Container Apps
+environment, Log Analytics workspace, embedding-model storage account, Azure
+PostgreSQL server, private DNS zone/link, and the retired VNet. Verify that the
+managed Container Apps resource group is empty or automatically removed. Keep
+the Static Web App.
 
 ## Required Railway API variables
 
@@ -78,3 +115,32 @@ ALLOW_TARGET_REPLACE=YES_I_HAVE_VERIFIED_THE_TARGET
 
 The source and target URLs are secrets and must never be committed or printed.
 The job is disposable and must be deleted after a verified final transfer.
+
+For the final independent backup, run the same migration image as a one-off
+Railway service with:
+
+```text
+MIGRATION_MODE=backup
+BACKUP_DATABASE_URL=<Neon direct URL>
+R2_BUCKET_NAME=<production backup bucket>
+R2_BACKUP_PREFIX=production-backups
+```
+
+It also needs the existing R2 endpoint, access-key, and secret-key variables.
+Success is reported only after `pg_restore --list`, checksum generation, upload
+of both objects, and remote object-size verification all pass.
+
+## Infrastructure cost history and payments
+
+Infrastructure Analytics stores monthly snapshots automatically. Invoice
+backfills and payments can be supplied without inventing unavailable values:
+
+```text
+INFRA_COST_HISTORY_JSON={"2026-07":{"provider_costs":{"Microsoft Azure":12.30},"paid_usd":12.30}}
+INFRA_CURRENT_MONTH_PAID_USD=0
+```
+
+Historical billed cost remains visible after payment. Paid amounts reduce the
+month's outstanding balance and the recorded outstanding total. The dashboard
+shows only active providers: Railway, Neon, Cloudflare R2, and the retained
+Azure Static Web Apps frontend.

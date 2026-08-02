@@ -53,6 +53,34 @@ def test_upload_bytes_puts_object_in_r2(monkeypatch):
     assert call["Metadata"] == {}
 
 
+def test_delete_objects_only_removes_owned_r2_keys(monkeypatch):
+    _configure_r2(monkeypatch)
+    client = MagicMock()
+    client.delete_objects.return_value = {}
+    monkeypatch.setattr(storage, "_r2_client", lambda: client)
+
+    assert storage.delete_objects(
+        [
+            "job-portal/job-123/attachments/file.txt",
+            "job-portal/job-123/attachments/file.txt",
+        ]
+    ) == 1
+    client.delete_objects.assert_called_once_with(
+        Bucket="job-files",
+        Delete={
+            "Objects": [{"Key": "job-portal/job-123/attachments/file.txt"}],
+            "Quiet": True,
+        },
+    )
+
+    try:
+        storage.delete_object("another-app/private.txt")
+    except ValueError as exc:
+        assert "Invalid R2 object key" in str(exc)
+    else:
+        raise AssertionError("Foreign object key should be rejected")
+
+
 def test_read_public_object_only_reads_owned_r2_urls(monkeypatch):
     _configure_r2(monkeypatch)
     client = MagicMock()

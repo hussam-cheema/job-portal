@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import resource
@@ -9,17 +10,20 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import cfg, env, r2_enabled
 from app.logging_config import get_logger
+from app.models import InfrastructureCostSnapshot
 from app.schemas import (
     InfrastructureAlert,
     InfrastructureComputeMetric,
     InfrastructureConnectionMetric,
+    InfrastructureCostHistoryPoint,
     InfrastructureCostItem,
     InfrastructureCostSummary,
     InfrastructureDashboard,
@@ -314,15 +318,7 @@ def _compute_metrics() -> list[InfrastructureComputeMetric]:
             uptime_seconds=int(time.monotonic() - _PROCESS_STARTED),
             status=backend_status,
             detail="Usage is for the responding replica; allocation is detected from cgroups or deployment settings.",
-        ),
-        InfrastructureComputeMetric(
-            id="frontend",
-            name="Frontend",
-            provider="Azure Static Web Apps",
-            runtime_model="Provider managed",
-            status="managed",
-            detail="Static Web Apps does not expose a fixed per-app CPU or RAM allocation.",
-        ),
+        )
     ]
 
 
@@ -559,83 +555,253 @@ def _azure_month_to_date_costs(force_refresh: bool) -> dict[str, Any] | None:
         return None
 
 
+def _month_key(month_offset: int = 0) -> str:
+    now = datetime.now(timezone.utc)
+    month_index = now.year * 12 + now.month - 1 + month_offset
+    year, zero_based_month = divmod(month_index, 12)
+    return f"{year:04d}-{zero_based_month + 1:02d}"
+
+
+def _manual_cost_history() -> dict[str, dict[str, Any]]:
+    """Parse optional invoice backfill without making the dashboard depend on it.
+
+    Supported shape:
+      [{"month":"2026-07","provider_costs":{"Railway":5,"Neon":0},"paid_usd":5}]
+    or:
+      {"2026-07":{"provider_costs":{"Railway":5,"Neon":0},"paid_usd":5}}
+
+    The original shorthand remains supported:
+      {"2026-07":{"Railway":5,"Neon":0}}
+    """
+    raw = env("INFRA_COST_HISTORY_JSON")
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        entries = (
+            parsed.items()
+            if isinstance(parsed, dict)
+            else (
+                (str(item.get("month") or ""), item)
+                for item in parsed
+                if isinstance(item, dict)
+            )
+        )
+        result: dict[str, dict[str, Any]] = {}
+        for month, raw_entry in entries:
+            if not isinstance(raw_entry, dict):
+                continue
+            provider_values = raw_entry.get("provider_costs", raw_entry)
+            if (
+                len(month) != 7
+                or month[4] != "-"
+                or not isinstance(provider_values, dict)
+            ):
+                continue
+            clean: dict[str, float] = {}
+            for provider, raw_value in provider_values.items():
+                if provider in {"paid_usd", "provider_costs"}:
+                    continue
+                try:
+                    value = float(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(value) and value >= 0:
+                    clean[str(provider)] = round(value, 2)
+            if clean:
+                try:
+                    paid = float(raw_entry.get("paid_usd", 0) or 0)
+                except (TypeError, ValueError):
+                    paid = 0.0
+                result[month] = {
+                    "provider_costs": clean,
+                    "paid_usd": round(paid, 2)
+                    if math.isfinite(paid) and paid >= 0
+                    else 0.0,
+                }
+        return result
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("INFRA_COST_HISTORY_JSON is invalid and was ignored")
+        return {}
+
+
+def _cost_history(
+    db: Session,
+    *,
+    current_provider_costs: dict[str, float],
+    current_estimated: bool,
+    current_paid_usd: float,
+) -> list[InfrastructureCostHistoryPoint]:
+    history_months = min(36, max(2, _env_int("INFRA_COST_HISTORY_MONTHS", 12)))
+    months = [_month_key(offset) for offset in range(-(history_months - 1), 1)]
+    current_month = months[-1]
+
+    try:
+        changed = False
+        for provider, cost in current_provider_costs.items():
+            row = db.execute(
+                select(InfrastructureCostSnapshot).where(
+                    InfrastructureCostSnapshot.month == current_month,
+                    InfrastructureCostSnapshot.provider == provider,
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                db.add(
+                    InfrastructureCostSnapshot(
+                        id=str(uuid4()),
+                        month=current_month,
+                        provider=provider,
+                        cost_usd=cost,
+                        source="dashboard snapshot",
+                        estimated=current_estimated,
+                        captured_at=datetime.utcnow(),
+                    )
+                )
+                changed = True
+            elif (
+                round(row.cost_usd, 2) != round(cost, 2)
+                or row.estimated != current_estimated
+            ):
+                row.cost_usd = cost
+                row.estimated = current_estimated
+                row.source = "dashboard snapshot"
+                row.updated_at = datetime.utcnow()
+                changed = True
+        if changed:
+            db.commit()
+
+        rows = (
+            db.execute(
+                select(InfrastructureCostSnapshot).where(
+                    InfrastructureCostSnapshot.month.in_(months)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    except Exception:
+        db.rollback()
+        logger.exception("infrastructure cost snapshot persistence failed")
+        rows = []
+
+    by_month: dict[str, dict[str, float]] = {}
+    estimated_by_month: dict[str, bool] = {}
+    for row in rows:
+        by_month.setdefault(row.month, {})[row.provider] = round(row.cost_usd, 2)
+        estimated_by_month[row.month] = estimated_by_month.get(row.month, False) or bool(
+            row.estimated
+        )
+
+    manual = _manual_cost_history()
+    for month, entry in manual.items():
+        if month in months:
+            by_month[month] = entry["provider_costs"]
+            estimated_by_month[month] = False
+
+    # Railway and Neon did not exist before cutover. That fact does not imply
+    # the retired Azure stack cost $0, so an unbackfilled month is deliberately
+    # marked unavailable instead of presenting a misleading zero total.
+    stack_started = env("INFRA_CURRENT_STACK_STARTED_MONTH", current_month) or current_month
+    points: list[InfrastructureCostHistoryPoint] = []
+    for month in months:
+        values = by_month.get(month)
+        if values is None and month < stack_started:
+            values = {"Railway": 0.0, "Neon": 0.0}
+            source = "pre-cutover provider baseline; Azure invoice not backfilled"
+            estimated = True
+            available = False
+        elif values is None:
+            values = {}
+            source = "not yet captured"
+            estimated = True
+            available = False
+        else:
+            source = "manual invoice backfill" if month in manual else "stored monthly snapshot"
+            estimated = estimated_by_month.get(month, True)
+            available = True
+        total = round(sum(values.values()), 2) if available else None
+        configured_paid = (
+            float(manual[month].get("paid_usd", 0.0))
+            if month in manual
+            else (current_paid_usd if month == current_month else 0.0)
+        )
+        paid = round(min(total or 0.0, max(0.0, configured_paid)), 2)
+        outstanding = round(max(0.0, (total or 0.0) - paid), 2) if available else None
+        points.append(
+            InfrastructureCostHistoryPoint(
+                month=month,
+                total_usd=total,
+                paid_usd=paid,
+                outstanding_usd=outstanding,
+                provider_costs=values,
+                source=source,
+                estimated=estimated,
+                available=available,
+            )
+        )
+    return points
+
+
 def _cost_summary(
+    db: Session,
     r2_metric: InfrastructureStorageMetric,
     *,
     force_refresh: bool,
 ) -> InfrastructureCostSummary:
-    backend_provider = env("BACKEND_PROVIDER", "Azure Container Apps") or "Azure Container Apps"
-    database_provider = env("DATABASE_PROVIDER", "Azure PostgreSQL") or "Azure PostgreSQL"
-    backend_is_azure = backend_provider.casefold().startswith("azure")
-    database_is_azure = database_provider.casefold().startswith("azure")
     # Cloudflare R2 Standard pricing, last verified 2026-07: first 10 GB-month free,
     # then USD 0.015/GB-month. This snapshot is directional, not an invoice.
     r2_gb = (r2_metric.used_bytes or 0) / GIB
     r2_billable_gb = math.ceil(max(0.0, r2_gb - 10.0))
     r2_estimate = round(r2_billable_gb * 0.015, 2)
-    configured_costs = {
-        "database": _env_float("DB_MONTHLY_COST_USD"),
-        "backend": _env_float("BACKEND_MONTHLY_COST_USD"),
-        "container_environment": _env_float("AZURE_CONTAINER_ENV_MONTHLY_COST_USD", 0.0),
-        "vnet": _env_float("AZURE_VNET_MONTHLY_COST_USD", 0.0),
-        "load_balancer": _env_float("AZURE_LOAD_BALANCER_MONTHLY_COST_USD"),
-        "public_ip": _env_float("AZURE_PUBLIC_IP_MONTHLY_COST_USD"),
-        "azure_files": _env_float("AZURE_FILES_MONTHLY_COST_USD"),
-        "log_analytics": _env_float("AZURE_LOG_ANALYTICS_MONTHLY_COST_USD"),
-        "private_dns": _env_float("AZURE_PRIVATE_DNS_MONTHLY_COST_USD"),
-        "azure_other": _env_float("AZURE_OTHER_MONTHLY_COST_USD"),
-    }
+
+    railway_plan = env("RAILWAY_PLAN", "Hobby") or "Hobby"
+    railway_actual = _env_float("RAILWAY_MONTH_TO_DATE_COST_USD")
+    railway_estimate = _env_float("RAILWAY_MONTHLY_COST_USD")
+    if railway_estimate is None and railway_plan.casefold() == "hobby":
+        # Railway Hobby has a $5 minimum usage commitment that includes the
+        # first $5 of resource usage.
+        railway_estimate = 5.0
+    railway_cost = railway_actual if railway_actual is not None else railway_estimate
+
+    neon_plan = env("NEON_PLAN", "Free") or "Free"
+    neon_actual = _env_float("NEON_MONTH_TO_DATE_COST_USD")
+    neon_estimate = _env_float("NEON_MONTHLY_COST_USD")
+    if neon_estimate is None and neon_plan.casefold() == "free":
+        neon_estimate = 0.0
+    neon_cost = neon_actual if neon_actual is not None else neon_estimate
+
     frontend_plan = (env("FRONTEND_PLAN", "Free") or "Free").lower()
-    configured_costs["frontend"] = (
+    frontend_estimate = (
         _env_float("FRONTEND_MONTHLY_COST_USD")
         if env("FRONTEND_MONTHLY_COST_USD") is not None
         else (0.0 if frontend_plan == "free" else None)
     )
     azure_live = _azure_month_to_date_costs(force_refresh)
-    if azure_live:
-        for key in configured_costs:
-            if key == "backend" and not backend_is_azure:
-                continue
-            if key == "database" and not database_is_azure:
-                continue
-            configured_costs[key] = float(
-                (azure_live.get("category_costs") or {}).get(key, 0.0)
-            )
-    basis = "month_to_date_actual" if azure_live else "monthly_estimate"
-    azure_detail = (
-        "Live month-to-date actual cost from Azure Cost Management."
+    frontend_cost = (
+        float((azure_live.get("category_costs") or {}).get("frontend", 0.0))
         if azure_live
-        else "Configured estimate; enable Azure Cost Management or set the listed environment variable."
+        else frontend_estimate
     )
-    resources = azure_live.get("resource_ids") if azure_live else {}
-
-    def azure_item(
-        item_id: str,
-        name: str,
-        provider: str,
-        env_name: str,
-        *,
-        default_free: bool = False,
-    ) -> InfrastructureCostItem:
-        value = configured_costs[item_id]
-        provider_is_azure = provider.casefold().startswith(
-            ("azure", "microsoft azure")
+    # The service list intentionally contains only the retained Static Web App.
+    # However, resources retired during this billing month can still leave
+    # legitimate accrued charges. Preserve those charges in the provider total
+    # so removing an unused service never makes the amount owed disappear.
+    azure_current_total = (
+        round(
+            sum(
+                float(value)
+                for value in (azure_live.get("category_costs") or {}).values()
+            ),
+            2,
         )
-        configured = (
-            (azure_live is not None and provider_is_azure)
-            or env(env_name) is not None
-            or default_free
-        )
-        resource_ids = list((resources or {}).get(item_id) or [])
-        return InfrastructureCostItem(
-            id=item_id,
-            name=name,
-            provider=provider,
-            monthly_estimate_usd=value,
-            configured=configured,
-            resource_id=", ".join(resource_ids[:3]) or None,
-            detail=f"{azure_detail} Environment fallback: {env_name}.",
-        )
+        if azure_live
+        else frontend_cost
+    )
+    resources = (azure_live or {}).get("resource_ids") or {}
+    has_actual = any(
+        value is not None for value in (railway_actual, neon_actual)
+    ) or azure_live is not None
+    basis = "provider_actuals_and_estimates" if has_actual else "monthly_estimate"
 
     items = [
         InfrastructureCostItem(
@@ -646,124 +812,97 @@ def _cost_summary(
             configured=True,
             detail="Snapshot estimate: first 10 GB-month free, then $0.015 per GB-month; operations are separate.",
         ),
-        azure_item("backend", "Backend API", backend_provider, "BACKEND_MONTHLY_COST_USD"),
-        azure_item(
-            "container_environment",
-            "Container Apps environment",
-            "Azure Container Apps",
-            "AZURE_CONTAINER_ENV_MONTHLY_COST_USD",
-            default_free=True,
+        InfrastructureCostItem(
+            id="railway",
+            name="Backend API + newsletter retry",
+            provider=f"Railway {railway_plan}",
+            monthly_estimate_usd=railway_cost,
+            configured=railway_cost is not None,
+            detail=(
+                "Live month-to-date Railway cost supplied by configuration."
+                if railway_actual is not None
+                else "Railway plan estimate. Set RAILWAY_MONTH_TO_DATE_COST_USD to mirror the billing dashboard."
+            ),
         ),
-        azure_item("database", "Database", database_provider, "DB_MONTHLY_COST_USD"),
-        azure_item(
-            "frontend",
-            "Frontend hosting",
-            f"Azure Static Web Apps {env('FRONTEND_PLAN', 'Free') or 'Free'}",
-            "FRONTEND_MONTHLY_COST_USD",
-            default_free=frontend_plan == "free",
+        InfrastructureCostItem(
+            id="neon",
+            name="PostgreSQL database",
+            provider=f"Neon {neon_plan}",
+            monthly_estimate_usd=neon_cost,
+            configured=neon_cost is not None,
+            detail=(
+                "Live month-to-date Neon cost supplied by configuration."
+                if neon_actual is not None
+                else "Neon plan estimate. Free projects do not expose the paid Consumption API."
+            ),
         ),
-        azure_item(
-            "vnet",
-            "Virtual network",
-            "Azure Virtual Network",
-            "AZURE_VNET_MONTHLY_COST_USD",
-            default_free=True,
-        ),
-        azure_item(
-            "load_balancer",
-            "Load balancer",
-            "Azure Networking",
-            "AZURE_LOAD_BALANCER_MONTHLY_COST_USD",
-        ),
-        azure_item(
-            "public_ip",
-            "Public IP",
-            "Azure Networking",
-            "AZURE_PUBLIC_IP_MONTHLY_COST_USD",
-        ),
-        azure_item(
-            "azure_files",
-            "Embedding model file share",
-            "Azure Files",
-            "AZURE_FILES_MONTHLY_COST_USD",
-        ),
-        azure_item(
-            "log_analytics",
-            "Log Analytics",
-            "Azure Monitor",
-            "AZURE_LOG_ANALYTICS_MONTHLY_COST_USD",
-        ),
-        azure_item(
-            "private_dns",
-            "Private DNS",
-            "Azure Private DNS",
-            "AZURE_PRIVATE_DNS_MONTHLY_COST_USD",
-        ),
-        azure_item(
-            "azure_other",
-            "Other Azure resources",
-            "Microsoft Azure",
-            "AZURE_OTHER_MONTHLY_COST_USD",
+        InfrastructureCostItem(
+            id="azure_static_web_apps",
+            name="Frontend hosting",
+            provider=f"Azure Static Web Apps {env('FRONTEND_PLAN', 'Free') or 'Free'}",
+            monthly_estimate_usd=frontend_cost,
+            configured=azure_live is not None or frontend_estimate is not None,
+            resource_id=", ".join(list(resources.get("frontend") or [])[:3]) or None,
+            detail=(
+                "Live month-to-date actual from Azure Cost Management."
+                if azure_live
+                else "Azure Static Web Apps plan estimate; the Free plan has no hosting charge."
+            ),
         ),
     ]
-    if azure_live and not backend_is_azure:
-        legacy_backend_cost = float(
-            (azure_live.get("category_costs") or {}).get("backend", 0.0)
-        )
-        if legacy_backend_cost:
-            items.append(
-                InfrastructureCostItem(
-                    id="legacy_azure_backend",
-                    name="Legacy backend (month to date)",
-                    provider="Azure Container Apps",
-                    monthly_estimate_usd=legacy_backend_cost,
-                    configured=True,
-                    resource_id=", ".join(
-                        list((resources or {}).get("backend") or [])[:3]
-                    )
-                    or None,
-                    detail="Historical month-to-date cost retained during the migration rollback window.",
-                )
-            )
-    if azure_live and not database_is_azure:
-        legacy_database_cost = float(
-            (azure_live.get("category_costs") or {}).get("database", 0.0)
-        )
-        if legacy_database_cost:
-            items.append(
-                InfrastructureCostItem(
-                    id="legacy_azure_database",
-                    name="Legacy database (month to date)",
-                    provider="Azure PostgreSQL",
-                    monthly_estimate_usd=legacy_database_cost,
-                    configured=True,
-                    resource_id=", ".join(
-                        list((resources or {}).get("database") or [])[:3]
-                    )
-                    or None,
-                    detail="Historical month-to-date cost retained during the migration rollback window.",
-                )
-            )
+
     tracked = round(sum(item.monthly_estimate_usd or 0 for item in items if item.configured), 2)
     budget = _env_float("INFRA_MONTHLY_BUDGET_USD", 25.0) or 25.0
     missing = sum(not item.configured for item in items)
+    provider_costs = {
+        "Cloudflare R2": r2_estimate,
+        "Railway": railway_cost,
+        "Neon": neon_cost,
+        "Microsoft Azure": azure_current_total,
+    }
+    provider_costs = {
+        provider: round(float(cost), 2)
+        for provider, cost in provider_costs.items()
+        if cost is not None
+    }
+    history = _cost_history(
+        db,
+        current_provider_costs=provider_costs,
+        current_estimated=True,
+        current_paid_usd=_env_float("INFRA_CURRENT_MONTH_PAID_USD", 0.0) or 0.0,
+    )
+    current_point = history[-1]
+    current_cost = current_point.total_usd or 0.0
+    current_paid = current_point.paid_usd
+    current_outstanding = current_point.outstanding_usd or 0.0
+    available_points = [point for point in history if point.available]
+    recorded_total = round(
+        sum(point.total_usd or 0.0 for point in available_points), 2
+    )
+    recorded_paid = round(sum(point.paid_usd for point in available_points), 2)
+    recorded_outstanding = round(
+        sum(point.outstanding_usd or 0.0 for point in available_points), 2
+    )
     return InfrastructureCostSummary(
         monthly_budget_usd=budget,
         tracked_monthly_estimate_usd=tracked,
-        budget_utilization_percent=_percent(tracked, budget) or 0.0,
+        current_month_cost_usd=current_cost,
+        current_month_paid_usd=current_paid,
+        current_outstanding_usd=current_outstanding,
+        recorded_total_usd=recorded_total,
+        recorded_paid_usd=recorded_paid,
+        recorded_outstanding_usd=recorded_outstanding,
+        budget_utilization_percent=_percent(current_outstanding, budget) or 0.0,
         unconfigured_services=missing,
         basis=basis,
-        source=(
-            "Azure Cost Management + Cloudflare R2 estimate"
-            if azure_live
-            else "Configured service estimates + Cloudflare R2 estimate"
-        ),
-        forecast_monthly_cost_usd=_env_float("AZURE_FORECAST_MONTHLY_COST_USD"),
+        source="Railway + Neon + retained Azure + Cloudflare R2",
+        forecast_monthly_cost_usd=_env_float("INFRA_FORECAST_MONTHLY_COST_USD"),
         items=items,
+        history=history,
         detail=(
-            "Azure values are month-to-date actual costs."
-            if azure_live
-            else "Tracked estimates exclude unconfigured paid services. Enable live Azure Cost Management for invoice-backed values."
+            "The headline is the unpaid current-month amount. Provider actuals are used where "
+            "supplied and plan estimates otherwise. Monthly snapshots are retained in the "
+            "application database; INFRA_COST_HISTORY_JSON can backfill invoice totals and payments."
         ),
     )
 
@@ -826,7 +965,7 @@ def _alerts(
             InfrastructureAlert(
                 severity="info",
                 title=f"{costs.unconfigured_services} cloud cost estimates need configuration",
-                detail="Copy current monthly service estimates from Azure Cost Management into the documented environment variables.",
+                detail="Set the provider month-to-date cost environment variables shown in the service documentation.",
             )
         )
     if not alerts:
@@ -844,14 +983,14 @@ def infrastructure_dashboard(db: Session, *, force_refresh: bool = False) -> Inf
     storage_metrics = [_r2_storage(force_refresh), _database_storage(db)]
     compute_metrics = _compute_metrics()
     connections = _database_connections(db)
-    costs = _cost_summary(storage_metrics[0], force_refresh=force_refresh)
+    costs = _cost_summary(db, storage_metrics[0], force_refresh=force_refresh)
     return InfrastructureDashboard(
         collected_at=datetime.now(timezone.utc),
         refresh_after_seconds=30,
         storage=storage_metrics,
         compute=compute_metrics,
         database_connections=connections,
-        quotas=_quota_metrics(),
+        quotas=[],
         costs=costs,
         alerts=_alerts(storage_metrics, compute_metrics, connections, costs),
     )
