@@ -130,6 +130,22 @@ It also needs the existing R2 endpoint, access-key, and secret-key variables.
 Success is reported only after `pg_restore --list`, checksum generation, upload
 of both objects, and remote object-size verification all pass.
 
+## Login-free production CRUD verification
+
+When an operator does not want to share an admin login with a browser or local
+shell, create a disposable Railway service from the backend source and select
+`job portal backend/railway.verify.toml` as its config file. Give the service
+Railway variable references to the API service's `ADMIN_USERNAME` and
+`ADMIN_PASSWORD`; Railway resolves them inside the job and the verifier never
+prints either value.
+
+The job performs public and authenticated reads, an R2 editor-image
+upload/delete, unpublished blog and page create/update/read/delete, inactive
+taxonomy create/update/delete, contact create/read/delete, settings no-op
+updates, SEO analysis, and analytics ingestion. It deliberately does not
+publish a job or send subscriber email. The deployment must finish with all
+checks passing, after which the disposable service can be deleted.
+
 ## Infrastructure cost history and payments
 
 Infrastructure Analytics stores monthly snapshots automatically. Invoice

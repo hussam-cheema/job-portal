@@ -1,0 +1,16 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.railway"
+watchPatterns = [
+  "app/**",
+  "migration/export_railway_env.py",
+  "migration/verify_production.py",
+  "config.yaml",
+  "requirements.txt",
+  "Dockerfile.railway",
+  "railway.verify.toml",
+]
+
+[deploy]
+startCommand = "python -u migration/verify_production.py"
+restartPolicyType = "NEVER"

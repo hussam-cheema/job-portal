@@ -25,6 +25,20 @@ def test_railway_dockerfile_expands_the_injected_port_in_a_shell():
 
     assert 'CMD ["sh", "-c"' in dockerfile
     assert "--port ${PORT:-8000}" in dockerfile
+    assert "COPY migration ./migration" in dockerfile
+
+
+def test_production_verifier_is_a_one_time_railway_job():
+    with (BACKEND_ROOT / "railway.verify.toml").open("rb") as config_file:
+        config = tomllib.load(config_file)
+
+    assert config["build"]["dockerfilePath"] == "Dockerfile.railway"
+    assert "migration/verify_production.py" in config["build"]["watchPatterns"]
+    assert (
+        config["deploy"]["startCommand"]
+        == "python -u migration/verify_production.py"
+    )
+    assert config["deploy"]["restartPolicyType"] == "NEVER"
 
 
 def test_database_migration_script_supports_verified_r2_backup():
