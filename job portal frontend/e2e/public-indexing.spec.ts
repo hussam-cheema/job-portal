@@ -46,6 +46,56 @@ test("published CMS pages have a real public route and canonical metadata", asyn
   );
 });
 
+test("job and blog pages expose post-specific social previews", async ({ page }) => {
+  await page.goto("/jobs/closed-role");
+
+  await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+    "content",
+    "Nationwide Closed Role"
+  );
+  await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+    "content",
+    "Apply for the Nationwide Closed Role with FPSC."
+  );
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+    "content",
+    /\/jobs\/closed-role$/
+  );
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    "content",
+    "http://127.0.0.1:4010/api/media/r2/job-portal/closed-role/images/notice.png"
+  );
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+    "content",
+    "summary_large_image"
+  );
+  await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute(
+    "content",
+    "Nationwide Closed Role"
+  );
+
+  await page.goto("/blog/fpsc-preparation-guide");
+
+  await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+    "content",
+    "FPSC Preparation Guide"
+  );
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+    "content",
+    /\/blog\/fpsc-preparation-guide$/
+  );
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    "content",
+    "https://files.pakistanjobsmarket.com/blog/fpsc-preparation.png"
+  );
+  await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute(
+    "content",
+    "FPSC Preparation Guide"
+  );
+});
+
 test("sitemap advertises canonical content URLs and the legacy favicon resolves", async ({
   request,
 }) => {

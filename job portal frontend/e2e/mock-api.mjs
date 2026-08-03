@@ -156,6 +156,16 @@ const server = createServer((request, response) => {
       application_email: null, source_url: null, attachments: [], qna: [], resources: [],
     });
   }
+  if (path === "/api/seo/job/closed-role") {
+    return json(response, {
+      meta_title: "Nationwide Closed Role | Pakistan Jobs Market",
+      meta_description: "Apply for the Nationwide Closed Role with FPSC.",
+      meta_keywords: "Nationwide Closed Role, FPSC jobs",
+      og_title: "Nationwide Closed Role",
+      og_description: "Apply for the Nationwide Closed Role with FPSC.",
+      og_image: null,
+    });
+  }
   if (path === "/api/jobs/multi-location-role") {
     return json(response, {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
@@ -175,7 +185,7 @@ const server = createServer((request, response) => {
   const blogPost = {
     id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
     excerpt: "A practical preparation guide for candidates in Pakistan.",
-    content: "<h2>Build a study plan</h2><p><span data-testid=\"pasted-rich-text\" style=\"background-color: rgb(255, 255, 255); color: rgb(0, 0, 0)\">Use the syllabus and practice consistently.</span></p><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><thead><tr><th>Exam stage</th><th>Preparation focus</th></tr></thead><tbody><tr><td>Screening test</td><td>Past papers and the official syllabus</td></tr><tr><td>Interview</td><td>Role knowledge and current affairs</td></tr></tbody></table>",
+    content: "<h2>Build a study plan</h2><p><span data-testid=\"pasted-rich-text\" style=\"background-color: rgb(255, 255, 255); color: rgb(0, 0, 0)\">Use the syllabus and practice consistently.</span></p><img alt=\"FPSC preparation\" src=\"https://files.pakistanjobsmarket.com/blog/fpsc-preparation.png\"><p>https://example.com/this-is-a-deliberately-very-long-reference-that-must-wrap-inside-the-article-instead-of-being-cut-off-on-the-right-side</p><table style=\"width:1600px\"><thead><tr><th>Exam stage</th><th>Preparation focus</th></tr></thead><tbody><tr><td>Screening test</td><td>Past papers and the official syllabus</td></tr><tr><td>Interview</td><td>Role knowledge and current affairs</td></tr></tbody></table>",
     author: "Pakistan Jobs Market Editorial Team", category: "Career Advice",
     tags: ["FPSC", "Exam Preparation"], is_published: true,
     published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",

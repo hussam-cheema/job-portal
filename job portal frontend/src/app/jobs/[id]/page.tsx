@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchJob } from "@/lib/api";
+import type { Metadata } from "next";
+import { fetchBranding, fetchJob, fetchPublicSeo } from "@/lib/api";
 import { JobShareButtons } from "@/components/JobShareButtons";
 import {
   formatDate,
@@ -14,6 +15,11 @@ import {
 import { toSeoSlug } from "@/lib/slug";
 import { rewriteJobDescriptionImages } from "@/lib/media";
 import { wrapRichTextTables } from "@/lib/richText";
+import {
+  compactSocialDescription,
+  firstRichTextImage,
+  selectSocialImage,
+} from "@/lib/socialMetadata";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -23,17 +29,62 @@ function externalHref(value: string) {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
 
-export async function generateMetadata({ params }: Props) {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const job = await fetchJob(id);
   if (!job) return { title: "Job | Pakistan Jobs Market" };
+  const [branding, seo] = await Promise.all([
+    fetchBranding(),
+    fetchPublicSeo("job", job.id),
+  ]);
+  const canonicalPath = `/jobs/${job.slug || job.id}`;
+  const fallbackDescription =
+    compactSocialDescription(stripHtml(job.description || "")) ||
+    `${job.title} at ${job.company || job.source || "Pakistan Jobs Market"}`;
+  const description =
+    compactSocialDescription(seo?.meta_description || "") || fallbackDescription;
+  const pageTitle =
+    seo?.meta_title?.trim() || `${job.title} | ${branding.site_name}`;
+  const socialTitle =
+    seo?.og_title?.trim() || seo?.meta_title?.trim() || job.title;
+  const renderedDescription = rewriteJobDescriptionImages(job.description || "");
+  const inlineAttachment = (job.attachments || []).find(
+    (attachment) =>
+      attachment.is_inline_image &&
+      /^image\//i.test(attachment.file_type || "") &&
+      attachment.public_url,
+  );
+  const socialImage = selectSocialImage(
+    seo?.og_image,
+    firstRichTextImage(renderedDescription),
+    inlineAttachment?.public_url,
+    branding.logo_url,
+  );
+
   return {
-    title: `${job.title} | Pakistan Jobs Market`,
-    description:
-      stripHtml(job.description).slice(0, 160) ||
-      `${job.title} at ${job.company || job.source || "—"}`,
-    alternates: { canonical: `/jobs/${job.slug || job.id}` },
+    title: { absolute: pageTitle },
+    description,
+    keywords: seo?.meta_keywords
+      ?.split(",")
+      .map((keyword) => keyword.trim())
+      .filter(Boolean),
+    alternates: { canonical: canonicalPath },
     robots: { index: true, follow: true },
+    openGraph: {
+      title: socialTitle,
+      description: compactSocialDescription(seo?.og_description || "") || description,
+      type: "article",
+      url: canonicalPath,
+      siteName: branding.site_name,
+      publishedTime: job.published_date || job.created_at || undefined,
+      images: [{ url: socialImage, alt: job.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: socialTitle,
+      description: compactSocialDescription(seo?.og_description || "") || description,
+      images: [{ url: socialImage, alt: job.title }],
+    },
   };
 }
 
@@ -166,7 +217,7 @@ export default async function JobDetailPage({ params }: Props) {
               )}
             </div>
           )}
-          <JobShareButtons path={`/jobs/${id}`} title={job.title} />
+          <JobShareButtons path={`/jobs/${job.slug || job.id}`} title={job.title} />
         </header>
 
         <div className="px-5 sm:px-8 py-7">

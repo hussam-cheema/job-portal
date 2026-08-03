@@ -2,9 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobShareButtons } from "@/components/JobShareButtons";
-import { fetchBlogPost } from "@/lib/api";
+import { fetchBlogPost, fetchBranding, fetchPublicSeo } from "@/lib/api";
 import { formatDate, stripHtml } from "@/lib/format";
 import { wrapRichTextTables } from "@/lib/richText";
+import {
+  compactSocialDescription,
+  firstRichTextImage,
+  selectSocialImage,
+} from "@/lib/socialMetadata";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -14,12 +19,52 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const post = await fetchBlogPost(slug);
   if (!post) return { title: "Blog post not found" };
-  const description = post.excerpt || stripHtml(post.content).slice(0, 160);
+  const [branding, seo] = await Promise.all([
+    fetchBranding(),
+    fetchPublicSeo("blog", post.id),
+  ]);
+  const canonicalPath = `/blog/${post.slug}`;
+  const description =
+    compactSocialDescription(seo?.meta_description || "") ||
+    compactSocialDescription(post.excerpt || stripHtml(post.content));
+  const pageTitle =
+    seo?.meta_title?.trim() || `${post.title} | ${branding.site_name}`;
+  const socialTitle =
+    seo?.og_title?.trim() || seo?.meta_title?.trim() || post.title;
+  const socialDescription =
+    compactSocialDescription(seo?.og_description || "") || description;
+  const socialImage = selectSocialImage(
+    seo?.og_image,
+    firstRichTextImage(post.content),
+    branding.logo_url,
+  );
+
   return {
-    title: post.title,
+    title: { absolute: pageTitle },
     description,
-    alternates: { canonical: `/blog/${post.slug}` },
-    openGraph: { title: post.title, description, type: "article" },
+    keywords: seo?.meta_keywords
+      ?.split(",")
+      .map((keyword) => keyword.trim())
+      .filter(Boolean),
+    alternates: { canonical: canonicalPath },
+    robots: { index: true, follow: true },
+    openGraph: {
+      title: socialTitle,
+      description: socialDescription,
+      type: "article",
+      url: canonicalPath,
+      siteName: branding.site_name,
+      publishedTime: post.published_at || post.created_at || undefined,
+      modifiedTime: post.updated_at || undefined,
+      authors: post.author ? [post.author] : undefined,
+      images: [{ url: socialImage, alt: post.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: socialTitle,
+      description: socialDescription,
+      images: [{ url: socialImage, alt: post.title }],
+    },
   };
 }
 
