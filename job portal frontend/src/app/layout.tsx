@@ -62,6 +62,18 @@ export default async function RootLayout({
           content="ca-pub-1209296651546868"
         />
         <script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=G-W6Z1YPL2JY"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-W6Z1YPL2JY');`,
+          }}
+        />
+        <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('pakjobs-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light');}}catch(e){}})();`,
           }}
