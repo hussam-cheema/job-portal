@@ -10,6 +10,16 @@ import {
 import { useAdminAuth } from "@/lib/adminAuth";
 import type { DigestAdminSummary } from "@/lib/types";
 
+const RAILWAY_DELIVERY_SETUP =
+  "Railway email delivery is not configured. Set EMAIL_DELIVERY_PROVIDER=resend, RESEND_API_KEY, and EMAIL_FROM_EMAIL on both backend-api and newsletter-retry, then redeploy both services.";
+
+function deliveryFailureMessage(error: string) {
+  if (/\bOSError\b/i.test(error)) {
+    return "The previous SMTP connection was blocked by the hosting network. Configure Resend HTTPS, then resend the latest alert.";
+  }
+  return error;
+}
+
 export default function NewsletterSubscriptionPage() {
   const { token } = useAdminAuth();
   const [digest, setDigest] = useState<DigestAdminSummary | null>(null);
@@ -17,6 +27,13 @@ export default function NewsletterSubscriptionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const deliveryReady = digest?.delivery_ready === true;
+  const deliveryConfigurationMessage =
+    digest?.delivery_configuration_message?.trim() || RAILWAY_DELIVERY_SETUP;
+  const displayedDigestStatus =
+    digest?.last_digest_status && !deliveryReady
+      ? "configuration required"
+      : digest?.last_digest_status || "not sent";
 
   async function reload() {
     if (!token) return;
@@ -86,9 +103,10 @@ export default function NewsletterSubscriptionPage() {
           </div>
           {error && <p className="field-error mt-3">{error}</p>}
           {message && <p className="mt-3 text-sm font-medium text-[var(--success)]">{message}</p>}
-          {digest && !digest.delivery_ready && (
+          {digest && !deliveryReady && (
             <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-              Email delivery setup required: {digest.delivery_configuration_message}
+              <strong>Email delivery setup required.</strong>{" "}
+              {deliveryConfigurationMessage}
             </p>
           )}
         </section>
@@ -109,7 +127,7 @@ export default function NewsletterSubscriptionPage() {
             <button className="btn btn-primary" type="submit" disabled={busy}>Save email template</button>
           </form>
           <p className="text-xs text-[var(--muted)]">
-            Last job alert: {digest?.last_digest_status || "not sent"}
+            Last job alert: {displayedDigestStatus}
             {digest?.last_digest_job_title ? ` · ${digest.last_digest_job_title}` : ""}
             {digest?.last_digest_at ? ` · ${new Date(digest.last_digest_at).toLocaleString("en-PK")}` : ""}
           </p>
@@ -122,7 +140,7 @@ export default function NewsletterSubscriptionPage() {
               </p>
               {digest.last_digest_error && (
                 <p className="mt-2 break-words text-xs text-[var(--danger)]">
-                  {digest.last_digest_error}
+                  {deliveryFailureMessage(digest.last_digest_error)}
                 </p>
               )}
               <p className="mt-2 text-xs text-[var(--muted)]">
@@ -134,7 +152,7 @@ export default function NewsletterSubscriptionPage() {
           <button
             type="button"
             className="btn btn-ghost"
-            disabled={busy || !digest?.active_subscriber_count || !digest?.delivery_ready}
+            disabled={busy || !digest?.active_subscriber_count || !deliveryReady}
             onClick={resendLatest}
           >
             {busy ? "Sending…" : "Resend latest job alert"}

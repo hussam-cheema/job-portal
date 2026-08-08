@@ -482,6 +482,7 @@ export async function adminUpdateBranding(
   token: string,
   data: Pick<
     Branding,
+    | "site_name"
     | "site_title"
     | "site_title_alignment"
     | "site_header"

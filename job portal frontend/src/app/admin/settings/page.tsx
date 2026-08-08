@@ -78,6 +78,9 @@ export default function SettingsPage() {
     setMessage(null);
     try {
       const branding = await adminUpdateBranding(token, {
+        // Keep this alias while older Railway API revisions still require it.
+        // Both fields intentionally represent the public website title.
+        site_name: siteTitle.trim(),
         site_title: siteTitle.trim(),
         site_title_alignment: siteTitleAlignment,
         site_header: siteHeader.trim(),

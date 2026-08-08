@@ -428,6 +428,39 @@ test("newsletter page shows subscription count and editable alert template", asy
   await expect(page.getByLabel("Email subject")).toHaveValue(/New Job Alert/);
 });
 
+test("newsletter explains legacy Railway delivery failures without a blank warning", async ({ page }) => {
+  await page.route("**/api/admin/subscriptions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        subscriber_count: 1,
+        active_subscriber_count: 1,
+        subject_template: "New Job Alert: {job_title} — {site_title}",
+        body_template: "A new job has been published on {site_title}.",
+        last_digest_at: null,
+        last_digest_status: "retrying",
+        last_digest_job_id: "job-1",
+        last_digest_job_title: "Example role",
+        last_digest_recipients_count: 1,
+        last_digest_sent_count: 0,
+        last_digest_failed_count: 1,
+        last_digest_error: "221df6f7-f750-4c3d-bffa-7e06905393db: OSError",
+        // Intentionally omit the newer delivery_* fields to emulate the live
+        // rolling-deployment response that produced an empty warning.
+      }),
+    });
+  });
+
+  await page.goto("/admin/newsletter");
+  const setupWarning = page.locator("p").filter({ hasText: "Email delivery setup required." });
+  await expect(setupWarning).toContainText("EMAIL_DELIVERY_PROVIDER=resend");
+  await expect(page.getByText(/Last job alert: configuration required/)).toBeVisible();
+  await expect(page.getByText(/previous SMTP connection was blocked/)).toBeVisible();
+  await expect(page.getByText(/221df6f7/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Resend latest job alert" })).toBeDisabled();
+});
+
 test("keyword rankings scroll after twenty unique rows", async ({ page }) => {
   await page.goto("/admin/seo");
   const section = page.locator("section").filter({
@@ -473,9 +506,21 @@ test("website title position is configurable from settings", async ({ page }) =>
   await expect(page.getByRole("textbox", { name: "LinkedIn URL" })).toHaveValue(
     "https://linkedin.com/company/pakistanjobsmarket",
   );
+  const metaDescription = page.getByLabel("Meta description");
+  await metaDescription.fill("Updated homepage description for request compatibility.");
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();
+  const updateRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" && request.url().endsWith("/api/admin/settings/branding"),
+  );
   await page.getByRole("button", { name: "Save website settings" }).click();
+  const payload = (await updateRequest).postDataJSON();
+  expect(payload).toMatchObject({
+    site_name: "Pakistan Jobs Market",
+    site_title: "Pakistan Jobs Market",
+    homepage_meta_description: "Updated homepage description for request compatibility.",
+  });
   await expect(page.getByText("Website text, homepage SEO, and footer updated.")).toBeVisible();
 });
 

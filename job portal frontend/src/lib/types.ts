@@ -63,9 +63,11 @@ export type DigestAdminSummary = {
   last_digest_sent_count: number;
   last_digest_failed_count: number;
   last_digest_error: string | null;
-  delivery_provider: string;
-  delivery_ready: boolean;
-  delivery_configuration_message: string;
+  // Optional during a rolling deployment: older API revisions did not expose
+  // delivery readiness, so the admin UI supplies a safe, actionable fallback.
+  delivery_provider?: string;
+  delivery_ready?: boolean;
+  delivery_configuration_message?: string;
 };
 
 export type QnAItem = {
