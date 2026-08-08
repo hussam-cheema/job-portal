@@ -49,6 +49,21 @@ const server = createServer((request, response) => {
       logo_url: "/pakistan-jobs-market-logo.png",
     });
   }
+  if (path === "/api/admin/settings/branding" && request.method === "PUT") {
+    return json(response, {
+      site_name: "Pakistan Jobs Market",
+      site_title: "Pakistan Jobs Market",
+      site_title_alignment: "beside_logo",
+      site_header: "Latest government & private job openings in Pakistan",
+      site_description: "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools.",
+      footer_copyright: "Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
+      homepage_focus_keyword: "jobs in Pakistan",
+      homepage_meta_title: "Jobs in Pakistan 2026 | Pakistan Jobs Market",
+      homepage_meta_description: "Find latest government and private jobs in Pakistan by city and category. Explore curated listings, deadlines, job alerts, resume tools and career guides.",
+      homepage_meta_keywords: "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
+      logo_url: "/pakistan-jobs-market-logo.png",
+    });
+  }
   if (path === "/api/settings/social" || path === "/api/admin/seo/social") {
     return json(response, {
       facebook_url: "https://facebook.com/pakistanjobsmarket",
@@ -99,6 +114,8 @@ const server = createServer((request, response) => {
       last_digest_job_id: null, last_digest_job_title: null,
       last_digest_recipients_count: 0, last_digest_sent_count: 0,
       last_digest_failed_count: 0, last_digest_error: null,
+      delivery_provider: "resend", delivery_ready: true,
+      delivery_configuration_message: "Resend HTTPS delivery is configured.",
     });
   }
   if (path === "/api/admin/subscriptions/template") {
@@ -109,6 +126,8 @@ const server = createServer((request, response) => {
       last_digest_job_id: null, last_digest_job_title: null,
       last_digest_recipients_count: 0, last_digest_sent_count: 0,
       last_digest_failed_count: 0, last_digest_error: null,
+      delivery_provider: "resend", delivery_ready: true,
+      delivery_configuration_message: "Resend HTTPS delivery is configured.",
     });
   }
   if (path === "/api/jobs") {

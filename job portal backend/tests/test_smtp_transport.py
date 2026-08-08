@@ -205,3 +205,32 @@ def test_resend_https_delivery_avoids_blocked_smtp_ports(
         "text": "Test body\n",
     }
     assert stages == ["configuration", "accepted"]
+
+
+def test_railway_runtime_rejects_blocked_smtp_without_opening_socket(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import smtp_transport
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+    monkeypatch.setenv("EMAIL_DELIVERY_PROVIDER", "auto")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="Railway Hobby blocks SMTP"):
+        smtp_transport.deliver_email_message(_message())
+
+
+def test_railway_delivery_status_reports_resend_requirements(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import smtp_transport
+
+    monkeypatch.setenv("RAILWAY_SERVICE_ID", "service-id")
+    monkeypatch.setenv("EMAIL_DELIVERY_PROVIDER", "auto")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    provider, ready, message = smtp_transport.email_delivery_status()
+
+    assert provider == "unconfigured"
+    assert ready is False
+    assert "Resend HTTPS" in message

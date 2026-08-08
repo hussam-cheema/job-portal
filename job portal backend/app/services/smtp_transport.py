@@ -40,6 +40,31 @@ class SMTPDeliveryReceipt:
     response: str
 
 
+def email_delivery_status() -> tuple[str, bool, str]:
+    """Return a secret-free delivery readiness summary for the admin UI."""
+    provider = (env("EMAIL_DELIVERY_PROVIDER", "auto") or "auto").lower()
+    if provider == "resend" or (provider == "auto" and env("RESEND_API_KEY")):
+        ready = bool(env("RESEND_API_KEY") and env("EMAIL_FROM_EMAIL"))
+        message = (
+            "Resend HTTPS delivery is configured."
+            if ready
+            else "Set RESEND_API_KEY and EMAIL_FROM_EMAIL on backend-api and newsletter-retry."
+        )
+        return "resend", ready, message
+    if env("RAILWAY_ENVIRONMENT") or env("RAILWAY_SERVICE_ID"):
+        return (
+            "unconfigured",
+            False,
+            "Railway Hobby blocks SMTP. Configure Resend HTTPS on backend-api and newsletter-retry.",
+        )
+    ready = bool(env("SMTP_HOST") and (env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")))
+    return (
+        "smtp",
+        ready,
+        "SMTP delivery is configured." if ready else "SMTP delivery is not configured.",
+    )
+
+
 def _message_content(message: EmailMessage) -> tuple[str, str | None]:
     plain = ""
     rich: str | None = None
@@ -109,6 +134,14 @@ def deliver_email_message(
         return deliver_resend_message(message, reporter=reporter)
     if provider not in {"auto", "smtp"}:
         raise RuntimeError("EMAIL_DELIVERY_PROVIDER must be auto, smtp, or resend")
+    # Railway disables outbound SMTP on Free, Trial, and Hobby plans. Detect a
+    # Railway runtime before opening a socket so admin resend fails immediately
+    # with an actionable message instead of waiting through repeated OSErrors.
+    if env("RAILWAY_ENVIRONMENT") or env("RAILWAY_SERVICE_ID"):
+        raise RuntimeError(
+            "Railway Hobby blocks SMTP delivery. Configure EMAIL_DELIVERY_PROVIDER=resend, "
+            "RESEND_API_KEY, and EMAIL_FROM_EMAIL on both backend-api and newsletter-retry."
+        )
     return deliver_smtp_message(message, reporter=reporter)
 
 

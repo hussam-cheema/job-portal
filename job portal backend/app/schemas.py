@@ -213,19 +213,21 @@ class BrandingOut(BaseModel):
 
 
 class BrandingUpdateIn(BaseModel):
-    # Older/current frontend builds do not edit this legacy field. Keeping it
-    # optional makes rolling deployments compatible instead of returning 422.
-    site_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    site_title: str = Field(..., min_length=1, max_length=120)
-    site_title_alignment: Literal["beside_logo", "center", "right"] = "center"
-    site_header: str = Field(..., min_length=1, max_length=240)
-    site_description: str = Field(..., min_length=1, max_length=500)
-    footer_copyright: str = Field(..., min_length=1, max_length=240)
-    # Optional for rolling-deployment compatibility with older frontend builds.
-    homepage_focus_keyword: Optional[str] = Field(default=None, max_length=160)
-    homepage_meta_title: Optional[str] = Field(default=None, max_length=70)
-    homepage_meta_description: Optional[str] = Field(default=None, max_length=200)
-    homepage_meta_keywords: Optional[str] = Field(default=None, max_length=500)
+    # This endpoint is a PATCH-style settings update exposed as PUT. All fields
+    # remain optional so an older/newer frontend can safely update the fields it
+    # knows about during a rolling deployment. The database stores settings as
+    # text; generous safety limits prevent accidental megabyte payloads without
+    # rejecting legitimate website copy.
+    site_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    site_title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    site_title_alignment: Optional[Literal["beside_logo", "center", "right"]] = None
+    site_header: Optional[str] = Field(default=None, min_length=1, max_length=1000)
+    site_description: Optional[str] = Field(default=None, min_length=1, max_length=4000)
+    footer_copyright: Optional[str] = Field(default=None, min_length=1, max_length=1000)
+    homepage_focus_keyword: Optional[str] = Field(default=None, max_length=500)
+    homepage_meta_title: Optional[str] = Field(default=None, max_length=255)
+    homepage_meta_description: Optional[str] = Field(default=None, max_length=1000)
+    homepage_meta_keywords: Optional[str] = Field(default=None, max_length=4000)
 
 
 class JobQnAOut(BaseModel):
@@ -631,3 +633,6 @@ class DigestAdminSummary(BaseModel):
     last_digest_sent_count: int = 0
     last_digest_failed_count: int = 0
     last_digest_error: Optional[str] = None
+    delivery_provider: str = "unconfigured"
+    delivery_ready: bool = False
+    delivery_configuration_message: str = "Email delivery is not configured."

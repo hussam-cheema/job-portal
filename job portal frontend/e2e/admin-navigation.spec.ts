@@ -475,6 +475,8 @@ test("website title position is configurable from settings", async ({ page }) =>
   );
   await page.getByText("Beside logo", { exact: true }).click();
   await expect(page.getByRole("radio", { name: "Beside logo" })).toBeChecked();
+  await page.getByRole("button", { name: "Save website settings" }).click();
+  await expect(page.getByText("Website text, homepage SEO, and footer updated.")).toBeVisible();
 });
 
 test("modern header and admin workspace keep their responsive layout", async ({ page }) => {

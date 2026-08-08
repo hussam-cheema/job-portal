@@ -78,9 +78,35 @@ const DEFAULT_BRANDING: Branding = {
 };
 
 type ApiErrorBody = {
-  detail?: string;
+  detail?: string | Array<{
+    loc?: Array<string | number>;
+    msg?: string;
+    type?: string;
+  }>;
   message?: string;
+  errors?: Array<{
+    loc?: Array<string | number>;
+    msg?: string;
+    type?: string;
+  }>;
 };
+
+function apiErrorMessage(body: ApiErrorBody, fallback: string): string {
+  const validationErrors = Array.isArray(body.errors)
+    ? body.errors
+    : Array.isArray(body.detail)
+      ? body.detail
+      : [];
+  if (validationErrors.length) {
+    return validationErrors
+      .map((item) => {
+        const field = item.loc?.filter((part) => part !== "body").join(".");
+        return `${field ? `${field}: ` : ""}${item.msg || "Invalid value"}`;
+      })
+      .join("; ");
+  }
+  return typeof body.detail === "string" ? body.detail : body.message || fallback;
+}
 
 export class ApiRequestError extends Error {
   status?: number;
@@ -146,7 +172,7 @@ async function requestJson<T>(
       );
     }
     throw new ApiRequestError(
-      errorBody.detail || errorBody.message || fallbackMessage,
+      apiErrorMessage(errorBody, fallbackMessage),
       path,
       response.status
     );
@@ -354,6 +380,7 @@ export async function adminResendLatestJobAlert(token: string) {
   }>("/api/admin/subscriptions/resend-latest", {
     method: "POST",
     headers: authHeaders(token),
+    signal: AbortSignal.timeout(30000),
   }, "Unable to resend the latest job alert");
 }
 

@@ -171,6 +171,10 @@ def _deliver_with_retries(message: EmailMessage):
             return _send_smtp_message(message)
         except Exception as exc:
             last_error = exc
+            # Configuration errors and Railway's plan-level SMTP restriction do
+            # not improve with retries. Surface them immediately to the admin.
+            if isinstance(exc, RuntimeError):
+                break
             if attempt >= attempts:
                 break
             delay = min(2.0, 0.35 * (2 ** (attempt - 1)))

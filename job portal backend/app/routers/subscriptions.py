@@ -24,6 +24,7 @@ from app.services.newsletter import (
     set_digest_templates,
     subscriber_counts,
 )
+from app.services.smtp_transport import email_delivery_status
 
 router = APIRouter()
 
@@ -89,6 +90,7 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
         select(SubscriptionDigestRun).order_by(SubscriptionDigestRun.window_end.desc())
     ).scalars().first()
     last_job = db.get(Job, last.job_id) if last and last.job_id else None
+    provider, delivery_ready, delivery_message = email_delivery_status()
     return DigestAdminSummary(
         subscriber_count=total,
         active_subscriber_count=active,
@@ -102,6 +104,9 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
         last_digest_sent_count=last.sent_count if last else 0,
         last_digest_failed_count=last.failed_count if last else 0,
         last_digest_error=last.error if last else None,
+        delivery_provider=provider,
+        delivery_ready=delivery_ready,
+        delivery_configuration_message=delivery_message,
     )
 
 
@@ -125,6 +130,14 @@ def resend_latest_job_alert(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ):
+    _provider, delivery_ready, delivery_message = email_delivery_status()
+    if not delivery_ready:
+        return {
+            "status": "configuration_required",
+            "sent_count": 0,
+            "failed_count": 0,
+            "message": delivery_message,
+        }
     latest = db.execute(
         select(Job).order_by(Job.created_at.desc(), Job.published_date.desc())
     ).scalars().first()

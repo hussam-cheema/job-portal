@@ -390,6 +390,26 @@ def test_admin_branding_update_accepts_current_frontend_payload_without_site_nam
     assert response.json()["site_name"]
 
 
+def test_admin_branding_update_is_partial_and_accepts_long_website_copy(
+    client: TestClient,
+):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    description = "Pakistan jobs and career guidance. " * 40
+
+    response = client.put(
+        "/api/admin/settings/branding",
+        headers=auth,
+        json={"site_description": description},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["site_description"] == description.strip()
+    assert response.json()["site_title"]
+
+
 def test_watermark_changes_image_and_preserves_format():
     from app.services.watermark import apply_watermark
 

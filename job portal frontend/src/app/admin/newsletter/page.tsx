@@ -86,6 +86,11 @@ export default function NewsletterSubscriptionPage() {
           </div>
           {error && <p className="field-error mt-3">{error}</p>}
           {message && <p className="mt-3 text-sm font-medium text-[var(--success)]">{message}</p>}
+          {digest && !digest.delivery_ready && (
+            <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+              Email delivery setup required: {digest.delivery_configuration_message}
+            </p>
+          )}
         </section>
 
         <section className="card-panel p-5 space-y-4">
@@ -129,7 +134,7 @@ export default function NewsletterSubscriptionPage() {
           <button
             type="button"
             className="btn btn-ghost"
-            disabled={busy || !digest?.active_subscriber_count}
+            disabled={busy || !digest?.active_subscriber_count || !digest?.delivery_ready}
             onClick={resendLatest}
           >
             {busy ? "Sending…" : "Resend latest job alert"}
