@@ -7,8 +7,10 @@ import { SocialFooterIcons } from "@/components/SocialFooterIcons";
 import { VisitTracker } from "@/components/VisitTracker";
 import { ClientChunkRecovery } from "@/components/ClientChunkRecovery";
 import { ClientErrorReporter } from "@/components/ClientErrorReporter";
+import { AdminAuthRedirect } from "@/components/AdminAuthRedirect";
 import { UiIcon } from "@/components/UiIcon";
 import { fetchBranding } from "@/lib/api";
+import { canonicalSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
 function parseKeywords(value: string): string[] {
@@ -25,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const logo = branding.logo_url || "/pakistan-jobs-market-logo.png";
 
   return {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+    metadataBase: new URL(canonicalSiteUrl()),
     title: {
       default: title,
       template: `%s | ${branding.site_name}`,
@@ -85,6 +87,7 @@ gtag('config', 'G-W6Z1YPL2JY');`,
         />
       </head>
       <body className="antialiased font-sans">
+        <AdminAuthRedirect />
         <ClientChunkRecovery />
         <ClientErrorReporter />
         <div className="min-h-screen flex flex-col">
@@ -153,6 +156,9 @@ gtag('config', 'G-W6Z1YPL2JY');`,
                   <SocialFooterIcons />
                 </div>
                 <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                  <Link href="/browse" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">
+                    Browse all
+                  </Link>
                   <Link href="/about" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">
                     About us
                   </Link>

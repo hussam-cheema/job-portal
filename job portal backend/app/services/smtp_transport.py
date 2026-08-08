@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import smtplib
 import socket
 import ssl
@@ -9,6 +10,8 @@ from email.message import EmailMessage
 from email.policy import SMTP as SMTP_POLICY
 from email.utils import getaddresses, parseaddr
 from typing import Callable
+
+import httpx
 
 from app.config import env
 
@@ -35,6 +38,78 @@ class SMTPDeliveryReceipt:
     recipient_count: int
     response_code: int
     response: str
+
+
+def _message_content(message: EmailMessage) -> tuple[str, str | None]:
+    plain = ""
+    rich: str | None = None
+    if message.is_multipart():
+        for part in message.walk():
+            content_type = part.get_content_type()
+            if content_type == "text/plain" and not plain:
+                plain = str(part.get_content())
+            elif content_type == "text/html" and rich is None:
+                rich = str(part.get_content())
+    else:
+        plain = str(message.get_content())
+    return plain, rich
+
+
+def deliver_resend_message(
+    message: EmailMessage,
+    *,
+    reporter: StageReporter | None = None,
+) -> SMTPDeliveryReceipt:
+    """Deliver through Resend's HTTPS API (works on Railway Hobby)."""
+    api_key = env("RESEND_API_KEY")
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY must be configured for HTTPS email delivery")
+    sender, recipients = _message_addresses(message)
+    plain, rich = _message_content(message)
+    payload: dict[str, object] = {
+        "from": str(message.get("From") or sender),
+        "to": recipients,
+        "subject": str(message.get("Subject") or ""),
+        "text": plain,
+    }
+    if rich:
+        payload["html"] = rich
+    reply_to = parseaddr(message.get("Reply-To", ""))[1]
+    if reply_to:
+        payload["reply_to"] = reply_to
+    if reporter:
+        reporter("configuration", f"provider=resend; sender={masked_address(sender)}; recipients={len(recipients)}")
+    endpoint = env("RESEND_API_URL", "https://api.resend.com/emails") or "https://api.resend.com/emails"
+    with httpx.Client(timeout=float(env("EMAIL_HTTP_TIMEOUT_SECONDS", "20") or "20")) as client:
+        response = client.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            content=json.dumps(payload),
+        )
+        response.raise_for_status()
+        data = response.json()
+    message_id = str(data.get("id") or message.get("Message-ID", ""))
+    if reporter:
+        reporter("accepted", f"provider accepted message id={message_id}")
+    return SMTPDeliveryReceipt(
+        message_id=message_id,
+        recipient_count=len(recipients),
+        response_code=response.status_code,
+        response="accepted by Resend HTTPS API",
+    )
+
+
+def deliver_email_message(
+    message: EmailMessage,
+    *,
+    reporter: StageReporter | None = None,
+) -> SMTPDeliveryReceipt:
+    provider = (env("EMAIL_DELIVERY_PROVIDER", "auto") or "auto").lower()
+    if provider == "resend" or (provider == "auto" and env("RESEND_API_KEY")):
+        return deliver_resend_message(message, reporter=reporter)
+    if provider not in {"auto", "smtp"}:
+        raise RuntimeError("EMAIL_DELIVERY_PROVIDER must be auto, smtp, or resend")
+    return deliver_smtp_message(message, reporter=reporter)
 
 
 def _bool_env(name: str, default: bool) -> bool:

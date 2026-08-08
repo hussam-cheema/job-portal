@@ -273,6 +273,7 @@ def list_jobs(
     city: Optional[str] = Query(None),
     province: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
+    education: Optional[str] = Query(None),
     employment_type: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
     job_type: Optional[str] = Query(None),
@@ -325,6 +326,8 @@ def list_jobs(
             filters.append(cast(Job.provinces, String).ilike(like))
         if company:
             filters.append(Job.source == company)
+        if education:
+            filters.append(Job.education_required.ilike(f"%{education.strip()}%"))
         if tag:
             t = tag.strip()
             t_lower = t.lower()
@@ -575,10 +578,13 @@ def get_filters(db: Session = Depends(get_db)):
             ).scalars().all()
         }
         companies: list[str] = []
+        qualifications: list[str] = []
         jobs = db.execute(select(Job)).scalars().all()
         for j in jobs:
             if j.source:
                 companies.append(j.source)
+            if j.education_required:
+                qualifications.append(j.education_required.strip())
 
         # Case-insensitive unique categories, preserve nicer casing
         cat_map: dict[str, str] = {}
@@ -603,6 +609,7 @@ def get_filters(db: Session = Depends(get_db)):
             # the controlled category taxonomy, not cities or free-form skills.
             tags=categories,
             job_types=JOB_TYPES,
+            qualifications=sorted(set(filter(None, qualifications)), key=str.lower),
         )
     except Exception:
         logger.exception("get_filters failed")

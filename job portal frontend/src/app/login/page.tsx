@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminLogin, requestAdminPasswordReset } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
+import { wasAdminSessionRejected } from "@/lib/adminSession";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function LoginPage() {
   }, [recoveryCooldown]);
 
   useEffect(() => {
-    if (ready && token) router.replace("/admin");
+    if (ready && token && !wasAdminSessionRejected()) router.replace("/admin");
   }, [ready, router, token]);
 
   async function requestRecovery() {

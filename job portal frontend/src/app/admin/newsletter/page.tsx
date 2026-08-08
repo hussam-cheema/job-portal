@@ -111,7 +111,7 @@ export default function NewsletterSubscriptionPage() {
           {digest?.last_digest_status && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--navy-850)] p-4 text-sm">
               <p className="text-[var(--navy-200)]">
-                Accepted by SMTP: <strong>{digest.last_digest_sent_count}</strong> /{" "}
+                Accepted by email provider: <strong>{digest.last_digest_sent_count}</strong> /{" "}
                 {digest.last_digest_recipients_count}; failed:{" "}
                 <strong>{digest.last_digest_failed_count}</strong>
               </p>
@@ -121,7 +121,7 @@ export default function NewsletterSubscriptionPage() {
                 </p>
               )}
               <p className="mt-2 text-xs text-[var(--muted)]">
-                SMTP acceptance cannot guarantee Inbox placement; also check Spam, Promotions,
+                Provider acceptance cannot guarantee Inbox placement; also check Spam, Promotions,
                 and recipient filters.
               </p>
             </div>

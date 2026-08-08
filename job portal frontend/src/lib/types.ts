@@ -139,6 +139,7 @@ export type FiltersResponse = {
   employment_types: string[];
   tags: string[];
   job_types?: string[];
+  qualifications?: string[];
 };
 
 export type StatsResponse = {
@@ -159,6 +160,7 @@ export type JobQuery = {
   city?: string;
   province?: string;
   company?: string;
+  education?: string;
   employment_type?: string;
   tag?: string;
   job_type?: string;

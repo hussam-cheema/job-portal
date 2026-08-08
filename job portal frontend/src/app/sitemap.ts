@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 import { toSeoSlug } from "@/lib/slug";
+import { canonicalizePublicUrl, canonicalSiteUrl } from "@/lib/siteUrl";
 
-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+const SITE = canonicalSiteUrl();
 const API = (
   process.env.INTERNAL_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
@@ -21,6 +22,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE}/blog`, changeFrequency: "daily", priority: 0.8 },
     { url: `${SITE}/resume-builder`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE}/cover-letter`, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${SITE}/browse`, changeFrequency: "daily", priority: 0.8 },
   ];
 
   try {
@@ -28,9 +30,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (res.ok) {
       const data = await res.json();
       for (const item of data.urls || []) {
-        if (entries.some((entry) => entry.url === item.loc)) continue;
+        const url = canonicalizePublicUrl(item.loc, SITE);
+        if (entries.some((entry) => entry.url === url)) continue;
         entries.push({
-          url: item.loc,
+          url,
           lastModified: item.lastmod || undefined,
           changeFrequency: item.changefreq || "weekly",
           priority: Number(item.priority ?? 0.5),
@@ -46,17 +49,38 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (res.ok) {
       const filters = await res.json();
       for (const tag of filters.tags || []) {
-        entries.push({
+        if (!entries.some((entry) => entry.url === `${SITE}/tags/${toSeoSlug(tag)}`)) entries.push({
           url: `${SITE}/tags/${toSeoSlug(tag)}`,
           changeFrequency: "weekly",
           priority: 0.5,
         });
       }
       for (const category of filters.categories || []) {
-        entries.push({
+        if (!entries.some((entry) => entry.url === `${SITE}/categories/${toSeoSlug(category)}`)) entries.push({
           url: `${SITE}/categories/${toSeoSlug(category)}`,
           changeFrequency: "weekly",
           priority: 0.6,
+        });
+      }
+      for (const company of filters.companies || []) {
+        if (!entries.some((entry) => entry.url === `${SITE}/companies/${toSeoSlug(company)}`)) entries.push({
+          url: `${SITE}/companies/${toSeoSlug(company)}`,
+          changeFrequency: "weekly",
+          priority: 0.6,
+        });
+      }
+      for (const location of [...(filters.provinces || []), ...(filters.cities || [])]) {
+        if (!entries.some((entry) => entry.url === `${SITE}/locations/${toSeoSlug(location)}`)) entries.push({
+          url: `${SITE}/locations/${toSeoSlug(location)}`,
+          changeFrequency: "weekly",
+          priority: 0.5,
+        });
+      }
+      for (const qualification of filters.qualifications || []) {
+        if (!entries.some((entry) => entry.url === `${SITE}/qualifications/${toSeoSlug(qualification)}`)) entries.push({
+          url: `${SITE}/qualifications/${toSeoSlug(qualification)}`,
+          changeFrequency: "weekly",
+          priority: 0.5,
         });
       }
     }
@@ -64,5 +88,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     /* ignore */
   }
 
-  return entries;
+  return Array.from(new Map(entries.map((entry) => [entry.url, entry])).values());
 }

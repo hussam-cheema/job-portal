@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { canonicalSiteUrl } from "@/lib/siteUrl";
 
 type Props = {
   path: string;
@@ -37,8 +38,7 @@ const targets: ShareTarget[] = [
 
 function initialShareUrl(path: string): string {
   try {
-    const configuredBase = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-    return configuredBase ? `${configuredBase}${path}` : path;
+    return `${canonicalSiteUrl()}${path}`;
   } catch (error) {
     console.error("Unable to build the configured job share URL", error);
     return path;

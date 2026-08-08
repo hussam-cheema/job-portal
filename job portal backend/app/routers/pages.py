@@ -35,7 +35,9 @@ def list_pages(db: Session = Depends(get_db), published_only: bool = True):
 @router.get("/pages/{slug}", response_model=PageOut)
 def get_page(slug: str, db: Session = Depends(get_db)):
     try:
-        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        page = db.execute(
+            select(Page).where(Page.slug == slug, Page.is_published.is_(True))
+        ).scalar_one_or_none()
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
         return page

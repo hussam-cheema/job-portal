@@ -47,6 +47,7 @@ const EMPTY_FILTERS: FiltersResponse = {
   employment_types: [],
   tags: [],
   job_types: ["government", "private"],
+  qualifications: [],
 };
 
 const EMPTY_STATS: StatsResponse = {
@@ -288,6 +289,10 @@ export async function trackVisit(visitorId: string, path: string): Promise<void>
 
 export async function fetchPage(slug: string): Promise<PageItem | null> {
   return getJson<PageItem | null>(`/api/pages/${slug}`, null);
+}
+
+export async function fetchPages(): Promise<PageItem[]> {
+  return getJson<PageItem[]>("/api/pages?published_only=true", []);
 }
 
 export async function fetchPublicSeo(

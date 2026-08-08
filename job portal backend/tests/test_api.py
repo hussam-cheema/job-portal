@@ -364,6 +364,32 @@ def test_admin_can_update_public_branding_text(client: TestClient):
         assert public.json()[key] == value
 
 
+def test_admin_branding_update_accepts_current_frontend_payload_without_site_name(
+    client: TestClient,
+):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    payload = {
+        "site_title": "Pakistan Jobs Market",
+        "site_title_alignment": "beside_logo",
+        "site_header": "Latest government and private jobs in Pakistan",
+        "site_description": "Find jobs, career guides, and application tools.",
+        "footer_copyright": "Copyright © {year} Pakistan Jobs Market",
+        "homepage_focus_keyword": "jobs in Pakistan",
+        "homepage_meta_title": "Jobs in Pakistan | Pakistan Jobs Market",
+        "homepage_meta_description": "Find current jobs and career guidance in Pakistan.",
+        "homepage_meta_keywords": "jobs in Pakistan, career guides",
+    }
+
+    response = client.put("/api/admin/settings/branding", headers=auth, json=payload)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["site_title_alignment"] == "beside_logo"
+    assert response.json()["site_name"]
+
+
 def test_watermark_changes_image_and_preserves_format():
     from app.services.watermark import apply_watermark
 
@@ -2617,13 +2643,24 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
             "published_date": "2026-07-14T00:00:00",
             "job_type": "private",
             "cities": ["Karachi"],
+            "provinces": ["Sindh"],
+            "source": "Acme Pvt Ltd",
+            "education_required": "BS Computer Science",
+            "tags": ["Software Engineering"],
         },
     )
     assert created.status_code == 200
     slug = created.json()["slug"]
     sitemap = client.get("/api/sitemap-data")
     assert sitemap.status_code == 200
-    assert any(url["loc"].endswith(f"/jobs/{slug}") for url in sitemap.json()["urls"])
+    urls = {url["loc"] for url in sitemap.json()["urls"]}
+    assert any(url.endswith(f"/jobs/{slug}") for url in urls)
+    assert any(url.endswith("/locations/karachi") for url in urls)
+    assert any(url.endswith("/locations/sindh") for url in urls)
+    assert any(url.endswith("/companies/acme-pvt-ltd") for url in urls)
+    assert any(url.endswith("/qualifications/bs-computer-science") for url in urls)
+    assert any(url.endswith("/categories/software-engineering") for url in urls)
+    assert any(url.endswith("/tags/software-engineering") for url in urls)
 
 
 def test_sitemap_data_only_includes_published_custom_pages(client: TestClient):
@@ -2755,10 +2792,10 @@ def test_blog_crud_filters_seo_pagination_and_sitemap(client: TestClient):
     assert admin.json()["items"][0]["slug"] == "private-draft"
 
     sitemap = client.get("/api/sitemap-data")
-    assert any(
-        url["loc"].endswith(f"/blog/{post['slug']}")
-        for url in sitemap.json()["urls"]
-    )
+    sitemap_urls = {url["loc"] for url in sitemap.json()["urls"]}
+    assert any(url.endswith(f"/blog/{post['slug']}") for url in sitemap_urls)
+    assert any(url.endswith("/blog/categories/career-advice") for url in sitemap_urls)
+    assert any(url.endswith("/blog/tags/fpsc") for url in sitemap_urls)
 
     deleted = client.delete(f"/api/admin/blog/{post['id']}", headers=auth)
     assert deleted.status_code == 200

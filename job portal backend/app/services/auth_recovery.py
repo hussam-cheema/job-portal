@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import env, site_url
+from app.config import canonical_site_url, env
 from app.logging_config import get_logger
 from app.models import User
 
@@ -34,7 +34,7 @@ def _token_hash(token: str) -> str:
 
 def _reset_url(token: str) -> str:
     query = urlencode({"token": token})
-    return f"{site_url().rstrip('/')}/reset-password?{query}"
+    return f"{canonical_site_url()}/reset-password?{query}"
 
 
 def _send_password_reset_email(*, reset_url: str, reason: str) -> None:

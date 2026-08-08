@@ -25,6 +25,12 @@ export async function ManagedPage({ slug, fallbackTitle, fallbackContent }: Prop
           dangerouslySetInnerHTML={{ __html: content }}
         />
       </article>
+      <nav className="mt-10 flex flex-wrap gap-2 border-t border-[var(--border)] pt-6" aria-label="Related resources">
+        <Link href="/browse" className="btn btn-ghost">Browse jobs and resources</Link>
+        <Link href="/blog" className="btn btn-ghost">Career guides</Link>
+        <Link href="/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link>
+        <Link href="/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link>
+      </nav>
     </div>
   );
 }

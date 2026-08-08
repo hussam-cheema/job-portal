@@ -1,0 +1,15 @@
+import { JobDirectoryList } from "@/components/JobDirectoryList";
+import { fetchFilters } from "@/lib/api";
+import { labelFromSlug, toSeoSlug } from "@/lib/slug";
+
+type Props = { params: Promise<{ qualification: string }> };
+export async function generateMetadata({ params }: Props) {
+  const { qualification } = await params; const label = labelFromSlug(qualification);
+  return { title: `${label} Qualification Jobs in Pakistan`, description: `Find Pakistan jobs requiring ${label}.`, alternates: { canonical: `/qualifications/${qualification}` }, robots: { index: true, follow: true } };
+}
+export default async function QualificationPage({ params }: Props) {
+  const { qualification } = await params;
+  const filters = await fetchFilters();
+  const label = filters.qualifications?.find((value) => toSeoSlug(value) === qualification) || labelFromSlug(qualification);
+  return <JobDirectoryList title={`Jobs requiring ${label}`} eyebrow="Qualification" query={{ education: label }} />;
+}

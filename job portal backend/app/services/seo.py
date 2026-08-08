@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import cfg, site_name, site_url
+from app.config import canonical_site_url, cfg, site_name
 from app.logging_config import get_logger
 from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric
 from app.utils import strip_html
@@ -16,7 +16,7 @@ logger = get_logger("jobportal.seo")
 
 
 def _canonical(path: str) -> str:
-    base = site_url().rstrip("/")
+    base = canonical_site_url()
     if not path.startswith("/"):
         path = "/" + path
     return f"{base}{path}"
@@ -176,7 +176,7 @@ def upsert_page_seo(db: Session, page: Page, seo_override: dict | None = None) -
             "name": page.title,
             "description": desc,
             "url": _canonical(path),
-            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": site_url()},
+            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": canonical_site_url()},
         }
         if existing:
             existing.slug = page.slug
@@ -277,7 +277,7 @@ def upsert_blog_seo(
             "author": {"@type": "Person", "name": post.author or site_name()},
             "mainEntityOfPage": _canonical(path),
             "url": _canonical(path),
-            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": site_url()},
+            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": canonical_site_url()},
         }
         values = {
             "slug": post.slug,

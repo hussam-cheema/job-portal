@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { fetchBlogFilters, fetchBlogPosts } from "@/lib/api";
 import { formatDate, stripHtml } from "@/lib/format";
+import { toSeoSlug } from "@/lib/slug";
 
 type Props = {
   searchParams: Promise<{ q?: string; category?: string; tag?: string; page?: string }>;
@@ -59,7 +60,7 @@ export default async function BlogPage({ searchParams }: Props) {
                 <div className="grid min-w-0 gap-5 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-center">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)] sm:block">
                     <time className="font-medium text-[var(--navy-300)]">{formatDate(post.published_at || post.created_at)}</time>
-                    {post.category && <div className="mt-0 sm:mt-3"><span className="tag tag-blue">{post.category}</span></div>}
+                    {post.category && <div className="mt-0 sm:mt-3"><Link href={`/blog/categories/${toSeoSlug(post.category)}`} className="tag tag-blue job-tag-link">{post.category}</Link></div>}
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-xl font-semibold leading-snug text-[var(--navy-100)] sm:text-2xl">
@@ -70,7 +71,7 @@ export default async function BlogPage({ searchParams }: Props) {
                     </p>
                     {post.tags.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
-                        {post.tags.slice(0, 5).map((tag) => <span key={tag} className="tag tag-blue">{tag}</span>)}
+                        {post.tags.slice(0, 5).map((tag) => <Link key={tag} href={`/blog/tags/${toSeoSlug(tag)}`} className="tag tag-blue job-tag-link">{tag}</Link>)}
                       </div>
                     )}
                   </div>

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
-from app.config import site_url
+from app.config import canonical_site_url, site_url
 from app.database import get_db
 from app.logging_config import get_logger
 from app.models import SEOMeta, User
@@ -45,7 +45,7 @@ logger = get_logger("jobportal.seo_router")
 def seo_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     try:
         data = build_seo_dashboard(db)
-        base = site_url().rstrip("/")
+        base = canonical_site_url()
         pagespeed = measure_pagespeed(base)
         gsc_status = {
             "connected": bool(get_setting(db, "gsc_last_sync") or os.getenv("GSC_SITE_URL")),

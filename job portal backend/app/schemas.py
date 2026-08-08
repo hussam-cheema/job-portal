@@ -213,7 +213,9 @@ class BrandingOut(BaseModel):
 
 
 class BrandingUpdateIn(BaseModel):
-    site_name: str = Field(..., min_length=1, max_length=120)
+    # Older/current frontend builds do not edit this legacy field. Keeping it
+    # optional makes rolling deployments compatible instead of returning 422.
+    site_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     site_title: str = Field(..., min_length=1, max_length=120)
     site_title_alignment: Literal["beside_logo", "center", "right"] = "center"
     site_header: str = Field(..., min_length=1, max_length=240)
@@ -368,6 +370,7 @@ class FiltersResponse(BaseModel):
     employment_types: list[str]
     tags: list[str]
     job_types: list[str] = Field(default_factory=list)
+    qualifications: list[str] = Field(default_factory=list)
 
 
 class StatsResponse(BaseModel):

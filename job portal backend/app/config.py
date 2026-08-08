@@ -4,6 +4,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 from dotenv import load_dotenv
@@ -44,6 +45,19 @@ def env(name: str, default: str | None = None) -> str | None:
 
 def site_url() -> str:
     return env("SITE_URL") or str(cfg("site", "url", default="http://localhost:3000"))
+
+
+def canonical_site_url() -> str:
+    """Return the public origin without a redirecting www/http variant."""
+    raw = site_url().strip().rstrip("/")
+    parsed = urlsplit(raw)
+    hostname = (parsed.hostname or "").lower()
+    if hostname in {"pakistanjobsmarket.com", "www.pakistanjobsmarket.com"}:
+        netloc = "pakistanjobsmarket.com"
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        return urlunsplit(("https", netloc, "", "", ""))
+    return raw
 
 
 def site_name() -> str:

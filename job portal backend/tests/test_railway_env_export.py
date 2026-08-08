@@ -43,6 +43,9 @@ def test_newsletter_export_contains_only_delivery_configuration():
     variables = {
         "SMTP_HOST": "smtp.example.test",
         "SMTP_PASSWORD": "smtp-secret",
+        "EMAIL_DELIVERY_PROVIDER": "resend",
+        "EMAIL_FROM_EMAIL": "alerts@example.test",
+        "RESEND_API_KEY": "resend-secret",
         "SITE_URL": "https://example.test",
         "JWT_SECRET": "not-required",
         "R2_ACCESS_KEY_ID": "not-required",
@@ -52,6 +55,9 @@ def test_newsletter_export_contains_only_delivery_configuration():
 
     assert result["SMTP_HOST"] == "smtp.example.test"
     assert result["SMTP_PASSWORD"] == "smtp-secret"
+    assert result["EMAIL_DELIVERY_PROVIDER"] == "resend"
+    assert result["EMAIL_FROM_EMAIL"] == "alerts@example.test"
+    assert result["RESEND_API_KEY"] == "resend-secret"
     assert result["DATABASE_URL"] == "PASTE_NEON_POOLED_URL_HERE"
     assert result["R2_LOGS_ENABLED"] == "false"
     assert "JWT_SECRET" not in result

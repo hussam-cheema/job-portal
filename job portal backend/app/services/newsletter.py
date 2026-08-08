@@ -11,7 +11,7 @@ from uuid import uuid4
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.config import cfg, env, site_name, site_url
+from app.config import canonical_site_url, cfg, env, site_name
 from app.logging_config import get_logger
 from app.models import (
     EmailSubscriber,
@@ -20,7 +20,7 @@ from app.models import (
     SubscriptionDigestRun,
     SubscriptionEmailDelivery,
 )
-from app.services.smtp_transport import address_fingerprint, deliver_smtp_message
+from app.services.smtp_transport import address_fingerprint, deliver_email_message
 
 logger = get_logger("jobportal.newsletter")
 
@@ -87,7 +87,7 @@ def build_job_alert_message(
     job: Job,
 ) -> EmailMessage:
     title = _site_title(db)
-    base_url = site_url().rstrip("/")
+    base_url = canonical_site_url()
     job_url = f"{base_url}/jobs/{job.slug or job.id}"
     published = (job.published_date or job.created_at or datetime.utcnow()).strftime(
         "%b %d, %Y"
@@ -137,9 +137,9 @@ def build_job_alert_message(
         f'<a href="{html.escape(unsubscribe_url, quote=True)}">Unsubscribe from job alerts</a>.</p>'
     )
 
-    from_email = env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")
+    from_email = env("EMAIL_FROM_EMAIL") or env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")
     if not from_email:
-        raise RuntimeError("SMTP_FROM_EMAIL or SMTP_USERNAME must be configured")
+        raise RuntimeError("EMAIL_FROM_EMAIL, SMTP_FROM_EMAIL, or SMTP_USERNAME must be configured")
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr((title, from_email))
@@ -159,7 +159,8 @@ def build_job_alert_message(
 
 
 def _send_smtp_message(message: EmailMessage):
-    return deliver_smtp_message(message)
+    # Retain the historical function name for stable tests and retry hooks.
+    return deliver_email_message(message)
 
 
 def _deliver_with_retries(message: EmailMessage):
@@ -352,7 +353,10 @@ def process_pending_job_alerts(
                 getattr(receipt, "response", "mocked"),
             )
         except Exception as exc:
-            delivery.last_error = type(exc).__name__
+            detail = str(exc).strip()
+            delivery.last_error = (
+                f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+            )[:500]
             delivery.updated_at = datetime.utcnow()
             if delivery.attempts >= _max_delivery_attempts():
                 delivery.status = "failed"

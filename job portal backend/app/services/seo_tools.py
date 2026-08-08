@@ -11,9 +11,10 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.config import env, site_url
+from app.config import canonical_site_url, env, site_url
 from app.logging_config import get_logger
-from app.models import BlogPost, Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting
+from app.models import BlogPost, Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting, TaxonomyTerm
+from app.utils import as_list, slugify
 
 logger = get_logger("jobportal.seo_tools")
 
@@ -92,7 +93,7 @@ def set_social_settings(db: Session, data: dict[str, str]) -> dict[str, str]:
 
 
 def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
-    base = site_url().rstrip("/")
+    base = canonical_site_url()
     urls: list[dict[str, Any]] = [
         {"loc": f"{base}/", "changefreq": "daily", "priority": 1.0},
         {"loc": f"{base}/about", "changefreq": "monthly", "priority": 0.6},
@@ -100,9 +101,17 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/privacy", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/disclaimer", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/blog", "changefreq": "daily", "priority": 0.8},
+        {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
+        {"loc": f"{base}/resume-builder", "changefreq": "monthly", "priority": 0.6},
+        {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
     ]
     try:
-        for job in db.execute(select(Job)).scalars().all():
+        jobs = db.execute(select(Job)).scalars().all()
+        job_tags: set[str] = set()
+        job_locations: set[str] = set()
+        companies: set[str] = set()
+        qualifications: set[str] = set()
+        for job in jobs:
             urls.append(
                 {
                     "loc": f"{base}/jobs/{job.slug or job.id}",
@@ -111,6 +120,35 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     "priority": 0.8,
                 }
             )
+            job_tags.update(value.strip() for value in as_list(job.tags) if value and value.strip())
+            job_locations.update(
+                value.strip()
+                for value in [*as_list(job.cities), *as_list(job.provinces)]
+                if value and value.strip()
+            )
+            if job.source and job.source.strip():
+                companies.add(job.source.strip())
+            if job.education_required and job.education_required.strip():
+                qualifications.add(job.education_required.strip())
+        categories = db.execute(
+            select(TaxonomyTerm).where(
+                TaxonomyTerm.kind == "category", TaxonomyTerm.is_active.is_(True)
+            )
+        ).scalars().all()
+        for term in categories:
+            urls.append({"loc": f"{base}/categories/{term.slug}", "changefreq": "weekly", "priority": 0.6})
+        for value in sorted(job_tags):
+            if slugify(value):
+                urls.append({"loc": f"{base}/tags/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
+        for value in sorted(job_locations):
+            if slugify(value):
+                urls.append({"loc": f"{base}/locations/{slugify(value)}", "changefreq": "weekly", "priority": 0.6})
+        for value in sorted(companies):
+            if slugify(value):
+                urls.append({"loc": f"{base}/companies/{slugify(value)}", "changefreq": "weekly", "priority": 0.6})
+        for value in sorted(qualifications):
+            if slugify(value):
+                urls.append({"loc": f"{base}/qualifications/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
         for page in db.execute(select(Page).where(Page.is_published.is_(True))).scalars().all():
             core_slugs = {"about", "contact", "privacy", "disclaimer"}
             path = f"/{page.slug}" if page.slug in core_slugs else f"/p/{page.slug}"
@@ -125,12 +163,15 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 }
             )
         now = datetime.utcnow()
-        for post in db.execute(
+        posts = db.execute(
             select(BlogPost).where(
                 BlogPost.is_published.is_(True),
                 (BlogPost.published_at.is_(None) | (BlogPost.published_at <= now)),
             )
-        ).scalars().all():
+        ).scalars().all()
+        blog_categories: set[str] = set()
+        blog_tags: set[str] = set()
+        for post in posts:
             urls.append(
                 {
                     "loc": f"{base}/blog/{post.slug}",
@@ -139,13 +180,22 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     "priority": 0.7,
                 }
             )
+            if post.category and post.category.strip():
+                blog_categories.add(post.category.strip())
+            blog_tags.update(value.strip() for value in as_list(post.tags) if value and value.strip())
+        for value in sorted(blog_categories):
+            if slugify(value):
+                urls.append({"loc": f"{base}/blog/categories/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
+        for value in sorted(blog_tags):
+            if slugify(value):
+                urls.append({"loc": f"{base}/blog/tags/{slugify(value)}", "changefreq": "weekly", "priority": 0.4})
     except Exception:
         logger.exception("build_sitemap_urls failed")
-    return urls
+    return list({item["loc"]: item for item in urls}.values())
 
 
 def robots_txt() -> str:
-    base = site_url().rstrip("/")
+    base = canonical_site_url()
     return (
         "User-agent: *\n"
         "Allow: /\n"

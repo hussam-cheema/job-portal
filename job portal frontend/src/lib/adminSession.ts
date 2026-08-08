@@ -1,6 +1,7 @@
 export const ADMIN_TOKEN_KEY = "pakjobs-admin-token";
 export const ADMIN_USER_KEY = "pakjobs-admin-user";
 export const ADMIN_AUTH_EVENT = "pakjobs-auth-change";
+export const ADMIN_EXPIRED_KEY = "pakjobs-admin-session-expired";
 
 export function readAdminToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -9,6 +10,7 @@ export function readAdminToken(): string | null {
 
 export function writeAdminSession(token: string, username: string) {
   if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(ADMIN_EXPIRED_KEY);
   window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
   window.localStorage.setItem(ADMIN_USER_KEY, username);
   window.dispatchEvent(new Event(ADMIN_AUTH_EVENT));
@@ -16,7 +18,13 @@ export function writeAdminSession(token: string, username: string) {
 
 export function removeAdminSession() {
   if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(ADMIN_EXPIRED_KEY, "1");
   window.localStorage.removeItem(ADMIN_TOKEN_KEY);
   window.localStorage.removeItem(ADMIN_USER_KEY);
   window.dispatchEvent(new Event(ADMIN_AUTH_EVENT));
+}
+
+export function wasAdminSessionRejected(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.sessionStorage.getItem(ADMIN_EXPIRED_KEY) === "1";
 }
