@@ -7,6 +7,9 @@ import { JobFilters } from "@/components/JobFilters";
 import { Pagination } from "@/components/Pagination";
 import { labelFromSlug, toSeoSlug } from "@/lib/slug";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type Props = {
   params: Promise<{ tag: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;

@@ -485,10 +485,8 @@ def update_job(
         seo_ov = data.pop("seo", None)
         if seo_ov is not None and not isinstance(seo_ov, dict) and hasattr(seo_ov, "model_dump"):
             seo_ov = seo_ov.model_dump()
-        if "title" in data and data["title"]:
-            # regenerate slug only if title changes significantly and slug collision-free
-            new_slug = _unique_slug(db, data["title"], exclude_id=job.id)
-            job.slug = new_slug
+        # A published job URL is permanent. Editing a title must never mutate
+        # the canonical slug and invalidate links already indexed or shared.
         _apply_job_fields(job, data, db, is_create=False)
         upsert_job_seo(
             db, job, seo_override=seo_ov if isinstance(seo_ov, dict) else None

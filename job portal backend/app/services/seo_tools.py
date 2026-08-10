@@ -194,6 +194,124 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
     return list({item["loc"]: item for item in urls}.values())
 
 
+def _directory_values(values: list[str]) -> list[dict[str, Any]]:
+    """Return stable, deduplicated public directory values with link metadata."""
+    display_by_key: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for raw_value in values:
+        value = (raw_value or "").strip()
+        value_slug = slugify(value)
+        if not value or not value_slug:
+            continue
+        key = value.casefold()
+        display_by_key.setdefault(key, value)
+        counts[key] = counts.get(key, 0) + 1
+    return [
+        {
+            "name": display_by_key[key],
+            "slug": slugify(display_by_key[key]),
+            "count": counts[key],
+        }
+        for key in sorted(display_by_key, key=lambda item: display_by_key[item].casefold())
+    ]
+
+
+def build_site_directory(db: Session) -> dict[str, Any]:
+    """Build the complete public link inventory used by Browse All and crawl tests."""
+    now = datetime.utcnow()
+    jobs = db.execute(
+        select(Job).order_by(Job.published_date.desc(), Job.created_at.desc())
+    ).scalars().all()
+    posts = db.execute(
+        select(BlogPost)
+        .where(
+            BlogPost.is_published.is_(True),
+            (BlogPost.published_at.is_(None) | (BlogPost.published_at <= now)),
+        )
+        .order_by(BlogPost.published_at.desc(), BlogPost.created_at.desc())
+    ).scalars().all()
+    pages = db.execute(
+        select(Page)
+        .where(Page.is_published.is_(True))
+        .order_by(Page.title.asc())
+    ).scalars().all()
+    category_terms = db.execute(
+        select(TaxonomyTerm)
+        .where(
+            TaxonomyTerm.kind == "category",
+            TaxonomyTerm.is_active.is_(True),
+        )
+        .order_by(TaxonomyTerm.name.asc())
+    ).scalars().all()
+
+    job_tags = [value for job in jobs for value in as_list(job.tags)]
+    cities = [value for job in jobs for value in as_list(job.cities)]
+    provinces = [value for job in jobs for value in as_list(job.provinces)]
+    organizations = [job.source or "" for job in jobs]
+    qualifications = [job.education_required or "" for job in jobs]
+    blog_categories = [post.category or "" for post in posts]
+    blog_tags = [value for post in posts for value in as_list(post.tags)]
+
+    return {
+        "generated_at": now.isoformat(),
+        "jobs": [
+            {
+                "id": job.id,
+                "slug": job.slug or job.id,
+                "title": job.title,
+                "published_date": job.published_date.isoformat() if job.published_date else None,
+                "deadline_date": job.deadline_date.isoformat() if job.deadline_date else None,
+                "applications_closed": bool(
+                    job.deadline_date and job.deadline_date.date() < now.date()
+                ),
+                "organization": (job.source or "").strip() or None,
+                "category": next(iter(as_list(job.tags)), None),
+                "cities": as_list(job.cities),
+                "provinces": as_list(job.provinces),
+                "tags": as_list(job.tags),
+            }
+            for job in jobs
+        ],
+        "blogs": [
+            {
+                "id": post.id,
+                "slug": post.slug,
+                "title": post.title,
+                "published_at": post.published_at.isoformat() if post.published_at else None,
+                "category": post.category,
+                "tags": as_list(post.tags),
+            }
+            for post in posts
+        ],
+        "pages": [
+            {
+                "id": page.id,
+                "slug": page.slug,
+                "title": page.title,
+                "path": (
+                    f"/{page.slug}"
+                    if page.slug in {"about", "contact", "privacy", "disclaimer"}
+                    else f"/p/{page.slug}"
+                ),
+            }
+            for page in pages
+        ],
+        "taxonomies": {
+            "job_categories": [
+                {"name": term.name, "slug": term.slug, "count": 0}
+                for term in category_terms
+            ],
+            "job_tags": _directory_values(job_tags),
+            "cities": _directory_values(cities),
+            "provinces": _directory_values(provinces),
+            "organizations": _directory_values(organizations),
+            "qualifications": _directory_values(qualifications),
+            "blog_categories": _directory_values(blog_categories),
+            "blog_tags": _directory_values(blog_tags),
+        },
+    }
+
+
 def robots_txt() -> str:
     base = canonical_site_url()
     return (

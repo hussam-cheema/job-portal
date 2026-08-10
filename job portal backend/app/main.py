@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.config import canonical_site_url
 from app.database import init_db
 from app.exceptions import (
     empty_filters,
@@ -270,41 +271,12 @@ app.include_router(subscriptions.router, prefix="/api", tags=["subscriptions"])
 app.include_router(infrastructure.router, prefix="/api", tags=["infrastructure"])
 
 
-@app.get("/sitemap.xml", tags=["seo"], response_class=None)
+@app.get("/sitemap.xml", tags=["seo"])
 def root_sitemap():
-    """Google-friendly sitemap at site root (API host)."""
-    from fastapi.responses import Response
+    """Keep one authoritative sitemap on the public website host."""
+    from fastapi.responses import RedirectResponse
 
-    from app.database import SessionLocal
-    from app.services.seo_tools import build_sitemap_urls
-
-    db = SessionLocal()
-    try:
-        urls = build_sitemap_urls(db)
-        parts = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-        ]
-        for u in urls:
-            parts.append("<url>")
-            parts.append(f"<loc>{u['loc']}</loc>")
-            if u.get("lastmod"):
-                parts.append(f"<lastmod>{u['lastmod']}</lastmod>")
-            if u.get("changefreq"):
-                parts.append(f"<changefreq>{u['changefreq']}</changefreq>")
-            if u.get("priority") is not None:
-                parts.append(f"<priority>{u['priority']}</priority>")
-            parts.append("</url>")
-        parts.append("</urlset>")
-        return Response(content="\n".join(parts), media_type="application/xml")
-    except Exception:
-        logger.exception("root sitemap failed")
-        return Response(
-            content='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
-            media_type="application/xml",
-        )
-    finally:
-        db.close()
+    return RedirectResponse(f"{canonical_site_url()}/sitemap.xml", status_code=308)
 
 
 @app.get("/robots.txt", tags=["seo"])

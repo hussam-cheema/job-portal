@@ -245,6 +245,53 @@ export type BlogListResponse = {
 
 export type BlogFilters = { categories: string[]; tags: string[] };
 
+export type DirectoryValue = {
+  name: string;
+  slug: string;
+  count: number;
+};
+
+export type SiteDirectory = {
+  generated_at: string | null;
+  jobs: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    published_date: string | null;
+    deadline_date: string | null;
+    applications_closed: boolean;
+    organization: string | null;
+    category: string | null;
+    cities: string[];
+    provinces: string[];
+    tags: string[];
+  }>;
+  blogs: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    published_at: string | null;
+    category: string | null;
+    tags: string[];
+  }>;
+  pages: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    path: string;
+  }>;
+  taxonomies: {
+    job_categories: DirectoryValue[];
+    job_tags: DirectoryValue[];
+    cities: DirectoryValue[];
+    provinces: DirectoryValue[];
+    organizations: DirectoryValue[];
+    qualifications: DirectoryValue[];
+    blog_categories: DirectoryValue[];
+    blog_tags: DirectoryValue[];
+  };
+};
+
 export type BlogFormData = Omit<BlogPost, "id" | "created_at" | "updated_at"> & {
   seo?: {
     focus_keyword?: string | null;

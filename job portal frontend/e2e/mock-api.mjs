@@ -90,6 +90,65 @@ const server = createServer((request, response) => {
       companies: [], employment_types: [], tags: ["Software Engineering"], job_types: ["government", "private"],
     });
   }
+  if (path === "/api/sitemap-data") {
+    return json(response, {
+      urls: [
+        { loc: "http://localhost:3000/jobs/closed-role", changefreq: "weekly", priority: 0.8 },
+        { loc: "http://localhost:3000/jobs/multi-location-role", changefreq: "weekly", priority: 0.8 },
+        { loc: "http://localhost:3000/blog/fpsc-preparation-guide", changefreq: "weekly", priority: 0.7 },
+        { loc: "http://localhost:3000/p/custom-seo-page", changefreq: "monthly", priority: 0.5 },
+        { loc: "http://localhost:3000/categories/software-engineering", changefreq: "weekly", priority: 0.6 },
+        { loc: "http://localhost:3000/tags/government", changefreq: "weekly", priority: 0.5 },
+        { loc: "http://localhost:3000/locations/lahore", changefreq: "weekly", priority: 0.6 },
+        { loc: "http://localhost:3000/locations/punjab", changefreq: "weekly", priority: 0.6 },
+        { loc: "http://localhost:3000/companies/fpsc", changefreq: "weekly", priority: 0.6 },
+        { loc: "http://localhost:3000/qualifications/bachelors", changefreq: "weekly", priority: 0.5 },
+        { loc: "http://localhost:3000/blog/categories/career-advice", changefreq: "weekly", priority: 0.5 },
+        { loc: "http://localhost:3000/blog/tags/fpsc", changefreq: "weekly", priority: 0.4 },
+      ],
+    });
+  }
+  if (path === "/api/site-directory") {
+    return json(response, {
+      generated_at: new Date().toISOString(),
+      jobs: [
+        {
+          id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
+          published_date: "2026-07-01T00:00:00Z", deadline_date: "2026-07-17T00:00:00Z",
+          applications_closed: true, organization: "FPSC", category: "Government",
+          cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
+        },
+        {
+          id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
+          published_date: "2026-07-02T00:00:00Z", deadline_date: null,
+          applications_closed: false, organization: "FPSC", category: "Software Engineering",
+          cities: ["Karachi", "Lahore"], provinces: ["Punjab", "Sindh"], tags: ["Software Engineering"],
+        },
+      ],
+      blogs: [{
+        id: "blog-1", slug: "fpsc-preparation-guide", title: "FPSC Preparation Guide",
+        published_at: "2026-07-18T12:00:00Z", category: "Career Advice",
+        tags: ["FPSC", "Exam Preparation"],
+      }],
+      pages: [
+        { id: "about", slug: "about", title: "About Us", path: "/about" },
+        { id: "custom-seo-page-id", slug: "custom-seo-page", title: "Custom public page", path: "/p/custom-seo-page" },
+      ],
+      taxonomies: {
+        job_categories: [
+          { name: "Government", slug: "government", count: 1 },
+          { name: "Software Engineering", slug: "software-engineering", count: 1 },
+        ],
+        job_tags: [{ name: "Government", slug: "government", count: 1 }],
+        cities: [{ name: "Lahore", slug: "lahore", count: 2 }],
+        provinces: [{ name: "Punjab", slug: "punjab", count: 1 }],
+        organizations: [{ name: "FPSC", slug: "fpsc", count: 2 }],
+        qualifications: [{ name: "Bachelors", slug: "bachelors", count: 1 }],
+        blog_categories: [{ name: "Career Advice", slug: "career-advice", count: 1 }],
+        blog_tags: [{ name: "FPSC", slug: "fpsc", count: 1 }],
+      },
+    });
+  }
   if (path === "/api/taxonomy" || path === "/api/admin/taxonomy") {
     return json(response, [
       { id: "term-software", kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: true },
@@ -161,7 +220,7 @@ const server = createServer((request, response) => {
   if (path === "/api/stats") {
     return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
   }
-  if (path === "/api/jobs/closed-role") {
+  if (path === "/api/jobs/closed-role" || path === "/api/jobs/legacy-closed-role-id") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",

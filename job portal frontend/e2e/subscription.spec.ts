@@ -39,7 +39,7 @@ test("nationwide expired jobs show Pakistan and Applications Closed on list and 
   await expect(page.getByRole("heading", { name: "Nationwide Closed Role" })).toBeVisible();
   await expect(page.getByText("Applications Closed", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "https://fpsc.gov.pk/advertisement" })).toHaveAttribute("href", "https://fpsc.gov.pk/advertisement");
-  await expect(page.getByRole("link", { name: "https://fpsc.gov.pk/apply" })).toHaveAttribute("href", "https://fpsc.gov.pk/apply");
+  await expect(page.getByRole("link", { name: "https://fpsc.gov.pk/apply" })).toHaveCount(0);
 });
 
 test("homepage category selector contains only controlled categories", async ({ page }) => {

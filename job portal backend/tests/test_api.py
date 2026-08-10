@@ -190,6 +190,63 @@ def test_login_and_create_job(client: TestClient):
     assert invalid.status_code == 400
 
 
+def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={
+            "title": "Ministry of Defence Jobs 2026",
+            "description": "<p>Permanent public opportunity.</p>",
+            "published_date": "2026-08-01T00:00:00",
+            "deadline_date": "2026-08-31T00:00:00",
+            "source": "Ministry of Defence",
+            "education_required": "Bachelors",
+            "cities": ["Islamabad"],
+            "provinces": ["Punjab"],
+            "tags": ["Software Engineering"],
+        },
+    )
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+    original_slug = created.json()["slug"]
+    assert original_slug == "ministry-of-defence-jobs-2026"
+
+    updated = client.put(
+        f"/api/admin/jobs/{job_id}",
+        headers=headers,
+        json={"title": "Updated Ministry Careers 2026"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["slug"] == original_slug
+
+    directory = client.get("/api/site-directory")
+    assert directory.status_code == 200
+    payload = directory.json()
+    assert any(job["slug"] == original_slug for job in payload["jobs"])
+    assert any(item["slug"] == "islamabad" for item in payload["taxonomies"]["cities"])
+    assert any(item["slug"] == "ministry-of-defence" for item in payload["taxonomies"]["organizations"])
+    assert any(item["slug"] == "bachelors" for item in payload["taxonomies"]["qualifications"])
+
+    sitemap = client.get("/api/sitemap-data")
+    assert sitemap.status_code == 200
+    assert any(
+        item["loc"].endswith(f"/jobs/{original_slug}")
+        for item in sitemap.json()["urls"]
+    )
+
+
+def test_api_sitemap_redirects_to_the_single_public_sitemap(client: TestClient):
+    response = client.get("/sitemap.xml", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"].endswith("/sitemap.xml")
+    assert "/api/" not in response.headers["location"]
+
+
 def test_admin_pages_self_heal_core_pages(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}

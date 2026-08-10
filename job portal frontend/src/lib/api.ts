@@ -20,6 +20,7 @@ import type {
   BlogListResponse,
   BlogPost,
   InfrastructureDashboard,
+  SiteDirectory,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
 
@@ -291,6 +292,27 @@ export async function fetchBlogPosts(params: {
 
 export function fetchBlogFilters(): Promise<BlogFilters> {
   return getJson<BlogFilters>("/api/blog/filters", { categories: [], tags: [] });
+}
+
+const EMPTY_SITE_DIRECTORY: SiteDirectory = {
+  generated_at: null,
+  jobs: [],
+  blogs: [],
+  pages: [],
+  taxonomies: {
+    job_categories: [],
+    job_tags: [],
+    cities: [],
+    provinces: [],
+    organizations: [],
+    qualifications: [],
+    blog_categories: [],
+    blog_tags: [],
+  },
+};
+
+export function fetchSiteDirectory(): Promise<SiteDirectory> {
+  return getFreshJson<SiteDirectory>("/api/site-directory", EMPTY_SITE_DIRECTORY);
 }
 
 export function fetchBlogPost(slug: string): Promise<BlogPost | null> {

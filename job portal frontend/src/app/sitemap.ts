@@ -1,5 +1,4 @@
 import type { MetadataRoute } from "next";
-import { toSeoSlug } from "@/lib/slug";
 import { canonicalizePublicUrl, canonicalSiteUrl } from "@/lib/siteUrl";
 
 const SITE = canonicalSiteUrl();
@@ -42,50 +41,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   } catch {
     /* keep static entries if the API is unavailable */
-  }
-
-  try {
-    const res = await fetch(`${API}/api/filters`, { cache: "no-store" });
-    if (res.ok) {
-      const filters = await res.json();
-      for (const tag of filters.tags || []) {
-        if (!entries.some((entry) => entry.url === `${SITE}/tags/${toSeoSlug(tag)}`)) entries.push({
-          url: `${SITE}/tags/${toSeoSlug(tag)}`,
-          changeFrequency: "weekly",
-          priority: 0.5,
-        });
-      }
-      for (const category of filters.categories || []) {
-        if (!entries.some((entry) => entry.url === `${SITE}/categories/${toSeoSlug(category)}`)) entries.push({
-          url: `${SITE}/categories/${toSeoSlug(category)}`,
-          changeFrequency: "weekly",
-          priority: 0.6,
-        });
-      }
-      for (const company of filters.companies || []) {
-        if (!entries.some((entry) => entry.url === `${SITE}/companies/${toSeoSlug(company)}`)) entries.push({
-          url: `${SITE}/companies/${toSeoSlug(company)}`,
-          changeFrequency: "weekly",
-          priority: 0.6,
-        });
-      }
-      for (const location of [...(filters.provinces || []), ...(filters.cities || [])]) {
-        if (!entries.some((entry) => entry.url === `${SITE}/locations/${toSeoSlug(location)}`)) entries.push({
-          url: `${SITE}/locations/${toSeoSlug(location)}`,
-          changeFrequency: "weekly",
-          priority: 0.5,
-        });
-      }
-      for (const qualification of filters.qualifications || []) {
-        if (!entries.some((entry) => entry.url === `${SITE}/qualifications/${toSeoSlug(qualification)}`)) entries.push({
-          url: `${SITE}/qualifications/${toSeoSlug(qualification)}`,
-          changeFrequency: "weekly",
-          priority: 0.5,
-        });
-      }
-    }
-  } catch {
-    /* ignore */
   }
 
   return Array.from(new Map(entries.map((entry) => [entry.url, entry])).values());

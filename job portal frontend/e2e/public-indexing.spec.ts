@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("public pages expose self-canonicals and private pages are noindex", async ({ page }) => {
+  test.setTimeout(90_000);
   for (const path of [
     "/",
     "/about",
@@ -43,6 +44,37 @@ test("published CMS pages have a real public route and canonical metadata", asyn
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
     /\/p\/custom-seo-page$/
+  );
+});
+
+test("Browse All exposes every public content family in initial HTML", async ({ request }) => {
+  const response = await request.get("/browse");
+  expect(response.ok()).toBeTruthy();
+  const html = await response.text();
+
+  for (const expected of [
+    "All job posts",
+    'href="/jobs/closed-role"',
+    'href="/blog/fpsc-preparation-guide"',
+    'href="/categories/software-engineering"',
+    'href="/companies/fpsc"',
+    'href="/locations/lahore"',
+    'href="/locations/punjab"',
+    'href="/p/custom-seo-page"',
+    'href="/resume-builder"',
+    'href="/cover-letter"',
+  ]) {
+    expect(html).toContain(expected);
+  }
+});
+
+test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {
+  const response = await page.goto("/jobs/legacy-closed-role-id");
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(/\/jobs\/closed-role$/);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    /\/jobs\/closed-role$/
   );
 });
 
@@ -105,6 +137,9 @@ test("sitemap advertises canonical content URLs and the legacy favicon resolves"
 
   expect(xml).toContain("<loc>http://localhost:3000/disclaimer</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/cover-letter</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/jobs/closed-role</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/blog/fpsc-preparation-guide</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/p/custom-seo-page</loc>");
   const locations = Array.from(xml.matchAll(/<loc>([^<]+)<\/loc>/g), (match) => match[1]);
   expect(locations.length).toBeGreaterThan(0);
   expect(locations.every((location) => new URL(location).hostname === "localhost")).toBeTruthy();

@@ -22,6 +22,7 @@ from app.services.seo import build_seo_dashboard, get_seo_for_entity
 from app.services.seo_tools import (
     add_backlink,
     authority_score,
+    build_site_directory,
     build_sitemap_urls,
     discover_backlinks_basic,
     entity_rank_summary,
@@ -212,3 +213,19 @@ def sitemap_data(db: Session = Depends(get_db)):
     except Exception:
         logger.exception("sitemap_data failed")
         return {"urls": []}
+
+
+@router.get("/site-directory")
+def site_directory(db: Session = Depends(get_db)):
+    """Complete public inventory for server-rendered navigation and crawl audits."""
+    try:
+        return build_site_directory(db)
+    except Exception:
+        logger.exception("site_directory failed")
+        return {
+            "generated_at": None,
+            "jobs": [],
+            "blogs": [],
+            "pages": [],
+            "taxonomies": {},
+        }

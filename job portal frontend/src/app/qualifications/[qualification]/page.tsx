@@ -2,6 +2,9 @@ import { JobDirectoryList } from "@/components/JobDirectoryList";
 import { fetchFilters } from "@/lib/api";
 import { labelFromSlug, toSeoSlug } from "@/lib/slug";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type Props = { params: Promise<{ qualification: string }> };
 export async function generateMetadata({ params }: Props) {
   const { qualification } = await params; const label = labelFromSlug(qualification);

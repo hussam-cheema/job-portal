@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { fetchBlogPosts, fetchBranding, fetchJob, fetchJobs, fetchPublicSeo } from "@/lib/api";
 import { JobShareButtons } from "@/components/JobShareButtons";
@@ -20,6 +20,10 @@ import {
   firstRichTextImage,
   selectSocialImage,
 } from "@/lib/socialMetadata";
+import { canonicalSiteUrl } from "@/lib/siteUrl";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -92,6 +96,7 @@ export default async function JobDetailPage({ params }: Props) {
   const { id } = await params;
   const job = await fetchJob(id);
   if (!job) notFound();
+  if (job.slug && id !== job.slug) permanentRedirect(`/jobs/${job.slug}`);
 
   const discoveryTerm = job.category || job.tags?.[0] || job.cities?.[0];
   const [relatedResult, companyResult, articleResult] = await Promise.all([
@@ -127,9 +132,39 @@ export default async function JobDetailPage({ params }: Props) {
     (job.source_url && job.source_url !== job.application_url ? job.source_url : "");
   const applicationsClosed =
     job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
+  const jobUrl = `${canonicalSiteUrl()}/jobs/${job.slug || job.id}`;
+  const locations = Array.from(new Set([...(job.cities || []), ...(job.provinces || [])]));
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description: stripHtml(job.description || ""),
+    datePosted: job.published_date || job.created_at || undefined,
+    validThrough: job.deadline_date || job.application_deadline || undefined,
+    employmentType: job.employment_type || job.job_type || undefined,
+    hiringOrganization: {
+      "@type": "Organization",
+      name: job.company || job.source || "Pakistan Jobs Market",
+    },
+    jobLocation: locations.map((location) => ({
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: location,
+        addressCountry: "PK",
+      },
+    })),
+    url: jobUrl,
+  };
 
   return (
     <div className="site-wrap py-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+        }}
+      />
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--navy-200)] mb-8 transition-colors"
@@ -198,7 +233,7 @@ export default async function JobDetailPage({ params }: Props) {
               <Meta label="Source" value={job.source_name || job.source || ""} />
             )}
           </div>
-          {(referenceUrl || job.application_url) && (
+          {(referenceUrl || (!applicationsClosed && job.application_url)) && (
             <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
               {referenceUrl && (
                 <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
@@ -215,7 +250,7 @@ export default async function JobDetailPage({ params }: Props) {
                   </a>
                 </div>
               )}
-              {job.application_url && (
+              {!applicationsClosed && job.application_url && (
                 <div className="grid gap-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
                   <span className="font-semibold text-[var(--navy-300)]">Apply Here:</span>
                   <a
