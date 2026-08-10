@@ -311,8 +311,123 @@ const EMPTY_SITE_DIRECTORY: SiteDirectory = {
   },
 };
 
-export function fetchSiteDirectory(): Promise<SiteDirectory> {
-  return getFreshJson<SiteDirectory>("/api/site-directory", EMPTY_SITE_DIRECTORY);
+function directorySlug(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function directoryValues(values: string[], seeds: string[] = []): SiteDirectory["taxonomies"]["cities"] {
+  const entries = new Map<string, { name: string; count: number }>();
+  for (const rawValue of seeds) {
+    const name = rawValue?.trim();
+    const slug = name ? directorySlug(name) : "";
+    if (name && slug && !entries.has(slug)) entries.set(slug, { name, count: 0 });
+  }
+  for (const rawValue of values) {
+    const name = rawValue?.trim();
+    const slug = name ? directorySlug(name) : "";
+    if (!name || !slug) continue;
+    const current = entries.get(slug);
+    entries.set(slug, {
+      name: current?.name || name,
+      count: (current?.count || 0) + 1,
+    });
+  }
+  return [...entries.entries()]
+    .map(([slug, value]) => ({ slug, ...value }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
+  const firstJobs = await fetchJobs({ page: 1, page_size: 100 });
+  const firstBlogs = await fetchBlogPosts({ page: 1, page_size: 50 });
+  const remainingJobs = await Promise.all(
+    Array.from({ length: Math.max(0, firstJobs.pages - 1) }, (_, index) =>
+      fetchJobs({ page: index + 2, page_size: 100 })
+    )
+  );
+  const remainingBlogs = await Promise.all(
+    Array.from({ length: Math.max(0, firstBlogs.pages - 1) }, (_, index) =>
+      fetchBlogPosts({ page: index + 2, page_size: 50 })
+    )
+  );
+  const [filters, blogFilters, pages] = await Promise.all([
+    fetchFilters(),
+    fetchBlogFilters(),
+    fetchPages(),
+  ]);
+  const jobs = [firstJobs, ...remainingJobs].flatMap((response) => response.items);
+  const blogs = [firstBlogs, ...remainingBlogs].flatMap((response) => response.items);
+
+  return {
+    generated_at: new Date().toISOString(),
+    jobs: jobs.map((job) => ({
+      id: job.id,
+      slug: job.slug || job.id,
+      title: job.title,
+      published_date: job.published_date,
+      deadline_date: job.deadline_date,
+      applications_closed: Boolean(job.applications_closed),
+      organization: job.source,
+      category: job.category,
+      cities: job.cities || [],
+      provinces: job.provinces || [],
+      tags: job.tags || [],
+    })),
+    blogs: blogs.map((post) => ({
+      id: post.id,
+      slug: post.slug,
+      title: post.title,
+      published_at: post.published_at || null,
+      category: post.category || null,
+      tags: post.tags || [],
+    })),
+    pages: pages
+      .filter((page) => page.is_published)
+      .map((page) => ({
+        id: page.id,
+        slug: page.slug,
+        title: page.title,
+        path: ["about", "contact", "privacy", "disclaimer"].includes(page.slug)
+          ? `/${page.slug}`
+          : `/p/${page.slug}`,
+      })),
+    taxonomies: {
+      job_categories: directoryValues(
+        jobs.flatMap((job) => (job.category ? [job.category] : [])),
+        filters.categories
+      ),
+      job_tags: directoryValues(jobs.flatMap((job) => job.tags || []), filters.tags),
+      cities: directoryValues(jobs.flatMap((job) => job.cities || []), filters.cities),
+      provinces: directoryValues(jobs.flatMap((job) => job.provinces || []), filters.provinces),
+      organizations: directoryValues(
+        jobs.flatMap((job) => (job.source ? [job.source] : [])),
+        filters.companies
+      ),
+      qualifications: directoryValues(
+        jobs.flatMap((job) => (job.education_required ? [job.education_required] : [])),
+        filters.qualifications || []
+      ),
+      blog_categories: directoryValues(
+        blogs.flatMap((post) => (post.category ? [post.category] : [])),
+        blogFilters.categories
+      ),
+      blog_tags: directoryValues(
+        blogs.flatMap((post) => post.tags || []),
+        blogFilters.tags
+      ),
+    },
+  };
+}
+
+export async function fetchSiteDirectory(): Promise<SiteDirectory> {
+  const directory = await getFreshJson<SiteDirectory | null>("/api/site-directory", null);
+  if (directory?.generated_at) return { ...EMPTY_SITE_DIRECTORY, ...directory };
+  return fetchLegacySiteDirectory();
 }
 
 export function fetchBlogPost(slug: string): Promise<BlogPost | null> {

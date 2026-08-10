@@ -56,7 +56,6 @@ function DirectoryLinks({
   values: DirectoryValue[];
   path: string;
 }) {
-  if (!values.length) return null;
   return (
     <section id={id} className="card-panel scroll-mt-24 overflow-hidden p-5 sm:p-7">
       <div className="flex items-end justify-between gap-4 border-b border-[var(--border)] pb-4">
@@ -68,25 +67,33 @@ function DirectoryLinks({
           {values.length}
         </span>
       </div>
-      <ul className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {values.map((value) => (
-          <li key={`${path}-${value.slug}`}>
-            <Link
-              href={`${path}/${value.slug}`}
-              className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--navy-900)]/35 px-4 py-3 transition hover:-translate-y-0.5 hover:border-[var(--blue)] hover:bg-[var(--blue-soft)]"
-            >
-              <span className="min-w-0 break-words font-medium text-[var(--navy-200)] group-hover:text-[var(--navy-100)]">
-                {value.name}
-              </span>
-              {value.count > 0 && (
-                <span className="shrink-0 font-mono text-[11px] text-[var(--muted)]">
-                  {value.count}
+      {values.length ? (
+        <ul
+          className="mt-5 grid max-h-[30rem] gap-2 overflow-y-auto overscroll-contain pr-1 sm:grid-cols-2 xl:grid-cols-3"
+          tabIndex={0}
+          aria-label={`${title}: scroll to browse all ${values.length} links`}
+        >
+          {values.map((value) => (
+            <li key={`${path}-${value.slug}`}>
+              <Link
+                href={`${path}/${value.slug}`}
+                className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--navy-900)]/35 px-4 py-3 transition hover:-translate-y-0.5 hover:border-[var(--blue)] hover:bg-[var(--blue-soft)]"
+              >
+                <span className="min-w-0 break-words font-medium text-[var(--navy-200)] group-hover:text-[var(--navy-100)]">
+                  {value.name}
                 </span>
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
+                {value.count > 0 && (
+                  <span className="shrink-0 font-mono text-[11px] text-[var(--muted)]">
+                    {value.count}
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-5 text-sm text-[var(--muted)]">No public links are available in this section yet.</p>
+      )}
     </section>
   );
 }
@@ -156,14 +163,18 @@ export default async function BrowsePage() {
             <div>
               <p className="eyebrow">Opportunities</p>
               <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">All job posts</h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">Permanent canonical links remain available after application deadlines.</p>
+              <p className="mt-2 text-sm text-[var(--muted)]">Every permanent canonical link is included. Scroll within the list to keep this page compact.</p>
             </div>
             <span className="font-mono text-xs text-[var(--navy-300)]">
               {countLabel(directory.jobs.length, "job")}
             </span>
           </div>
           {directory.jobs.length ? (
-            <ul className="divide-y divide-[var(--border)]">
+            <ul
+              className="max-h-[48rem] divide-y divide-[var(--border)] overflow-y-auto overscroll-contain"
+              tabIndex={0}
+              aria-label={`All ${directory.jobs.length} job posts; scroll for more`}
+            >
               {directory.jobs.map((job) => (
                 <li key={job.id}>
                   <Link href={`/jobs/${job.slug}`} className="group grid gap-2 px-5 py-4 transition hover:bg-[var(--blue-soft)] sm:grid-cols-[1fr_auto] sm:items-center sm:px-7">
@@ -190,13 +201,18 @@ export default async function BrowsePage() {
             <div>
               <p className="eyebrow">Knowledge library</p>
               <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">All career guides</h2>
+              <p className="mt-2 text-sm text-[var(--muted)]">All published guides are linked in the initial page HTML and contained in this scrollable panel.</p>
             </div>
             <span className="font-mono text-xs text-[var(--navy-300)]">
               {countLabel(directory.blogs.length, "guide")}
             </span>
           </div>
           {directory.blogs.length ? (
-            <ul className="grid gap-px bg-[var(--border)] sm:grid-cols-2">
+            <ul
+              className="grid max-h-[42rem] gap-px overflow-y-auto overscroll-contain bg-[var(--border)] sm:grid-cols-2"
+              tabIndex={0}
+              aria-label={`All ${directory.blogs.length} career guides; scroll for more`}
+            >
               {directory.blogs.map((post) => (
                 <li key={post.id} className="bg-[var(--card)]">
                   <Link href={`/blog/${post.slug}`} className="group block h-full px-5 py-5 transition hover:bg-[var(--blue-soft)] sm:px-7">

@@ -54,6 +54,10 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
 
   for (const expected of [
     "All job posts",
+    "All career guides",
+    "Job categories",
+    "Cities",
+    "Provinces",
     'href="/jobs/closed-role"',
     'href="/blog/fpsc-preparation-guide"',
     'href="/categories/software-engineering"',
@@ -66,6 +70,8 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
   ]) {
     expect(html).toContain(expected);
   }
+  expect(html).toContain("max-h-[48rem]");
+  expect(html).toContain("max-h-[42rem]");
 });
 
 test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {

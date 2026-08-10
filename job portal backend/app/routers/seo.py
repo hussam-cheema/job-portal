@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -216,8 +216,9 @@ def sitemap_data(db: Session = Depends(get_db)):
 
 
 @router.get("/site-directory")
-def site_directory(db: Session = Depends(get_db)):
+def site_directory(response: Response, db: Session = Depends(get_db)):
     """Complete public inventory for server-rendered navigation and crawl audits."""
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
     try:
         return build_site_directory(db)
     except Exception:
