@@ -198,7 +198,7 @@ const server = createServer((request, response) => {
       // timezone regression reported in production.
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
-      experience_required: null, education_required: null, skills: [], job_type: "government",
+      experience_required: "Two years", education_required: "Bachelor's degree", skills: ["Python", "SQL"], job_type: "government",
       cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
       salary_min: null, salary_max: null, currency: "PKR", category: "Government",

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { HomeJobs } from "@/components/HomeJobs";
 import { fetchBranding, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
 import type { JobQuery } from "@/lib/types";
@@ -81,19 +80,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   ]);
 
   return (
-    <Suspense
-      fallback={
-        <div className="site-wrap py-10">
-          <div className="h-96 animate-pulse rounded-xl bg-[var(--card)]" />
-        </div>
-      }
-    >
-      <HomeJobs
-        initialJobs={jobs}
-        filters={filters}
-        stats={stats}
-        branding={branding}
-      />
-    </Suspense>
+    <HomeJobs
+      initialJobs={jobs}
+      initialQuery={query}
+      filters={filters}
+      stats={stats}
+      branding={branding}
+    />
   );
 }

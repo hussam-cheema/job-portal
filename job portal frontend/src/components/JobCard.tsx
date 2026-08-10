@@ -10,7 +10,7 @@ import {
   isDeadlinePast,
   labelSource,
   sourceBadgeClass,
-  summarize,
+  stripHtml,
   tagColorClass,
 } from "@/lib/format";
 
@@ -38,6 +38,11 @@ export function JobCard({ job }: Props) {
       ].filter(Boolean) as string[]
     )
   );
+  const jobHref = `/jobs/${job.slug || job.id}`;
+  const publishedValue = job.published_date || job.created_at;
+  const deadlineValue = job.deadline_date || job.application_deadline;
+  const fullDescription =
+    stripHtml(job.description) || "No description is available for this listing yet.";
 
   return (
     <article
@@ -51,13 +56,18 @@ export function JobCard({ job }: Props) {
     >
       <div className="job-card-main">
         <div className="job-card-date">
-          <span className="font-mono text-xs text-[var(--navy-400)]">{date}</span>
+          <time
+            dateTime={publishedValue || undefined}
+            className="font-mono text-xs text-[var(--navy-400)]"
+          >
+            {date}
+          </time>
         </div>
 
         <div className="min-w-0 flex-1">
           <h2 className="text-[1.05rem] sm:text-[1.08rem] font-semibold text-[var(--navy-100)] leading-snug tracking-tight">
             <Link
-              href={`/jobs/${job.slug || job.id}`}
+              href={jobHref}
               className="hover:text-[var(--accent)] transition-colors"
             >
               {job.title}
@@ -109,15 +119,33 @@ export function JobCard({ job }: Props) {
 
           <div className={`job-card-expand ${open ? "job-card-expand-visible" : ""}`}>
             <p className="text-sm text-[var(--navy-200)] leading-relaxed mt-3">
-              {summarize(job.description, 320)}
+              {fullDescription}
             </p>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
+              {publishedValue && (
+                <span>
+                  Published: <time dateTime={publishedValue}>{formatDateShort(publishedValue)}</time>
+                </span>
+              )}
+              {(job.source || job.company) && <span>Source: {job.source || job.company}</span>}
+              {job.category && <span>Category: {job.category}</span>}
               {job.experience_required && <span>Exp: {job.experience_required}</span>}
               {job.education_required && <span>Edu: {job.education_required}</span>}
-              {(job.deadline_date || job.application_deadline) && (
+              {job.skills?.length > 0 && <span>Skills: {job.skills.join(", ")}</span>}
+              {deadlineValue && (
                 <span className="font-bold text-red-500">
-                  Deadline: {formatDateShort(job.deadline_date || job.application_deadline)}
+                  Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
                 </span>
+              )}
+              {job.reference_url && (
+                <a href={job.reference_url} target="_blank" rel="noopener noreferrer">
+                  Job reference
+                </a>
+              )}
+              {job.application_url && (
+                <a href={job.application_url} target="_blank" rel="noopener noreferrer">
+                  Apply here
+                </a>
               )}
             </div>
           </div>
@@ -125,7 +153,7 @@ export function JobCard({ job }: Props) {
       </div>
 
       <Link
-        href={`/jobs/${job.slug || job.id}`}
+        href={jobHref}
         className="job-card-more"
         title="Full job details and commonly asked Q&A"
       >

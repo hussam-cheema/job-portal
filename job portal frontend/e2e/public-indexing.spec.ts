@@ -74,6 +74,40 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
   expect(html).toContain("max-h-[42rem]");
 });
 
+test("homepage exposes complete job listings in initial HTML without JavaScript", async ({
+  request,
+}) => {
+  const response = await request.get("/", {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const html = await response.text();
+  const normalizedHtml = html.replace(/<!--[\s\S]*?-->/g, "");
+
+  for (const expected of [
+    'href="/jobs/closed-role"',
+    "Nationwide Closed Role",
+    "A nationwide job with a passed deadline.",
+    "Published:",
+    "Deadline:",
+    "Source: FPSC",
+    "Category: Government",
+    "Exp: Two years",
+    "Edu: Bachelor&#x27;s degree",
+    "Skills: Python, SQL",
+    'href="https://fpsc.gov.pk/advertisement"',
+    'href="https://fpsc.gov.pk/apply"',
+    "Job reference",
+    "Apply here",
+    '"@type":"JobPosting"',
+  ]) {
+    expect(normalizedHtml).toContain(expected);
+  }
+  expect(normalizedHtml).not.toContain("h-96 animate-pulse");
+});
+
 test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {
   const response = await page.goto("/jobs/legacy-closed-role-id");
   expect(response?.status()).toBe(200);
