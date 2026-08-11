@@ -90,22 +90,59 @@ test("homepage exposes complete job listings in initial HTML without JavaScript"
     'href="/jobs/closed-role"',
     "Nationwide Closed Role",
     "A nationwide job with a passed deadline.",
-    "Published:",
     "Deadline:",
-    "Source: FPSC",
-    "Category: Government",
-    "Exp: Two years",
-    "Edu: Bachelor&#x27;s degree",
-    "Skills: Python, SQL",
-    'href="https://fpsc.gov.pk/advertisement"',
-    'href="https://fpsc.gov.pk/apply"',
-    "Job reference",
-    "Apply here",
+    "Required Education:",
+    "Required Experience:",
     '"@type":"JobPosting"',
+    '"datePosted":"2026-07-01T00:00:00Z"',
+    '"industry":"Government"',
+    '"skills":"Python, SQL"',
+    '"educationRequirements":"Bachelor\'s degree"',
+    '"experienceRequirements":"Two years"',
+    '"hiringOrganization":{"@type":"Organization","name":"FPSC"}',
   ]) {
     expect(normalizedHtml).toContain(expected);
   }
   expect(normalizedHtml).not.toContain("h-96 animate-pulse");
+});
+
+test("homepage hover overview is limited to a summary and three optional facts", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const completeCard = page.locator("article.job-card").filter({
+    hasText: "Nationwide Closed Role",
+  });
+  await completeCard.hover();
+
+  const overview = completeCard.locator(".job-card-expand");
+  await expect(overview).toBeVisible();
+  await expect(overview.locator(".job-card-overview-description")).toContainText(
+    "A nationwide job with a passed deadline."
+  );
+  await expect(overview).toContainText("Deadline: Jul 17");
+  await expect(overview).toContainText("Required Education: Bachelor's degree");
+  await expect(overview).toContainText("Required Experience: Two years");
+  await expect(overview.locator(".job-card-overview-detail")).toHaveCount(3);
+  await expect(overview).not.toContainText("Published:");
+  await expect(overview).not.toContainText("Source:");
+  await expect(overview).not.toContainText("Category:");
+  await expect(overview).not.toContainText("Skills:");
+  await expect(overview).not.toContainText("Job reference");
+  await expect(overview).not.toContainText("Apply here");
+
+  const clamp = await overview.locator(".job-card-overview-description").evaluate((element) =>
+    getComputedStyle(element).getPropertyValue("-webkit-line-clamp")
+  );
+  expect(clamp).toBe("4");
+
+  const optionalCard = page.locator("article.job-card").filter({ hasText: "Multi Location Role" });
+  await optionalCard.hover();
+  await expect(optionalCard.locator(".job-card-overview-description")).toContainText(
+    "A role available in more than one city."
+  );
+  await expect(optionalCard.locator(".job-card-overview-detail")).toHaveCount(0);
 });
 
 test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {

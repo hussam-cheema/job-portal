@@ -126,42 +126,26 @@ export function JobCard({ job }: Props) {
           </div>
 
           <div className={`job-card-expand ${open ? "job-card-expand-visible" : ""}`}>
-            <p className="text-sm text-[var(--navy-200)] leading-relaxed mt-3">
+            <p className="job-card-overview-description mt-3 text-sm leading-relaxed text-[var(--navy-200)]">
               {fullDescription}
             </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
-              {publishedValue && (
-                <span>
-                  Published: <time dateTime={publishedValue}>{formatDateShort(publishedValue)}</time>
-                </span>
-              )}
-              {(job.source || job.company) && (
-                <span>Source: {decodeHtmlEntities(job.source || job.company || "")}</span>
-              )}
-              {job.category && <span>Category: {decodeHtmlEntities(job.category)}</span>}
-              {job.experience_required && (
-                <span>Exp: {decodeHtmlEntities(job.experience_required)}</span>
+            <div className="job-card-overview-details mt-3 text-xs text-[var(--muted)]">
+              {deadlineValue && (
+                <div className="job-card-overview-detail font-bold text-red-500">
+                  Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
+                </div>
               )}
               {job.education_required && (
-                <span>Edu: {decodeHtmlEntities(job.education_required)}</span>
+                <div className="job-card-overview-detail">
+                  <span className="font-semibold text-[var(--navy-200)]">Required Education:</span>{" "}
+                  {decodeHtmlEntities(job.education_required)}
+                </div>
               )}
-              {job.skills?.length > 0 && (
-                <span>Skills: {decodeHtmlEntities(job.skills.join(", "))}</span>
-              )}
-              {deadlineValue && (
-                <span className="font-bold text-red-500">
-                  Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
-                </span>
-              )}
-              {job.reference_url && (
-                <a href={job.reference_url} target="_blank" rel="noopener noreferrer">
-                  Job reference
-                </a>
-              )}
-              {job.application_url && (
-                <a href={job.application_url} target="_blank" rel="noopener noreferrer">
-                  Apply here
-                </a>
+              {job.experience_required && (
+                <div className="job-card-overview-detail">
+                  <span className="font-semibold text-[var(--navy-200)]">Required Experience:</span>{" "}
+                  {decodeHtmlEntities(job.experience_required)}
+                </div>
               )}
             </div>
           </div>
