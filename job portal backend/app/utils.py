@@ -19,7 +19,13 @@ def strip_html(html: str, max_len: Optional[int] = None) -> str:
     if not html:
         return ""
     text = re.sub(r"<[^>]+>", " ", html)
-    text = unescape(text)
+    # Some imported editor content has been escaped more than once. Decode to
+    # readable plain text, but cap the passes so malformed input cannot loop.
+    for _ in range(4):
+        decoded = unescape(text)
+        if decoded == text:
+            break
+        text = decoded
     text = re.sub(r"\s+", " ", text).strip()
     if max_len is not None:
         return text[:max_len]

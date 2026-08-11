@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchPage, fetchPublicSeo } from "@/lib/api";
-import { stripHtml } from "@/lib/format";
+import { decodeHtmlEntities, stripHtml } from "@/lib/format";
+import { wrapRichTextTables } from "@/lib/richText";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -21,12 +22,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   const seo = await fetchPublicSeo("page", page.id);
-  const description =
+  const description = decodeHtmlEntities(
     seo?.meta_description ||
-    stripHtml(page.content).replace(/\s+/g, " ").trim().slice(0, 160);
+      stripHtml(page.content).replace(/\s+/g, " ").trim().slice(0, 160),
+  );
 
   return {
-    title: seo?.meta_title || page.title,
+    title: decodeHtmlEntities(seo?.meta_title || page.title),
     description,
     keywords: seo?.meta_keywords
       ?.split(",")
@@ -35,8 +37,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     alternates: { canonical: `/p/${slug}` },
     robots: { index: true, follow: true },
     openGraph: {
-      title: seo?.og_title || seo?.meta_title || page.title,
-      description: seo?.og_description || description,
+      title: decodeHtmlEntities(seo?.og_title || seo?.meta_title || page.title),
+      description: decodeHtmlEntities(seo?.og_description || description),
       type: "article",
       url: `/p/${slug}`,
       images: seo?.og_image ? [{ url: seo.og_image }] : undefined,
@@ -56,11 +58,11 @@ export default async function PublicCmsPage({ params }: Props) {
       </Link>
       <article>
         <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">
-          {page.title}
+          {decodeHtmlEntities(page.title)}
         </h1>
         <div
           className="prose-job mt-6 text-[0.95rem] leading-relaxed text-[var(--navy-200)]"
-          dangerouslySetInnerHTML={{ __html: page.content }}
+          dangerouslySetInnerHTML={{ __html: wrapRichTextTables(page.content) }}
         />
       </article>
     </div>

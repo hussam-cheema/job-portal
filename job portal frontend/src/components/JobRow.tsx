@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { JobSummary } from "@/lib/types";
 import {
+  decodeHtmlEntities,
   formatDate,
   formatSalary,
   labelSource,
@@ -30,22 +31,22 @@ export function JobRow({ job, index }: Props) {
 
       <div className="min-w-0">
         <h2 className="text-[0.98rem] sm:text-base font-semibold text-[var(--navy-100)] group-hover:text-white transition-colors leading-snug">
-          {job.title}
+          {decodeHtmlEntities(job.title)}
         </h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--muted)]">
           {job.company && (
-            <span className="text-[var(--navy-300)]">{job.company}</span>
+            <span className="text-[var(--navy-300)]">{decodeHtmlEntities(job.company)}</span>
           )}
           {job.location && (
             <>
               <span className="text-[var(--navy-600)]">·</span>
-              <span>{job.location}</span>
+              <span>{decodeHtmlEntities(job.location)}</span>
             </>
           )}
           {job.experience_required && (
             <>
               <span className="text-[var(--navy-600)]">·</span>
-              <span>{job.experience_required}</span>
+              <span>{decodeHtmlEntities(job.experience_required)}</span>
             </>
           )}
         </div>
@@ -54,11 +55,11 @@ export function JobRow({ job, index }: Props) {
             {labelSource(job.source_type)}
           </span>
           {job.category && (
-            <span className="badge badge-muted">{job.category}</span>
+            <span className="badge badge-muted">{decodeHtmlEntities(job.category)}</span>
           )}
           {job.skills?.slice(0, 3).map((s) => (
             <span key={s} className="badge badge-muted normal-case tracking-normal font-medium">
-              {s}
+              {decodeHtmlEntities(s)}
             </span>
           ))}
         </div>
@@ -67,7 +68,7 @@ export function JobRow({ job, index }: Props) {
       <div className="job-row-meta hidden sm:flex flex-col items-end gap-1.5 text-right shrink-0 pt-0.5">
         {salary && (
           <span className="text-sm font-medium text-[var(--navy-200)] tabular-nums">
-            {salary}
+            {decodeHtmlEntities(salary)}
           </span>
         )}
         {job.application_deadline && (

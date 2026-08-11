@@ -15,6 +15,87 @@ from app.utils import strip_html
 logger = get_logger("jobportal.seo")
 
 
+def _clean_values(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    cleaned = (str(item).strip() for item in value if item is not None)
+    return list(dict.fromkeys(item for item in cleaned if item))
+
+
+def _job_locations(job: Job) -> list[dict[str, Any]]:
+    cities = _clean_values(job.cities)
+    provinces = _clean_values(job.provinces)
+
+    if not cities and not provinces:
+        return [
+            {
+                "@type": "Place",
+                "address": {"@type": "PostalAddress", "addressCountry": "PK"},
+            }
+        ]
+
+    if cities:
+        region = provinces[0] if len(provinces) == 1 else None
+        result = []
+        for city in cities:
+            address: dict[str, Any] = {
+                "@type": "PostalAddress",
+                "addressLocality": city,
+                "addressCountry": "PK",
+            }
+            if region:
+                address["addressRegion"] = region
+            result.append({"@type": "Place", "address": address})
+        return result
+
+    return [
+        {
+            "@type": "Place",
+            "address": {
+                "@type": "PostalAddress",
+                "addressRegion": province,
+                "addressCountry": "PK",
+            },
+        }
+        for province in provinces
+    ]
+
+
+def build_job_structured_data(job: Job) -> dict[str, Any]:
+    """Return truthful JobPosting JSON-LD without nulls, empty values, or guesses."""
+    canonical = _canonical(f"/jobs/{job.slug}")
+    organization = (job.source or "").strip() or site_name()
+    structured: dict[str, Any] = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": job.title,
+        "description": (job.description or "").strip() or job.title,
+        "hiringOrganization": {"@type": "Organization", "name": organization},
+        "jobLocation": _job_locations(job),
+        "identifier": {
+            "@type": "PropertyValue",
+            "name": organization,
+            "value": job.id,
+        },
+        "url": canonical,
+    }
+    if job.published_date:
+        structured["datePosted"] = job.published_date.isoformat()
+    if job.deadline_date:
+        structured["validThrough"] = job.deadline_date.isoformat()
+    if job.education_required and job.education_required.strip():
+        structured["educationRequirements"] = job.education_required.strip()
+    if job.experience_required and job.experience_required.strip():
+        structured["experienceRequirements"] = job.experience_required.strip()
+    skills = _clean_values(job.skills)
+    if skills:
+        structured["skills"] = ", ".join(skills)
+    tags = _clean_values(job.tags)
+    if tags:
+        structured["industry"] = tags[0]
+    return structured
+
+
 def _canonical(path: str) -> str:
     base = canonical_site_url()
     if not path.startswith("/"):
@@ -60,40 +141,7 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
             focus_keyword=focus,
             slug=job.slug,
         )
-        structured = {
-            "@context": "https://schema.org",
-            "@type": "JobPosting",
-            "title": job.title,
-            "description": strip_html(job.description or "", 5000),
-            "datePosted": job.published_date.isoformat() if job.published_date else None,
-            "validThrough": job.deadline_date.isoformat() if job.deadline_date else None,
-            "employmentType": "FULL_TIME",
-            "hiringOrganization": {
-                "@type": "Organization",
-                "name": job.source or site_name(),
-            },
-            "jobLocation": [
-                {
-                    "@type": "Place",
-                    "address": {
-                        "@type": "PostalAddress",
-                        "addressLocality": c,
-                        "addressCountry": "PK",
-                    },
-                }
-                for c in (job.cities or [])
-            ]
-            if isinstance(job.cities, list)
-            else [],
-            "url": _canonical(path),
-            "baseSalary": {
-                "@type": "MonetaryAmount",
-                "currency": "PKR",
-                "value": job.salary_range,
-            }
-            if job.salary_range
-            else None,
-        }
+        structured = build_job_structured_data(job)
 
         if existing:
             existing.slug = job.slug

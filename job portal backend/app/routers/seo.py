@@ -10,7 +10,7 @@ from app.auth import get_current_admin
 from app.config import canonical_site_url, site_url
 from app.database import get_db
 from app.logging_config import get_logger
-from app.models import SEOMeta, User
+from app.models import Job, SEOMeta, User
 from app.schemas import (
     BacklinkIn,
     SEODashboard,
@@ -18,7 +18,11 @@ from app.schemas import (
     SocialSettingsIn,
     YoastAnalyzeIn,
 )
-from app.services.seo import build_seo_dashboard, get_seo_for_entity
+from app.services.seo import (
+    build_job_structured_data,
+    build_seo_dashboard,
+    get_seo_for_entity,
+)
 from app.services.seo_tools import (
     add_backlink,
     authority_score,
@@ -189,7 +193,14 @@ def public_seo(entity_type: str, entity_id: str, db: Session = Depends(get_db)):
         row = get_seo_for_entity(db, entity_type, entity_id)
         if not row:
             return None
-        return SEOMetaOut.model_validate(row)
+        result = SEOMetaOut.model_validate(row)
+        if entity_type == "job":
+            job = db.get(Job, entity_id)
+            if job:
+                result = result.model_copy(
+                    update={"structured_data": build_job_structured_data(job)}
+                )
+        return result
     except Exception:
         logger.exception("public_seo failed")
         return None

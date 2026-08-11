@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { fetchBlogPosts, fetchBranding, fetchJob, fetchJobs, fetchPublicSeo } from "@/lib/api";
 import { JobShareButtons } from "@/components/JobShareButtons";
 import {
+  decodeHtmlEntities,
   formatDate,
   formatSalary,
   isDeadlinePast,
@@ -21,6 +22,7 @@ import {
   selectSocialImage,
 } from "@/lib/socialMetadata";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
+import { buildJobPostingStructuredData } from "@/lib/jobStructuredData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,13 +46,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const canonicalPath = `/jobs/${job.slug || job.id}`;
   const fallbackDescription =
     compactSocialDescription(stripHtml(job.description || "")) ||
-    `${job.title} at ${job.company || job.source || "Pakistan Jobs Market"}`;
+    `${decodeHtmlEntities(job.title)} at ${decodeHtmlEntities(job.company || job.source || "Pakistan Jobs Market")}`;
   const description =
     compactSocialDescription(seo?.meta_description || "") || fallbackDescription;
   const pageTitle =
-    seo?.meta_title?.trim() || `${job.title} | ${branding.site_name}`;
+    decodeHtmlEntities(seo?.meta_title?.trim() || `${job.title} | ${branding.site_name}`);
   const socialTitle =
-    seo?.og_title?.trim() || seo?.meta_title?.trim() || job.title;
+    decodeHtmlEntities(seo?.og_title?.trim() || seo?.meta_title?.trim() || job.title);
   const renderedDescription = rewriteJobDescriptionImages(job.description || "");
   const inlineAttachment = (job.attachments || []).find(
     (attachment) =>
@@ -81,13 +83,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: canonicalPath,
       siteName: branding.site_name,
       publishedTime: job.published_date || job.created_at || undefined,
-      images: [{ url: socialImage, alt: job.title }],
+      images: [{ url: socialImage, alt: decodeHtmlEntities(job.title) }],
     },
     twitter: {
       card: "summary_large_image",
       title: socialTitle,
       description: compactSocialDescription(seo?.og_description || "") || description,
-      images: [{ url: socialImage, alt: job.title }],
+      images: [{ url: socialImage, alt: decodeHtmlEntities(job.title) }],
     },
   };
 }
@@ -133,29 +135,7 @@ export default async function JobDetailPage({ params }: Props) {
   const applicationsClosed =
     job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
   const jobUrl = `${canonicalSiteUrl()}/jobs/${job.slug || job.id}`;
-  const locations = Array.from(new Set([...(job.cities || []), ...(job.provinces || [])]));
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "JobPosting",
-    title: job.title,
-    description: stripHtml(job.description || ""),
-    datePosted: job.published_date || job.created_at || undefined,
-    validThrough: job.deadline_date || job.application_deadline || undefined,
-    employmentType: job.employment_type || job.job_type || undefined,
-    hiringOrganization: {
-      "@type": "Organization",
-      name: job.company || job.source || "Pakistan Jobs Market",
-    },
-    jobLocation: locations.map((location) => ({
-      "@type": "Place",
-      address: {
-        "@type": "PostalAddress",
-        addressLocality: location,
-        addressCountry: "PK",
-      },
-    })),
-    url: jobUrl,
-  };
+  const structuredData = buildJobPostingStructuredData(job, jobUrl);
 
   return (
     <div className="site-wrap py-10">
@@ -183,7 +163,7 @@ export default async function JobDetailPage({ params }: Props) {
                 href={`/categories/${toSeoSlug(job.category)}`}
                 className={`tag job-tag-link ${tagColorClass(job.category)}`}
               >
-                {job.category}
+                {decodeHtmlEntities(job.category)}
               </Link>
             )}
             {tags
@@ -203,12 +183,12 @@ export default async function JobDetailPage({ params }: Props) {
                   }
                   className={`tag job-tag-link ${tagColorClass(t)}`}
                 >
-                  {t}
+                  {decodeHtmlEntities(t)}
                 </Link>
               ))}
           </div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--navy-100)] leading-snug">
-            {job.title}
+            {decodeHtmlEntities(job.title)}
           </h1>
           {applicationsClosed && (
             <div className="mt-4 inline-flex rounded-full border-2 border-red-500 bg-red-500/10 px-4 py-2 text-sm font-bold uppercase tracking-wide text-red-500">
@@ -216,9 +196,9 @@ export default async function JobDetailPage({ params }: Props) {
             </div>
           )}
           <p className="mt-3 text-[var(--navy-300)] text-lg">
-            {job.company || job.source || "Unknown company"}
+            {decodeHtmlEntities(job.company || job.source || "Unknown company")}
             {job.location ? (
-              <span className="text-[var(--muted)]"> · {job.location}</span>
+              <span className="text-[var(--muted)]"> · {decodeHtmlEntities(job.location)}</span>
             ) : null}
           </p>
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--muted)]">
@@ -265,7 +245,10 @@ export default async function JobDetailPage({ params }: Props) {
               )}
             </div>
           )}
-          <JobShareButtons path={`/jobs/${job.slug || job.id}`} title={job.title} />
+          <JobShareButtons
+            path={`/jobs/${job.slug || job.id}`}
+            title={decodeHtmlEntities(job.title)}
+          />
         </header>
 
         <div className="px-5 sm:px-8 py-7">
@@ -313,7 +296,7 @@ export default async function JobDetailPage({ params }: Props) {
                   <div className="text-xs uppercase tracking-wider text-[var(--muted)]">
                     Experience
                   </div>
-                  <div className="mt-1 text-[var(--navy-100)]">{job.experience_required}</div>
+                  <div className="mt-1 text-[var(--navy-100)]">{decodeHtmlEntities(job.experience_required)}</div>
                 </div>
               )}
               {job.education_required && (
@@ -321,7 +304,7 @@ export default async function JobDetailPage({ params }: Props) {
                   <div className="text-xs uppercase tracking-wider text-[var(--muted)]">
                     Education
                   </div>
-                  <Link href={`/qualifications/${toSeoSlug(job.education_required)}`} className="mt-1 block text-[var(--accent)] hover:underline">{job.education_required}</Link>
+                  <Link href={`/qualifications/${toSeoSlug(job.education_required)}`} className="mt-1 block text-[var(--accent)] hover:underline">{decodeHtmlEntities(job.education_required)}</Link>
                 </div>
               )}
             </div>
@@ -335,7 +318,7 @@ export default async function JobDetailPage({ params }: Props) {
               <div className="flex flex-wrap gap-2">
                 {job.skills.map((s) => (
                   <span key={s} className="badge badge-muted normal-case tracking-normal">
-                    {s}
+                    {decodeHtmlEntities(s)}
                   </span>
                 ))}
               </div>
@@ -353,9 +336,9 @@ export default async function JobDetailPage({ params }: Props) {
                     key={item.id}
                     className="rounded-lg border border-[var(--border)] bg-[var(--navy-850)] p-4"
                   >
-                    <h3 className="font-medium text-[var(--navy-100)]">{item.question}</h3>
+                    <h3 className="font-medium text-[var(--navy-100)]">{decodeHtmlEntities(item.question)}</h3>
                     <p className="mt-2 text-sm leading-relaxed text-[var(--navy-200)]">
-                      {item.answer}
+                      {decodeHtmlEntities(item.answer)}
                     </p>
                     {item.youtube_url && (
                       <a
@@ -376,9 +359,9 @@ export default async function JobDetailPage({ params }: Props) {
           <section className="mt-10 border-t border-[var(--border)] pt-8" aria-labelledby="explore-related">
             <h2 id="explore-related" className="text-xl font-semibold text-[var(--navy-100)]">Explore related opportunities</h2>
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              {relatedJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Related vacancies</h3><ul className="mt-3 space-y-2">{relatedJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{item.title}</Link></li>)}</ul></div>}
-              {companyJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">More from {job.source}</h3><ul className="mt-3 space-y-2">{companyJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{item.title}</Link></li>)}</ul>{job.source && <Link href={`/companies/${toSeoSlug(job.source)}`} className="mt-3 inline-flex text-sm text-[var(--muted)] hover:text-[var(--accent)]">View all {job.source} jobs →</Link>}</div>}
-              {articleResult.items.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Relevant career guides</h3><ul className="mt-3 space-y-2">{articleResult.items.map((post) => <li key={post.id}><Link href={`/blog/${post.slug}`} className="text-sm text-[var(--accent)] hover:underline">{post.title}</Link></li>)}</ul></div>}
+              {relatedJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Related vacancies</h3><ul className="mt-3 space-y-2">{relatedJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul></div>}
+              {companyJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">More from {decodeHtmlEntities(job.source || "")}</h3><ul className="mt-3 space-y-2">{companyJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul>{job.source && <Link href={`/companies/${toSeoSlug(job.source)}`} className="mt-3 inline-flex text-sm text-[var(--muted)] hover:text-[var(--accent)]">View all {decodeHtmlEntities(job.source)} jobs →</Link>}</div>}
+              {articleResult.items.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Relevant career guides</h3><ul className="mt-3 space-y-2">{articleResult.items.map((post) => <li key={post.id}><Link href={`/blog/${post.slug}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(post.title)}</Link></li>)}</ul></div>}
               <div><h3 className="font-semibold text-[var(--navy-200)]">Application tools</h3><div className="mt-3 flex flex-wrap gap-2"><Link href="/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link><Link href="/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link><Link href="/browse" className="btn btn-ghost">Browse all</Link></div></div>
             </div>
           </section>
@@ -403,7 +386,7 @@ function Meta({
         {label}:{" "}
       </span>
       <span className={emphasize ? "text-red-500" : "text-[var(--navy-200)]"}>
-        {value}
+        {decodeHtmlEntities(value)}
       </span>
     </div>
   );

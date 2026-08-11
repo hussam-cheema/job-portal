@@ -118,6 +118,79 @@ test("legacy job identifiers permanently resolve to the stable canonical slug", 
   );
 });
 
+test("JobPosting schema omits intentional blanks and never invents address or salary data", async ({
+  page,
+}) => {
+  await page.goto("/jobs/multi-location-role");
+  const multiLocation = await page.evaluate(() => {
+    const scripts = Array.from(
+      document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')
+    );
+    return scripts
+      .map((script) => JSON.parse(script.textContent || "{}"))
+      .find((value) => value["@type"] === "JobPosting");
+  });
+
+  expect(multiLocation).toBeTruthy();
+  expect(multiLocation).not.toHaveProperty("baseSalary");
+  expect(multiLocation).not.toHaveProperty("employmentType");
+  expect(multiLocation).not.toHaveProperty("validThrough");
+  expect(multiLocation).not.toHaveProperty("educationRequirements");
+  expect(multiLocation).not.toHaveProperty("experienceRequirements");
+  expect(multiLocation.jobLocation).toEqual([
+    {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Karachi",
+        addressRegion: "Sindh",
+        addressCountry: "PK",
+      },
+    },
+    {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Lahore",
+        addressRegion: "Sindh",
+        addressCountry: "PK",
+      },
+    },
+  ]);
+  expect(JSON.stringify(multiLocation)).not.toContain("streetAddress");
+  expect(JSON.stringify(multiLocation)).not.toContain("postalCode");
+
+  await page.goto("/jobs/closed-role");
+  const nationwide = await page.evaluate(() => {
+    const scripts = Array.from(
+      document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')
+    );
+    return scripts
+      .map((script) => JSON.parse(script.textContent || "{}"))
+      .find((value) => value["@type"] === "JobPosting");
+  });
+
+  expect(nationwide.jobLocation).toEqual([
+    {
+      "@type": "Place",
+      address: { "@type": "PostalAddress", addressCountry: "PK" },
+    },
+  ]);
+  expect(nationwide).not.toHaveProperty("baseSalary");
+});
+
+test("double-encoded entities render as readable text in listings and rich content", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("body")).toContainText("Bachelor's qualification required.");
+  await expect(page.locator("body")).not.toContainText("&#39;");
+
+  await page.goto("/jobs/closed-role");
+  await expect(page.locator(".prose-job")).toContainText("Candidate's experience matters.");
+  await expect(page.locator(".prose-job")).not.toContainText("&#39;");
+});
+
 test("job and blog pages expose post-specific social previews", async ({ page }) => {
   await page.goto("/jobs/closed-role");
 

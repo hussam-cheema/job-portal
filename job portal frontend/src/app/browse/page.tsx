@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { fetchSiteDirectory } from "@/lib/api";
+import { decodeHtmlEntities } from "@/lib/format";
 import type { DirectoryValue } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +81,7 @@ function DirectoryLinks({
                 className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--navy-900)]/35 px-4 py-3 transition hover:-translate-y-0.5 hover:border-[var(--blue)] hover:bg-[var(--blue-soft)]"
               >
                 <span className="min-w-0 break-words font-medium text-[var(--navy-200)] group-hover:text-[var(--navy-100)]">
-                  {value.name}
+                  {decodeHtmlEntities(value.name)}
                 </span>
                 {value.count > 0 && (
                   <span className="shrink-0 font-mono text-[11px] text-[var(--muted)]">
@@ -105,7 +106,10 @@ export default async function BrowsePage() {
   );
   const publicPages = [
     ...corePages,
-    ...customPages.map((page) => ({ href: page.path, label: page.title })),
+    ...customPages.map((page) => ({
+      href: page.path,
+      label: decodeHtmlEntities(page.title),
+    })),
   ];
   const taxonomyCount = Object.values(directory.taxonomies).reduce(
     (total, values) => total + values.length,
@@ -179,9 +183,13 @@ export default async function BrowsePage() {
                 <li key={job.id}>
                   <Link href={`/jobs/${job.slug}`} className="group grid gap-2 px-5 py-4 transition hover:bg-[var(--blue-soft)] sm:grid-cols-[1fr_auto] sm:items-center sm:px-7">
                     <span className="min-w-0">
-                      <span className="block break-words font-semibold text-[var(--navy-100)] group-hover:text-[var(--blue)]">{job.title}</span>
+                      <span className="block break-words font-semibold text-[var(--navy-100)] group-hover:text-[var(--blue)]">{decodeHtmlEntities(job.title)}</span>
                       <span className="mt-1 block text-sm text-[var(--muted)]">
-                        {[job.organization, ...job.cities, ...job.provinces].filter(Boolean).join(" · ") || "Pakistan"}
+                        {decodeHtmlEntities(
+                          [job.organization, ...job.cities, ...job.provinces]
+                            .filter(Boolean)
+                            .join(" · ") || "Pakistan"
+                        )}
                       </span>
                     </span>
                     <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${job.applications_closed ? "bg-[var(--navy-800)] text-[var(--muted)]" : "bg-emerald-500/10 text-emerald-400"}`}>
@@ -216,8 +224,8 @@ export default async function BrowsePage() {
               {directory.blogs.map((post) => (
                 <li key={post.id} className="bg-[var(--card)]">
                   <Link href={`/blog/${post.slug}`} className="group block h-full px-5 py-5 transition hover:bg-[var(--blue-soft)] sm:px-7">
-                    <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--blue)]">{post.category || "Career guide"}</span>
-                    <span className="mt-2 block break-words text-lg font-semibold leading-6 text-[var(--navy-100)] group-hover:text-[var(--blue)]">{post.title}</span>
+                    <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--blue)]">{decodeHtmlEntities(post.category || "Career guide")}</span>
+                    <span className="mt-2 block break-words text-lg font-semibold leading-6 text-[var(--navy-100)] group-hover:text-[var(--blue)]">{decodeHtmlEntities(post.title)}</span>
                   </Link>
                 </li>
               ))}

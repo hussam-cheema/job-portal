@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { JobSummary } from "@/lib/types";
 import { toSeoSlug } from "@/lib/slug";
 import {
+  decodeHtmlEntities,
   formatDateShort,
   formatSalary,
   isDeadlinePast,
@@ -23,6 +24,7 @@ export function JobCard({ job }: Props) {
   const salary =
     job.salary_range ||
     formatSalary(job.salary_min, job.salary_max, job.currency, job.salary_range);
+  const displaySalary = decodeHtmlEntities(salary);
   const date = formatDateShort(job.published_date || job.created_at);
   const applicationsClosed =
     job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
@@ -70,7 +72,7 @@ export function JobCard({ job }: Props) {
               href={jobHref}
               className="hover:text-[var(--accent)] transition-colors"
             >
-              {job.title}
+              {decodeHtmlEntities(job.title)}
             </Link>
           </h2>
           {applicationsClosed && (
@@ -79,9 +81,15 @@ export function JobCard({ job }: Props) {
             </span>
           )}
           <p className="mt-1 text-sm text-[var(--muted)]">
-            {job.company || job.source || "Unknown employer"}
-            {job.nationwide ? " · Pakistan" : job.location ? ` · ${job.location}` : job.city ? ` · ${job.city}` : ""}
-            {salary ? ` · ${salary}` : ""}
+            {decodeHtmlEntities(job.company || job.source || "Unknown employer")}
+            {job.nationwide
+              ? " · Pakistan"
+              : job.location
+                ? ` · ${decodeHtmlEntities(job.location)}`
+                : job.city
+                  ? ` · ${decodeHtmlEntities(job.city)}`
+                  : ""}
+            {displaySalary ? ` · ${displaySalary}` : ""}
           </p>
 
           <div className="mt-2.5 flex flex-wrap gap-1.5 relative z-10">
@@ -93,7 +101,7 @@ export function JobCard({ job }: Props) {
                 href={`/categories/${toSeoSlug(job.category)}`}
                 className={`tag job-tag-link ${tagColorClass(job.category)} hover:brightness-110`}
               >
-                {job.category}
+                {decodeHtmlEntities(job.category)}
               </Link>
             )}
             {tags
@@ -112,7 +120,7 @@ export function JobCard({ job }: Props) {
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  {t}
+                  {decodeHtmlEntities(t)}
                 </Link>
               ))}
           </div>
@@ -127,11 +135,19 @@ export function JobCard({ job }: Props) {
                   Published: <time dateTime={publishedValue}>{formatDateShort(publishedValue)}</time>
                 </span>
               )}
-              {(job.source || job.company) && <span>Source: {job.source || job.company}</span>}
-              {job.category && <span>Category: {job.category}</span>}
-              {job.experience_required && <span>Exp: {job.experience_required}</span>}
-              {job.education_required && <span>Edu: {job.education_required}</span>}
-              {job.skills?.length > 0 && <span>Skills: {job.skills.join(", ")}</span>}
+              {(job.source || job.company) && (
+                <span>Source: {decodeHtmlEntities(job.source || job.company || "")}</span>
+              )}
+              {job.category && <span>Category: {decodeHtmlEntities(job.category)}</span>}
+              {job.experience_required && (
+                <span>Exp: {decodeHtmlEntities(job.experience_required)}</span>
+              )}
+              {job.education_required && (
+                <span>Edu: {decodeHtmlEntities(job.education_required)}</span>
+              )}
+              {job.skills?.length > 0 && (
+                <span>Skills: {decodeHtmlEntities(job.skills.join(", "))}</span>
+              )}
               {deadlineValue && (
                 <span className="font-bold text-red-500">
                   Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>

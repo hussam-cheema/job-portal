@@ -192,7 +192,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs") {
     return json(response, { items: [{
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
-      description: "A nationwide job with a passed deadline.", published_date: "2026-07-01T00:00:00Z",
+      description: "A nationwide job with a passed deadline. Bachelor&amp;#39;s qualification required.", published_date: "2026-07-01T00:00:00Z",
       // Canonical deadline_date must win over the legacy alias. The alias
       // deliberately represents the previous UTC day to guard the Pakistan
       // timezone regression reported in production.
@@ -223,7 +223,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/closed-role" || path === "/api/jobs/legacy-closed-role-id") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
-      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>Candidate&amp;#39;s experience matters.</p><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
       salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
@@ -247,7 +247,7 @@ const server = createServer((request, response) => {
   if (path === "/api/jobs/multi-location-role") {
     return json(response, {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
-      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
+      description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>Candidate&amp;#39;s experience matters.</p><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
       published_date: "2026-07-01T00:00:00Z", deadline_date: null, application_deadline: null,
       salary_range: null, source: "FPSC", reference_url: null, application_url: null,
       experience_required: null, education_required: null, skills: [], job_type: "government",

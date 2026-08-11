@@ -6,6 +6,7 @@ import base64
 import io
 import re
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import MagicMock
@@ -32,6 +33,9 @@ from app.main import app  # noqa: E402
 from app import models  # noqa: E402, F401
 from app.auth import ensure_admin_user  # noqa: E402
 from app.exceptions import unhandled_exception_handler  # noqa: E402
+from app.models import Job  # noqa: E402
+from app.services.seo import build_job_structured_data  # noqa: E402
+from app.utils import strip_html  # noqa: E402
 
 
 @pytest.fixture()
@@ -85,6 +89,104 @@ def test_readiness(client: TestClient):
     r = client.get("/ready")
     assert r.status_code == 200
     assert r.json() == {"status": "ready", "database": "up"}
+
+
+def test_job_structured_data_omits_unknown_optional_fields():
+    job = Job(
+        id="job-with-intentional-blanks",
+        slug="job-with-intentional-blanks",
+        title="Job with intentional blanks",
+        description="<p>The advertiser supplied only the confirmed facts.</p>",
+        published_date=datetime(2026, 8, 11, 12, 0, 0),
+        deadline_date=None,
+        salary_range="PKR amount not disclosed",
+        source="Example employer",
+        reference_url=None,
+        application_url=None,
+        experience_required=None,
+        education_required=None,
+        skills=[],
+        job_type="private",
+        cities=[],
+        provinces=[],
+        tags=[],
+        keywords=None,
+    )
+
+    structured = build_job_structured_data(job)
+
+    assert structured["@type"] == "JobPosting"
+    assert structured["description"].startswith("<p>")
+    assert structured["jobLocation"] == [
+        {
+            "@type": "Place",
+            "address": {"@type": "PostalAddress", "addressCountry": "PK"},
+        }
+    ]
+    for optional_field in (
+        "validThrough",
+        "baseSalary",
+        "employmentType",
+        "educationRequirements",
+        "experienceRequirements",
+        "skills",
+        "industry",
+    ):
+        assert optional_field not in structured
+    assert "streetAddress" not in structured["jobLocation"][0]["address"]
+    assert "postalCode" not in structured["jobLocation"][0]["address"]
+
+
+def test_job_structured_data_represents_province_and_city_without_fake_address():
+    province_job = Job(
+        id="province-role",
+        slug="province-role",
+        title="Province role",
+        description="Confirmed role details",
+        published_date=datetime(2026, 8, 11, 12, 0, 0),
+        source="Example employer",
+        cities=[],
+        provinces=["Punjab"],
+        skills=[None, "SQL", "SQL", ""],
+        tags=["Technology"],
+    )
+    city_job = Job(
+        id="city-role",
+        slug="city-role",
+        title="City role",
+        description="Confirmed role details",
+        published_date=datetime(2026, 8, 11, 12, 0, 0),
+        source="Example employer",
+        cities=["Lahore"],
+        provinces=["Punjab"],
+        skills=[],
+        tags=[],
+    )
+
+    province_address = build_job_structured_data(province_job)["jobLocation"][0][
+        "address"
+    ]
+    city_address = build_job_structured_data(city_job)["jobLocation"][0]["address"]
+
+    assert province_address == {
+        "@type": "PostalAddress",
+        "addressRegion": "Punjab",
+        "addressCountry": "PK",
+    }
+    assert city_address == {
+        "@type": "PostalAddress",
+        "addressLocality": "Lahore",
+        "addressRegion": "Punjab",
+        "addressCountry": "PK",
+    }
+    assert build_job_structured_data(province_job)["skills"] == "SQL"
+
+
+def test_strip_html_decodes_nested_entities():
+    assert (
+        strip_html("<p>Bachelor&amp;#39;s &amp;amp; future</p>")
+        == "Bachelor's & future"
+    )
 
 
 def test_write_freeze_keeps_reads_available_and_rejects_writes(

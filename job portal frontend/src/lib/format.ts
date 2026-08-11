@@ -134,14 +134,70 @@ export function tagColorClass(label: string): string {
   return TAG_PALETTE[hash % TAG_PALETTE.length];
 }
 
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  quot: '"',
+  lt: "<",
+  gt: ">",
+  nbsp: " ",
+  ensp: " ",
+  emsp: " ",
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  laquo: "«",
+  raquo: "»",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  bull: "•",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+};
+
+const HTML_ENTITY_PATTERN = /&(?:#(\d+)|#x([0-9a-f]+)|([a-z][a-z0-9]+));/gi;
+
+function decodeHtmlEntitiesOnce(value: string): string {
+  return value.replace(
+    HTML_ENTITY_PATTERN,
+    (entity, decimal: string | undefined, hexadecimal: string | undefined, named: string | undefined) => {
+      if (named) return NAMED_HTML_ENTITIES[named.toLowerCase()] ?? entity;
+      const codePoint = Number.parseInt(decimal || hexadecimal || "", hexadecimal ? 16 : 10);
+      if (
+        !Number.isFinite(codePoint) ||
+        codePoint < 0 ||
+        codePoint > 0x10ffff ||
+        (codePoint >= 0xd800 && codePoint <= 0xdfff)
+      ) {
+        return entity;
+      }
+      return String.fromCodePoint(codePoint);
+    },
+  );
+}
+
+/**
+ * Decode text that may have passed through more than one HTML encoder.
+ *
+ * Callers render the result as a React text node, so decoded angle brackets
+ * remain text and cannot become executable markup.
+ */
+export function decodeHtmlEntities(value: string | null | undefined): string {
+  let decoded = value || "";
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = decodeHtmlEntitiesOnce(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
 export function stripHtml(text: string | null | undefined): string {
   if (!text) return "";
-  return text
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+  return decodeHtmlEntities(text.replace(/<[^>]+>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }

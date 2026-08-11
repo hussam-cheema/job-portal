@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { fetchPage } from "@/lib/api";
+import { decodeHtmlEntities } from "@/lib/format";
+import { wrapRichTextTables } from "@/lib/richText";
 
 type Props = {
   slug: string;
@@ -19,10 +21,12 @@ export async function ManagedPage({ slug, fallbackTitle, fallbackContent }: Prop
         ← Jobs
       </Link>
       <article>
-        <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">{title}</h1>
+        <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">
+          {decodeHtmlEntities(title)}
+        </h1>
         <div
           className="prose-job mt-6 text-[0.95rem] leading-relaxed text-[var(--navy-200)]"
-          dangerouslySetInnerHTML={{ __html: content }}
+          dangerouslySetInnerHTML={{ __html: wrapRichTextTables(content) }}
         />
       </article>
       <nav className="mt-10 flex flex-wrap gap-2 border-t border-[var(--border)] pt-6" aria-label="Related resources">

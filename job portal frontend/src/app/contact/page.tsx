@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchPage, submitContact } from "@/lib/api";
+import { decodeHtmlEntities } from "@/lib/format";
+import { wrapRichTextTables } from "@/lib/richText";
 
 const LIMITS = {
   name: 50,
@@ -84,10 +86,12 @@ export default function ContactPage() {
       <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--navy-200)]">
         ← Jobs
       </Link>
-      <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">{pageTitle}</h1>
+      <h1 className="mt-6 text-3xl font-semibold text-[var(--navy-100)]">
+        {decodeHtmlEntities(pageTitle)}
+      </h1>
       <div
         className="prose-job mt-3 text-[var(--navy-200)] leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: pageContent }}
+        dangerouslySetInnerHTML={{ __html: wrapRichTextTables(pageContent) }}
       />
 
       <form onSubmit={onSubmit} className="card-panel mt-8 p-6 space-y-4">
