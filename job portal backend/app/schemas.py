@@ -565,6 +565,12 @@ class QnAFetchResult(BaseModel):
     videos_scanned: int = 0
 
 
+class QnAFetchOptions(BaseModel):
+    min_similarity_percent: Optional[int] = Field(default=None, ge=1, le=100)
+    max_youtube_videos: Optional[int] = Field(default=None, ge=1, le=50)
+    max_comments: Optional[int] = Field(default=None, ge=1, le=500)
+
+
 class UploadOut(BaseModel):
     id: Optional[str] = None
     file_type: str

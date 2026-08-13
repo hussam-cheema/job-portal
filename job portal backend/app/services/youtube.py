@@ -281,7 +281,7 @@ def get_top_comments(
 def _comments_api(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
     comments: list[str] = []
     page_token: str | None = None
-    limit = max(1, min(int(max_comments), 50))
+    limit = max(1, min(int(max_comments), 500))
     while len(comments) < limit:
         params: dict[str, Any] = {
             "part": "snippet,replies",

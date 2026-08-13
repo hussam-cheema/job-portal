@@ -30,7 +30,6 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
         "max_youtube_search_results": 5,
         "max_comments": 50,
         "min_title_similarity": 0.80,
-        "timeout_seconds": 30,
         "ai_timeout_seconds": 10,
         "source_timeout_seconds": 5,
         "source_collection_timeout_seconds": 10,
@@ -146,7 +145,6 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
             videos,
             key="title",
             score_key="title_similarity",
-            raw_cosine_only=True,
             preserve_order=True,
         )
         selected_videos = [

@@ -9,6 +9,7 @@ import type {
   JobQuery,
   PageItem,
   PublicSeoMeta,
+  QnAFetchOptions,
   QnAFetchResult,
   SEODashboard,
   StatsResponse,
@@ -695,12 +696,15 @@ export async function adminDeleteJob(token: string, id: string) {
   }, "Delete failed");
 }
 
-export async function adminFetchQnA(token: string, jobId: string): Promise<QnAFetchResult> {
-  // The backend owns the configurable processing deadline. A shorter browser
-  // timeout used to abort otherwise healthy 120-second requests at 60 seconds.
+export async function adminFetchQnA(
+  token: string,
+  jobId: string,
+  options: QnAFetchOptions = {}
+): Promise<QnAFetchResult> {
   return requestJson<QnAFetchResult>(`/api/admin/jobs/${jobId}/fetch-qna`, {
     method: "POST",
     headers: authHeaders(token),
+    body: JSON.stringify(options),
   }, "QnA fetch failed");
 }
 

@@ -162,6 +162,21 @@ function hasMeaningfulJobDraft(snapshot: JobEditorSnapshot) {
   );
 }
 
+function optionalWholeNumber(
+  value: string,
+  label: string,
+  minimum: number,
+  maximum: number
+): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${label} must be a whole number from ${minimum} to ${maximum}.`);
+  }
+  return parsed;
+}
+
 export default function JobFormPage() {
   const params = useParams<{ id?: string }>();
   const router = useRouter();
@@ -178,7 +193,9 @@ export default function JobFormPage() {
   const [qnaError, setQnaError] = useState<string | null>(null);
   const [qnaMessage, setQnaMessage] = useState<string | null>(null);
   const [qnaLoading, setQnaLoading] = useState(false);
-  const [timer, setTimer] = useState(0);
+  const [qnaSimilarityPercent, setQnaSimilarityPercent] = useState("");
+  const [qnaVideoCount, setQnaVideoCount] = useState("");
+  const [qnaCommentCount, setQnaCommentCount] = useState("");
   const [savedId, setSavedId] = useState<string | null>(jobId);
   const [attachmentCount, setAttachmentCount] = useState(0);
   const [formReady, setFormReady] = useState(false);
@@ -393,13 +410,6 @@ export default function JobFormPage() {
     setSuccess(null);
   }
 
-  useEffect(() => {
-    if (!qnaLoading) return;
-    setTimer(0);
-    const id = setInterval(() => setTimer((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [qnaLoading]);
-
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -474,7 +484,26 @@ export default function JobFormPage() {
         setQnaError("Save the job before fetching YouTube Q&A.");
         return;
       }
-      const result = await adminFetchQnA(token, savedId);
+      const result = await adminFetchQnA(token, savedId, {
+        min_similarity_percent: optionalWholeNumber(
+          qnaSimilarityPercent,
+          "Cosine similarity percentage",
+          1,
+          100
+        ),
+        max_youtube_videos: optionalWholeNumber(
+          qnaVideoCount,
+          "YouTube video count",
+          1,
+          50
+        ),
+        max_comments: optionalWholeNumber(
+          qnaCommentCount,
+          "Comment count",
+          1,
+          500
+        ),
+      });
       setQna(result.items || []);
       if (result.error) {
         setQnaError(result.error);
@@ -879,23 +908,80 @@ export default function JobFormPage() {
           onChange={setSeo}
         />
 
-        <div className="border-t border-[var(--border)] pt-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={onFetchQnA}
-              disabled={qnaLoading || !savedId}
-            >
-              {qnaLoading
-                ? `Fetching QnA… ${timer}s`
-                : "Replace Q&A from YouTube"}
-            </button>
-            {qnaLoading && (
-              <span className="text-sm text-[var(--muted)] font-mono">
-                Timer: {timer}s
-              </span>
-            )}
+        <section className="rounded-3xl border border-[var(--border)] bg-[var(--navy-900)] px-5 py-7 shadow-sm sm:px-8 sm:py-9">
+          <div className="mx-auto max-w-4xl">
+            <div className="text-center">
+              <h3 className="text-xl font-semibold text-[var(--navy-100)] sm:text-2xl">
+                Search Q&A from YouTube
+              </h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Leave any field empty to use its default value.
+              </p>
+            </div>
+
+            <div className="mx-auto mt-7 grid max-w-3xl gap-5 sm:mt-9 sm:gap-6">
+              <label className="grid gap-2 sm:grid-cols-[minmax(190px,0.75fr)_minmax(0,1.4fr)] sm:items-start sm:gap-6">
+                <span className="field-label mb-0 sm:pt-3">Matching percentage</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  inputMode="numeric"
+                  aria-label="Cosine similarity percentage"
+                  placeholder="Set matching percentage (default: 80%)"
+                  value={qnaSimilarityPercent}
+                  onChange={(event) => setQnaSimilarityPercent(event.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 sm:grid-cols-[minmax(190px,0.75fr)_minmax(0,1.4fr)] sm:items-start sm:gap-6">
+                <span className="field-label mb-0 sm:pt-3">YouTube videos</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={50}
+                  step={1}
+                  inputMode="numeric"
+                  aria-label="YouTube videos to compare"
+                  placeholder="Set number of videos (default: 5)"
+                  value={qnaVideoCount}
+                  onChange={(event) => setQnaVideoCount(event.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 sm:grid-cols-[minmax(190px,0.75fr)_minmax(0,1.4fr)] sm:items-start sm:gap-6">
+                <span className="field-label mb-0 sm:pt-3">Comments per video</span>
+                <span className="block">
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={1}
+                    inputMode="numeric"
+                    aria-label="Comments per video"
+                    placeholder="Set comments per video (default: 50)"
+                    value={qnaCommentCount}
+                    onChange={(event) => setQnaCommentCount(event.target.value)}
+                  />
+                  <span className="mt-2 block text-xs text-[var(--muted)]">
+                    Every nested reply under each selected comment is included.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-8 flex justify-center sm:mt-10">
+              <button
+                type="button"
+                className="btn btn-primary w-full justify-center sm:w-auto sm:min-w-72"
+                onClick={onFetchQnA}
+                disabled={qnaLoading || !savedId}
+              >
+                {qnaLoading ? "Fetching Q&A…" : "Replace Q&A from YouTube"}
+              </button>
+            </div>
           </div>
           {qnaError && <p className="field-error mt-2">{qnaError}</p>}
           {qnaMessage && <p className="mt-2 text-sm font-medium text-[var(--success)]">{qnaMessage}</p>}
@@ -927,7 +1013,7 @@ export default function JobFormPage() {
               {savedId ? "No Q&A stored for this job." : "Save the job to fetch YouTube Q&A."}
             </p>
           )}
-        </div>
+        </section>
       </form>
     </AdminShell>
   );

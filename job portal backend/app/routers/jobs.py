@@ -31,6 +31,7 @@ from app.schemas import (
     JobQnAOut,
     JobSummary,
     JobUpdate,
+    QnAFetchOptions,
     QnAFetchResult,
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
@@ -539,6 +540,7 @@ def delete_job(
 @router.post("/admin/jobs/{job_id}/fetch-qna", response_model=QnAFetchResult)
 def admin_fetch_qna(
     job_id: str,
+    options: Optional[QnAFetchOptions] = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ):
@@ -546,7 +548,18 @@ def admin_fetch_qna(
         job = db.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        result = fetch_qna_for_job_title(db, job_id=job.id, job_title=job.title)
+        result = fetch_qna_for_job_title(
+            db,
+            job_id=job.id,
+            job_title=job.title,
+            min_similarity_percent=(
+                options.min_similarity_percent if options is not None else None
+            ),
+            youtube_video_count=(
+                options.max_youtube_videos if options is not None else None
+            ),
+            comments_per_video=(options.max_comments if options is not None else None),
+        )
         items = [JobQnAOut.model_validate(x) for x in result.get("items") or []]
         return QnAFetchResult(
             items=items,

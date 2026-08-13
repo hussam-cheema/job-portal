@@ -203,12 +203,14 @@ _SOURCE_CHUNK_OVERLAP_CHARS = 1200
 
 def _canonical_job_title(value: str) -> str:
     """Remove search boilerplate while preserving the actual role name."""
+    cleaned = re.sub(r"\bapply\s+online\b", " ", str(value or ""), flags=re.I)
     cleaned = re.sub(
         r"\b(?:latest|new|government|private|jobs?|vacancies|vacancy|recruitment|careers?|pakistan|in)\b",
         " ",
-        str(value or ""),
+        cleaned,
         flags=re.I,
     )
+    cleaned = re.sub(r"[|–—]+", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -|,:;")
     return cleaned if len(cleaned) >= 3 else str(value or "").strip()
 
@@ -842,21 +844,47 @@ def fetch_qna_for_job_title(
     job_id: str,
     job_title: str,
     replace_existing: bool = True,
+    min_similarity_percent: int | None = None,
+    youtube_video_count: int | None = None,
+    comments_per_video: int | None = None,
 ) -> dict[str, Any]:
     """
     YouTube Data API search + transcripts + comments → LLM extracts complete Q&A pairs.
-    Videos ranked by embedding similarity to job title. Max 20 pairs. Timeout configurable.
+    Videos ranked by embedding and title-keyword relevance. Max 20 pairs.
     """
     conf = cfg("youtube_qna") or {}
     max_qna = min(20, max(1, int(conf.get("max_qna") or 20)))
-    max_videos = min(5, max(1, int(conf.get("max_youtube_videos") or 5)))
-    max_search_results = min(
-        max_videos,
-        int(conf.get("max_youtube_search_results") or max_videos),
+    max_videos = min(
+        50,
+        max(
+            1,
+            int(
+                youtube_video_count
+                if youtube_video_count is not None
+                else conf.get("max_youtube_videos") or 5
+            ),
+        ),
     )
-    max_comments = min(50, max(1, int(conf.get("max_comments") or 50)))
+    max_search_results = (
+        max_videos
+        if youtube_video_count is not None
+        else min(
+            max_videos,
+            int(conf.get("max_youtube_search_results") or max_videos),
+        )
+    )
+    max_comments = min(
+        500,
+        max(
+            1,
+            int(
+                comments_per_video
+                if comments_per_video is not None
+                else conf.get("max_comments") or 50
+            ),
+        ),
+    )
     max_per_topic = max(1, int(conf.get("max_qna_per_topic") or 3))
-    timeout = float(conf.get("timeout_seconds") or 60)
     ai_timeout = float(
         conf.get("ai_timeout_seconds")
         or conf.get("per_video_ai_timeout_seconds")
@@ -866,12 +894,22 @@ def fetch_qna_for_job_title(
     source_collection_timeout = float(conf.get("source_collection_timeout_seconds") or 45)
     source_workers = max(1, int(conf.get("source_workers") or 5))
     configured_min_similarity = conf.get("min_title_similarity")
-    min_sim = max(
-        0.80,
-        float(0.80 if configured_min_similarity is None else configured_min_similarity),
+    min_sim = (
+        min(1.0, max(0.01, float(min_similarity_percent) / 100.0))
+        if min_similarity_percent is not None
+        else min(
+            1.0,
+            max(
+                0.01,
+                float(
+                    0.80
+                    if configured_min_similarity is None
+                    else configured_min_similarity
+                ),
+            ),
+        )
     )
     started = time.monotonic()
-    deadline = started + timeout
     error: str | None = None
     search_succeeded = False
     collected: list[dict[str, Any]] = []
@@ -881,14 +919,17 @@ def fetch_qna_for_job_title(
     selected_intents: set[str] = set()
     role_title = _canonical_job_title(job_title)
     try:
-        query = f"{role_title} jobs interview eligibility test preparation Pakistan".strip()
+        query = role_title
         # YouTube returns these candidates newest-first. Score that bounded set
-        # with raw embedding cosine and retain the recent order required by the
-        # product workflow rather than re-sorting it by a calibrated score.
+        # with semantic embeddings plus exact title-keyword evidence. Short,
+        # clearly related titles (for example "NADRA Jobs 2026") often have raw
+        # embedding cosines below 0.80 despite sharing the recruiting body and
+        # year, so the calibrated score prevents those false negatives. Retain
+        # YouTube's newest-first order after applying the relevance threshold.
         raw_videos = search_youtube(
             query,
             max_results=max_search_results,
-            timeout_seconds=min(15.0, max(1.0, deadline - time.monotonic())),
+            timeout_seconds=15.0,
             raise_on_failure=True,
         )
         ranked = rank_by_similarity(
@@ -896,7 +937,6 @@ def fetch_qna_for_job_title(
             raw_videos,
             key="title",
             score_key="title_similarity",
-            raw_cosine_only=True,
             preserve_order=True,
         )
         videos = [
@@ -914,13 +954,12 @@ def fetch_qna_for_job_title(
         )
 
         videos_scanned = len(videos)
-        remaining = max(1.0, deadline - time.monotonic() - 2)
         sources = _collect_video_sources(
             videos,
             start_index=1,
             max_comments=max_comments,
             source_timeout_seconds=source_timeout,
-            collection_timeout_seconds=min(source_collection_timeout, remaining),
+            collection_timeout_seconds=source_collection_timeout,
             source_workers=source_workers,
         )
 
@@ -933,57 +972,53 @@ def fetch_qna_for_job_title(
                 "could not be retrieved."
             )
         elif usable_sources:
-            remaining = deadline - time.monotonic()
-            if remaining <= 2:
-                error = f"YouTube Q&A processing reached the {int(timeout)}-second limit."
-            else:
-                try:
-                    pairs = extract_qna_from_sources(
-                        job_title=job_title,
-                        sources=usable_sources,
-                        max_qna=max_qna,
-                        timeout_seconds=min(ai_timeout, max(1.0, remaining - 2)),
+            try:
+                pairs = extract_qna_from_sources(
+                    job_title=job_title,
+                    sources=usable_sources,
+                    max_qna=max_qna,
+                    timeout_seconds=ai_timeout,
+                )
+                sources_by_index = {
+                    int(source["video_index"]): source for source in usable_sources
+                }
+                for pair in pairs:
+                    topic = _question_topic(
+                        pair["question"],
+                        pair["answer"],
+                        str(pair.get("topic") or ""),
                     )
-                    sources_by_index = {
-                        int(source["video_index"]): source for source in usable_sources
-                    }
-                    for pair in pairs:
-                        topic = _question_topic(
-                            pair["question"],
-                            pair["answer"],
-                            str(pair.get("topic") or ""),
-                        )
-                        intent = _question_intent(
-                            pair["question"],
-                            topic,
-                            str(pair.get("intent") or ""),
-                        )
-                        if topic != "other" and topic_counts.get(topic, 0) >= max_per_topic:
-                            continue
-                        if intent != "other" and intent in selected_intents:
-                            continue
-                        if any(
-                            _questions_are_similar(pair["question"], item["question"])
-                            for item in collected
-                        ):
-                            continue
-                        topic_counts[topic] = topic_counts.get(topic, 0) + 1
-                        selected_intents.add(intent)
-                        source = sources_by_index[int(pair["video_index"])]
-                        collected.append(
-                            {
-                                "question": pair["question"],
-                                "answer": pair["answer"],
-                                "source": pair.get("source"),
-                                "youtube_url": source.get("url"),
-                                "youtube_title": source.get("title"),
-                            }
-                        )
-                        if len(collected) >= max_qna:
-                            break
-                except Exception as exc:
-                    logger.exception("qna_combined_extraction_failed job_id=%s", job_id)
-                    error = f"A YouTube or AI processing error occurred: {str(exc)[:300]}"
+                    intent = _question_intent(
+                        pair["question"],
+                        topic,
+                        str(pair.get("intent") or ""),
+                    )
+                    if topic != "other" and topic_counts.get(topic, 0) >= max_per_topic:
+                        continue
+                    if intent != "other" and intent in selected_intents:
+                        continue
+                    if any(
+                        _questions_are_similar(pair["question"], item["question"])
+                        for item in collected
+                    ):
+                        continue
+                    topic_counts[topic] = topic_counts.get(topic, 0) + 1
+                    selected_intents.add(intent)
+                    source = sources_by_index[int(pair["video_index"])]
+                    collected.append(
+                        {
+                            "question": pair["question"],
+                            "answer": pair["answer"],
+                            "source": pair.get("source"),
+                            "youtube_url": source.get("url"),
+                            "youtube_title": source.get("title"),
+                        }
+                    )
+                    if len(collected) >= max_qna:
+                        break
+            except Exception as exc:
+                logger.exception("qna_combined_extraction_failed job_id=%s", job_id)
+                error = f"A YouTube or AI processing error occurred: {str(exc)[:300]}"
     except Exception as exc:
         logger.exception("fetch_qna_for_job_title failed job_id=%s", job_id)
         error = str(exc)

@@ -1415,6 +1415,30 @@ def test_embeddings_similarity(monkeypatch: pytest.MonkeyPatch):
     assert generic["score"] < 0.35
 
 
+def test_title_similarity_calibration_keeps_obvious_nadra_match(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import embeddings
+
+    def sixty_percent_cosines(texts: list[str], *, query_first: bool = False):
+        assert query_first is True
+        return [[1.0, 0.0], *[[0.6, 0.8] for _ in texts[1:]]]
+
+    monkeypatch.setattr(embeddings, "_semantic_embeddings", sixty_percent_cosines)
+    ranked = embeddings.rank_by_similarity(
+        "NADRA Jobs 2026 – Deputy Assistant Director (Technical) | Apply Online",
+        [
+            {"title": "NADRA Jobs 2026 | Apply Online | Latest NADRA Careers Pakistan 2026"},
+            {"title": "Unrelated cooking tutorial"},
+        ],
+        score_key="score",
+        preserve_order=True,
+    )
+
+    assert ranked[0]["score"] == 0.8
+    assert ranked[1]["score"] == 0.6
+
+
 def test_openai_embedding_failure_uses_qwen3(monkeypatch: pytest.MonkeyPatch):
     from app.services import embeddings
 
@@ -2397,6 +2421,7 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     ranking: dict[str, object] = {}
 
     def search(*args, **kwargs):
+        searched["query"] = args[0]
         searched.update(kwargs)
         return videos
 
@@ -2433,13 +2458,85 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     assert result["error"] is None
     assert searched["max_results"] == 5
     assert searched["raise_on_failure"] is True
-    assert ranking["raw_cosine_only"] is True
+    assert searched["query"] == "FIA Inspector"
+    assert "raw_cosine_only" not in ranking
     assert ranking["preserve_order"] is True
     assert extracted_titles == [
         "FIA Inspector interview",
         "FIA Inspector preparation",
     ]
     assert db.query(JobQnA).filter(JobQnA.job_id == "job-first-match").count() == 1
+    db.close()
+
+
+def test_qna_runtime_options_override_default_threshold_videos_and_comments(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    captured: dict[str, object] = {}
+    video = {
+        "video_id": "nadra-runtime-options",
+        "title": "NADRA Jobs 2026 | Deputy Assistant Director",
+        "url": "https://youtu.be/nadra-runtime-options",
+    }
+
+    def search(query, **kwargs):
+        captured["query"] = query
+        captured["search"] = kwargs
+        return [video]
+
+    def collect(videos, **kwargs):
+        captured["selected_videos"] = videos
+        captured["collection"] = kwargs
+        return [
+            {
+                **video,
+                "video_index": 1,
+                "title_similarity": 0.72,
+                "transcript": "Candidates must submit the online application form.",
+                "comments": [],
+            }
+        ]
+
+    monkeypatch.setattr(qna_service, "search_youtube", search)
+    monkeypatch.setattr(
+        qna_service,
+        "rank_by_similarity",
+        lambda _title, rows, **_kwargs: [{**rows[0], "title_similarity": 0.72}],
+    )
+    monkeypatch.setattr(qna_service, "_collect_video_sources", collect)
+    monkeypatch.setattr(
+        qna_service,
+        "extract_qna_from_sources",
+        lambda **_kwargs: [
+            {
+                "question": "How must candidates apply?",
+                "answer": "Candidates must submit the online application form.",
+                "source": "transcript",
+                "video_index": 1,
+            }
+        ],
+    )
+
+    result = qna_service.fetch_qna_for_job_title(
+        db,
+        job_id="nadra-runtime-options",
+        job_title="NADRA Jobs 2026 – Deputy Assistant Director (Technical) | Apply Online",
+        min_similarity_percent=70,
+        youtube_video_count=12,
+        comments_per_video=75,
+    )
+
+    assert result["count"] == 1
+    assert captured["query"] == "NADRA 2026 Deputy Assistant Director (Technical)"
+    assert captured["search"]["max_results"] == 12
+    assert captured["collection"]["max_comments"] == 75
+    assert len(captured["selected_videos"]) == 1
     db.close()
 
 
@@ -2813,6 +2910,55 @@ def test_youtube_api_fetches_every_paginated_reply_in_each_selected_thread(
     assert not reply_pages
 
 
+def test_youtube_api_paginates_beyond_the_old_fifty_comment_cap(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import youtube
+
+    class Response:
+        def __init__(self, payload: dict):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    calls: list[dict] = []
+
+    def get(url: str, **kwargs):
+        assert url.endswith("/commentThreads")
+        calls.append(kwargs["params"].copy())
+        start = 0 if len(calls) == 1 else 60
+        count = 60 if len(calls) == 1 else 15
+        return Response(
+            {
+                "items": [
+                    {
+                        "snippet": {
+                            "totalReplyCount": 0,
+                            "topLevelComment": {
+                                "id": f"thread-{index}",
+                                "snippet": {"textDisplay": f"Comment {index}"},
+                            },
+                        }
+                    }
+                    for index in range(start, start + count)
+                ],
+                **({"nextPageToken": "second-page"} if len(calls) == 1 else {}),
+            }
+        )
+
+    monkeypatch.setattr(youtube.httpx, "get", get)
+    rows = youtube._comments_api("video", 75, 10)
+
+    assert len(rows) == 75
+    assert calls[0]["maxResults"] == 75
+    assert calls[1]["maxResults"] == 15
+    assert calls[1]["pageToken"] == "second-page"
+
+
 def test_ytdlp_transcript_fallback_reads_generated_json3(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -3045,6 +3191,7 @@ def test_qna_production_config_matches_the_requested_pipeline_contract():
     assert youtube["max_youtube_search_results"] == 5
     assert youtube["max_youtube_videos"] == 5
     assert youtube["min_title_similarity"] == 0.8
+    assert "timeout_seconds" not in youtube
     assert youtube["max_comments"] == 50
     assert youtube["max_qna"] == 20
 

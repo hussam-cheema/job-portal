@@ -319,6 +319,12 @@ export type QnAFetchResult = {
   videos_scanned: number;
 };
 
+export type QnAFetchOptions = {
+  min_similarity_percent?: number;
+  max_youtube_videos?: number;
+  max_comments?: number;
+};
+
 export type SEODashboard = {
   on_page: Record<string, unknown>;
   off_page: Record<string, unknown>;

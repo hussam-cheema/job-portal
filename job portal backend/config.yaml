@@ -94,19 +94,19 @@ youtube_qna:
   max_qna_per_topic: 4
   # Search the five newest YouTube candidates for the job title.
   max_youtube_search_results: 5
-  # Retain at most five recent titles that pass the raw cosine threshold.
+  # Retain at most five recent titles that pass the semantic/title-keyword score.
   max_youtube_videos: 5
   max_comments: 50
   # Keep every available reply beneath each selected top-level comment so
   # English, Urdu, and Roman-Urdu questions retain their answer hierarchy.
   extract_transcripts: true
   extract_comments: true
-  timeout_seconds: 100
   ai_timeout_seconds: 100
   source_timeout_seconds: 60
   source_collection_timeout_seconds: 60
   source_workers: 5
-  # The screenshot workflow requires an unmodified embedding cosine of at least 80%.
+  # Require at least 80% after embedding relevance is calibrated with exact
+  # title-keyword evidence, avoiding false negatives for employer names such as NADRA.
   min_title_similarity: 0.8
   # YOUTUBE_API_KEY in .env
 

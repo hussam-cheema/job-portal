@@ -31,7 +31,6 @@ def check() -> str:
             {"title": "FIA Inspector ki age limit aur test pattern"},
         ],
         score_key="similarity",
-        raw_cosine_only=True,
     )
     if not ranked or "fia" not in ranked[0]["title"].lower():
         raise CheckFailed(f"Qwen3 ranked an unrelated title first: {ranked}")

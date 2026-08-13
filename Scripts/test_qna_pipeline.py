@@ -52,10 +52,7 @@ def check() -> str:
     started = time.monotonic()
 
     # 1. Search and independently verify configured similarity filtering.
-    query = (
-        f"{_canonical_job_title(title)} jobs interview eligibility test "
-        "preparation Pakistan"
-    )
+    query = _canonical_job_title(title)
     raw_videos = search_youtube(
         query,
         max_results=max_search,
@@ -67,7 +64,6 @@ def check() -> str:
         raw_videos,
         key="title",
         score_key="title_similarity",
-        raw_cosine_only=True,
         preserve_order=True,
     )
     videos = [

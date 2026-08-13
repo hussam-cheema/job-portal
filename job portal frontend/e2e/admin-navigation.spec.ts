@@ -246,8 +246,21 @@ test("existing R2 images load inside the job editor through the media proxy", as
 
 test("YouTube Q&A replacement shows the newly stored grounded pairs", async ({ page }) => {
   await page.goto("/admin/jobs/closed-role");
+  await page.getByLabel("Cosine similarity percentage").fill("73");
+  await page.getByLabel("YouTube videos to compare").fill("12");
+  await page.getByLabel("Comments per video").fill("75");
+  const qnaRequestPromise = page.waitForRequest((request) =>
+    request.url().endsWith("/api/admin/jobs/closed-role/fetch-qna")
+  );
   await page.getByRole("button", { name: "Replace Q&A from YouTube" }).click();
+  const qnaRequest = await qnaRequestPromise;
 
+  expect(qnaRequest.postDataJSON()).toEqual({
+    min_similarity_percent: 73,
+    max_youtube_videos: 12,
+    max_comments: 75,
+  });
+  await expect(page.getByText(/^Timer:/)).toHaveCount(0);
   await expect(
     page.getByText("Stored 1 Q&A pair from 3 relevant videos.", { exact: true })
   ).toBeVisible();
