@@ -39,7 +39,11 @@ analytics:
   trust_proxy_headers: true
   geolocation_enabled: true
   geolocation_url: "https://ipwho.is/{ip}"
+  # Country-only fallback prevents a transient/rate-limited primary lookup from
+  # permanently recording otherwise valid Railway visits as Unknown.
+  geolocation_fallback_url: "https://api.country.is/{ip}"
   geolocation_timeout_seconds: 4
+  geolocation_cache_seconds: 86400
 
 llm:
   temperature: 0.1
@@ -47,7 +51,10 @@ llm:
   tasks:
     qna_extraction:
       provider: deepseek
-      model: deepseek-v4-flash
+      model: "DeepSeek-V4-Pro-0813"
+      # DeepSeek's official OpenAI-compatible API exposes the Pro release under
+      # this stable request ID; keep the requested release label above for audit.
+      api_model: "deepseek-v4-pro"
       # Structured extraction is faster and more reliable without spending the
       # output budget on V4's default thinking trace.
       thinking: false
@@ -63,7 +70,8 @@ llm:
       model: "gpt-4o-mini"
     deepseek:
       enabled: true
-      model: "deepseek-v4-flash"
+      model: "DeepSeek-V4-Pro-0813"
+      api_model: "deepseek-v4-pro"
     meta:
       enabled: false
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -79,20 +87,18 @@ llm:
 
 youtube_qna:
   enabled: true
-  max_qna: 15
+  max_qna: 20
   # Permit several genuinely different questions within a broad topic (for
   # example maximum age, age relaxation, and post-specific age limits) while
   # still removing semantic duplicates.
   max_qna_per_topic: 4
-  # Search this many YouTube candidates before embedding-based ranking.
-  max_youtube_search_results: 25
-  # Retain at most this many ranked titles at/above min_title_similarity.
+  # Search the five newest YouTube candidates for the job title.
+  max_youtube_search_results: 5
+  # Retain at most five recent titles that pass the raw cosine threshold.
   max_youtube_videos: 5
   max_comments: 50
-  # Keep top-level YouTube comments together with their replies so English,
-  # Urdu, and Roman-Urdu questions can be paired with real source answers.
-  max_comment_reply_threads: 12
-  max_replies_per_thread: 10
+  # Keep every available reply beneath each selected top-level comment so
+  # English, Urdu, and Roman-Urdu questions retain their answer hierarchy.
   extract_transcripts: true
   extract_comments: true
   timeout_seconds: 100
@@ -100,10 +106,8 @@ youtube_qna:
   source_timeout_seconds: 60
   source_collection_timeout_seconds: 60
   source_workers: 5
-  # Calibrated embedding + role-token similarity cutoff for retaining a YouTube
-  # title. Lower values broaden the match; higher values are stricter. This remains
-  # the single threshold controlling which ranked titles enter source collection.
-  min_title_similarity: 0.4
+  # The screenshot workflow requires an unmodified embedding cosine of at least 80%.
+  min_title_similarity: 0.8
   # YOUTUBE_API_KEY in .env
 
 # Semantic embeddings used to compare job titles with YouTube titles.

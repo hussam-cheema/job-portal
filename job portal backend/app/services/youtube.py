@@ -15,6 +15,10 @@ from app.logging_config import get_logger
 logger = get_logger("jobportal.youtube")
 
 
+class YouTubeProviderError(RuntimeError):
+    """Raised when neither YouTube API nor yt-dlp can complete a request."""
+
+
 def _yt_cfg() -> dict:
     return dict(cfg("youtube_qna") or {})
 
@@ -32,29 +36,35 @@ def search_youtube(
     max_results: int | None = None,
     *,
     timeout_seconds: float = 10,
+    raise_on_failure: bool = False,
 ) -> list[dict[str, Any]]:
     conf = _yt_cfg()
     if not conf.get("enabled", True):
         return []
     max_results = max_results or int(conf.get("max_youtube_search_results") or 50)
 
+    api_error: Exception | None = None
     if _has_api_key():
         try:
             videos = _search_api(query, max_results, timeout_seconds)
-            if videos:
-                logger.info("youtube_search_api query=%s count=%s", query, len(videos))
-                return videos
-        except Exception:
+            logger.info("youtube_search_api query=%s count=%s", query, len(videos))
+            return videos
+        except Exception as exc:
+            api_error = exc
             logger.exception("youtube_api_search_failed — fallback yt-dlp")
 
     try:
         return _search_ytdlp(query, max_results, timeout_seconds)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         logger.warning("yt_dlp_not_installed")
-        return []
-    except Exception:
+        fallback_error: Exception = exc
+    except Exception as exc:
         logger.exception("youtube_search_error")
-        return []
+        fallback_error = exc
+    if raise_on_failure:
+        detail = fallback_error or api_error or RuntimeError("YouTube search unavailable")
+        raise YouTubeProviderError("YouTube search could not be completed") from detail
+    return []
 
 
 def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
@@ -67,6 +77,7 @@ def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[di
             "part": "snippet",
             "type": "video",
             "maxResults": max_results,
+            "order": "date",
             "relevanceLanguage": "en",
             "key": env("YOUTUBE_API_KEY"),
         },
@@ -87,6 +98,7 @@ def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[di
                 "url": f"https://www.youtube.com/watch?v={video_id}",
                 "description": snippet.get("description") or "",
                 "channel": snippet.get("channelTitle") or "",
+                "published_at": snippet.get("publishedAt") or "",
             }
         )
     return videos
@@ -95,7 +107,7 @@ def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[di
 def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
     cmd = [
         "yt-dlp",
-        f"ytsearch{max_results}:{query}",
+        f"ytsearchdate{max_results}:{query}",
         "--dump-json",
         "--flat-playlist",
         "--no-download",
@@ -110,8 +122,7 @@ def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[
         check=False,
     )
     if proc.returncode != 0 and not proc.stdout.strip():
-        logger.warning("yt_dlp_search_failed stderr=%s", (proc.stderr or "")[:300])
-        return []
+        raise RuntimeError((proc.stderr or "yt-dlp YouTube search failed")[:300])
 
     videos: list[dict[str, Any]] = []
     for line in proc.stdout.splitlines():
@@ -137,6 +148,12 @@ def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[
                 "url": f"https://www.youtube.com/watch?v={video_id}",
                 "description": item.get("description") or item.get("title") or "",
                 "channel": item.get("channel") or item.get("uploader") or "",
+                "published_at": (
+                    item.get("upload_date")
+                    or item.get("release_timestamp")
+                    or item.get("timestamp")
+                    or ""
+                ),
             }
         )
     return videos[:max_results]
@@ -233,105 +250,120 @@ def get_top_comments(
     max_comments: int | None = None,
     *,
     timeout_seconds: float = 10,
+    raise_on_failure: bool = False,
 ) -> list[str]:
     conf = _yt_cfg()
     if not conf.get("extract_comments", True):
         return []
     max_comments = max_comments or int(conf.get("max_comments") or 50)
 
+    api_error: Exception | None = None
     if _has_api_key():
         try:
-            comments = _comments_api(video_id, max_comments, timeout_seconds)
-            if comments:
-                return comments
-        except Exception:
+            return _comments_api(video_id, max_comments, timeout_seconds)
+        except Exception as exc:
+            api_error = exc
             logger.exception("youtube_api_comments_failed — fallback yt-dlp")
 
     try:
         return _comments_ytdlp(video_id, max_comments, timeout_seconds)
-    except FileNotFoundError:
-        return []
+    except FileNotFoundError as exc:
+        fallback_error: Exception = exc
     except Exception as exc:
         logger.debug("comments_failed video_id=%s error=%s", video_id, exc)
-        return []
+        fallback_error = exc
+    if raise_on_failure:
+        detail = fallback_error or api_error or RuntimeError("YouTube comments unavailable")
+        raise YouTubeProviderError("YouTube comments could not be completed") from detail
+    return []
 
 
 def _comments_api(video_id: str, max_comments: int, timeout_seconds: float) -> list[str]:
-    conf = _yt_cfg()
-    max_reply_threads = max(0, int(conf.get("max_comment_reply_threads") or 12))
-    max_replies = max(1, int(conf.get("max_replies_per_thread") or 10))
-    response = httpx.get(
-        "https://www.googleapis.com/youtube/v3/commentThreads",
-        params={
+    comments: list[str] = []
+    page_token: str | None = None
+    limit = max(1, min(int(max_comments), 50))
+    while len(comments) < limit:
+        params: dict[str, Any] = {
             "part": "snippet,replies",
             "videoId": video_id,
-            "maxResults": min(max_comments, 100),
+            "maxResults": min(limit - len(comments), 100),
             "textFormat": "plainText",
-            "order": "relevance",
+            "order": "time",
             "key": env("YOUTUBE_API_KEY"),
-        },
-        timeout=max(1.0, timeout_seconds),
-    )
-    response.raise_for_status()
-    payload = response.json()
-    comments: list[str] = []
-    reply_fetches = 0
-    for item in payload.get("items", [])[:max_comments]:
-        snippet = item.get("snippet") or {}
-        top_level = snippet.get("topLevelComment") or {}
-        top = top_level.get("snippet") or {}
-        text = (top.get("textDisplay") or "").strip()
-        if not text:
-            continue
-        reply_rows = list((item.get("replies") or {}).get("comments") or [])
-        replies = [
-            str((row.get("snippet") or {}).get("textDisplay") or "").strip()
-            for row in reply_rows
-        ]
-        replies = [reply for reply in replies if reply]
-        total_replies = int(snippet.get("totalReplyCount") or len(replies))
-        parent_id = str(top_level.get("id") or "")
-        if (
-            parent_id
-            and total_replies > len(replies)
-            and reply_fetches < max_reply_threads
-        ):
-            reply_fetches += 1
-            try:
-                replies = _comment_replies_api(
-                    parent_id,
-                    max_replies=max_replies,
-                    timeout_seconds=timeout_seconds,
-                ) or replies
-            except Exception as exc:
-                logger.debug("youtube_reply_fetch_failed parent_id=%s error=%s", parent_id, exc)
-        comments.append(_format_comment_thread(text, replies[:max_replies]))
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        response = httpx.get(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+            params=params,
+            timeout=max(1.0, timeout_seconds),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        for item in payload.get("items", []):
+            snippet = item.get("snippet") or {}
+            top_level = snippet.get("topLevelComment") or {}
+            top = top_level.get("snippet") or {}
+            text = str(top.get("textDisplay") or "").strip()
+            if not text:
+                continue
+            embedded = list((item.get("replies") or {}).get("comments") or [])
+            replies = [
+                reply
+                for row in embedded
+                if (reply := str((row.get("snippet") or {}).get("textDisplay") or "").strip())
+            ]
+            parent_id = str(top_level.get("id") or "")
+            total_replies = int(snippet.get("totalReplyCount") or len(replies))
+            if parent_id and total_replies > len(replies):
+                try:
+                    replies = _comment_replies_api(
+                        parent_id,
+                        timeout_seconds=timeout_seconds,
+                    ) or replies
+                except Exception as exc:
+                    logger.debug("youtube_reply_fetch_failed parent_id=%s error=%s", parent_id, exc)
+            comments.append(_format_comment_thread(text, replies))
+            if len(comments) >= limit:
+                break
+        page_token = str(payload.get("nextPageToken") or "") or None
+        if not page_token or not payload.get("items"):
+            break
     return comments
 
 
 def _comment_replies_api(
     parent_id: str,
     *,
-    max_replies: int,
     timeout_seconds: float,
 ) -> list[str]:
-    response = httpx.get(
-        "https://www.googleapis.com/youtube/v3/comments",
-        params={
+    replies: list[str] = []
+    page_token: str | None = None
+    while True:
+        params: dict[str, Any] = {
             "part": "snippet",
             "parentId": parent_id,
-            "maxResults": min(max_replies, 100),
+            "maxResults": 100,
             "textFormat": "plainText",
             "key": env("YOUTUBE_API_KEY"),
-        },
-        timeout=max(1.0, timeout_seconds),
-    )
-    response.raise_for_status()
-    return [
-        text
-        for item in response.json().get("items", [])
-        if (text := str((item.get("snippet") or {}).get("textDisplay") or "").strip())
-    ]
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        response = httpx.get(
+            "https://www.googleapis.com/youtube/v3/comments",
+            params=params,
+            timeout=max(1.0, timeout_seconds),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        replies.extend(
+            text
+            for item in payload.get("items", [])
+            if (text := str((item.get("snippet") or {}).get("textDisplay") or "").strip())
+        )
+        page_token = str(payload.get("nextPageToken") or "") or None
+        if not page_token:
+            return replies
 
 
 def _format_comment_thread(top_level: str, replies: list[str]) -> str:
@@ -378,10 +410,9 @@ def _comments_ytdlp(video_id: str, max_comments: int, timeout_seconds: float) ->
         else:
             roots.append((comment_id, text))
     if roots:
-        max_replies = max(1, int(_yt_cfg().get("max_replies_per_thread") or 10))
         for comment_id, text in roots[:max_comments]:
             standalone.append(
-                _format_comment_thread(text, by_parent.get(comment_id, [])[:max_replies])
+                _format_comment_thread(text, by_parent.get(comment_id, []))
             )
         return standalone
 

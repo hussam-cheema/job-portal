@@ -36,11 +36,12 @@ def check() -> str:
     max_qna = int(config("youtube_qna", "max_qna", default=20) or 20)
     max_videos = int(config("youtube_qna", "max_youtube_videos", default=5) or 5)
     max_search = int(
-        config("youtube_qna", "max_youtube_search_results", default=50) or 50
+        config("youtube_qna", "max_youtube_search_results", default=5) or 5
     )
+    max_search = min(max_search, max_videos)
     max_comments = int(config("youtube_qna", "max_comments", default=50) or 50)
     min_similarity = float(
-        config("youtube_qna", "min_title_similarity", default=0.7) or 0.7
+        config("youtube_qna", "min_title_similarity", default=0.8) or 0.8
     )
     source_timeout = float(
         config("youtube_qna", "source_timeout_seconds", default=15) or 15
@@ -55,9 +56,19 @@ def check() -> str:
         f"{_canonical_job_title(title)} jobs interview eligibility test "
         "preparation Pakistan"
     )
-    raw_videos = search_youtube(query, max_results=max_search, timeout_seconds=15)
+    raw_videos = search_youtube(
+        query,
+        max_results=max_search,
+        timeout_seconds=15,
+        raise_on_failure=True,
+    )
     ranked = rank_by_similarity(
-        title, raw_videos, key="title", score_key="title_similarity"
+        title,
+        raw_videos,
+        key="title",
+        score_key="title_similarity",
+        raw_cosine_only=True,
+        preserve_order=True,
     )
     videos = [
         video

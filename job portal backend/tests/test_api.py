@@ -1766,6 +1766,143 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     assert monthly.json()["page_views"] == 1
 
 
+def test_analytics_resolves_railway_x_real_ip(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import analytics as analytics_router
+
+    looked_up: list[str] = []
+
+    def lookup(ip: str):
+        looked_up.append(ip)
+        return "Pakistan", "Punjab", "Lahore"
+
+    monkeypatch.setattr(analytics_router, "_lookup_public_ip", lookup)
+    response = client.post(
+        "/api/analytics/visit",
+        headers={"user-agent": "Mozilla/5.0", "x-real-ip": "8.8.8.8"},
+        json={"visitor_id": "railway-real-ip-visitor", "path": "/jobs/railway-role"},
+    )
+    assert response.status_code == 201
+    assert looked_up == ["8.8.8.8"]
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    dashboard = client.get(
+        "/api/admin/analytics",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    ).json()
+    assert dashboard["locations"] == [
+        {
+            "country": "Pakistan",
+            "region": "Punjab",
+            "city": "Lahore",
+            "visitors": 1,
+            "page_views": 1,
+        }
+    ]
+
+
+def test_analytics_reuses_verified_location_for_legacy_unknown_rows(client: TestClient):
+    visitor = "legacy-unknown-visitor"
+    assert client.post(
+        "/api/analytics/visit",
+        headers={"user-agent": "Mozilla/5.0"},
+        json={"visitor_id": visitor, "path": "/first"},
+    ).status_code == 201
+    assert client.post(
+        "/api/analytics/visit",
+        headers={
+            "user-agent": "Mozilla/5.0",
+            "cf-ipcountry": "PK",
+            "cf-region": "Sindh",
+            "cf-ipcity": "Karachi",
+        },
+        json={"visitor_id": visitor, "path": "/second"},
+    ).status_code == 201
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    dashboard = client.get(
+        "/api/admin/analytics",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    ).json()
+    assert dashboard["locations"] == [
+        {
+            "country": "PK",
+            "region": "Sindh",
+            "city": "Karachi",
+            "visitors": 1,
+            "page_views": 2,
+        }
+    ]
+
+
+def test_analytics_geolocation_uses_country_fallback_and_does_not_cache_failures(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.routers import analytics as analytics_router
+
+    analytics_router._clear_location_cache()
+    calls: list[str] = []
+    outcomes = [
+        {"success": False},
+        {"country": "PK"},
+    ]
+
+    class Response:
+        def __init__(self, payload: dict):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    def cfg(*keys, default=None):
+        values = {
+            "geolocation_enabled": True,
+            "geolocation_url": "https://primary.test/{ip}",
+            "geolocation_fallback_url": "https://fallback.test/{ip}",
+            "geolocation_timeout_seconds": 1,
+            "geolocation_cache_seconds": 60,
+        }
+        return values.get(keys[-1], default)
+
+    def get(url: str, **_kwargs):
+        calls.append(url)
+        return Response(outcomes.pop(0))
+
+    monkeypatch.setattr(analytics_router, "cfg", cfg)
+    monkeypatch.setattr(analytics_router.httpx, "get", get)
+    assert analytics_router._lookup_public_ip("8.8.4.4") == ("PK", None, None)
+    assert calls == [
+        "https://primary.test/8.8.4.4",
+        "https://fallback.test/8.8.4.4",
+    ]
+
+    # A successful lookup is cached, while the implementation deliberately
+    # leaves total failures uncached for a later heartbeat retry.
+    assert analytics_router._lookup_public_ip("8.8.4.4") == ("PK", None, None)
+    assert len(calls) == 2
+    analytics_router._clear_location_cache()
+    outcomes.extend(
+        [
+            {"success": False},
+            {"success": False},
+            {"success": False},
+            {"success": False},
+        ]
+    )
+    assert analytics_router._lookup_public_ip("1.1.1.1") == (None, None, None)
+    assert analytics_router._lookup_public_ip("1.1.1.1") == (None, None, None)
+    assert len(calls) == 6
+
+
 def test_infrastructure_analytics_requires_admin_and_reports_capacity(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -2138,7 +2275,37 @@ def test_qna_source_returns_comments_when_transcript_is_slow(
     assert time.monotonic() - started < 1.8
 
 
-def test_qna_retries_with_alternate_matched_videos_when_first_sources_are_empty(
+def test_qna_source_keeps_comments_that_finish_after_a_fast_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import time
+    from app.services import qna as qna_service
+
+    monkeypatch.setattr(qna_service, "get_transcript", lambda _video_id: "Fast transcript.")
+
+    def comments(_video_id: str, **_kwargs):
+        time.sleep(1.05)
+        return ["TOP-LEVEL COMMENT: What is the fee?\nREPLY 1: The fee is Rs. 500."]
+
+    monkeypatch.setattr(qna_service, "get_top_comments", comments)
+    source = qna_service._collect_video_source(
+        {
+            "video_id": "video-comments-after-transcript",
+            "title": "FIA Inspector fee guide",
+            "url": "https://youtu.be/video-comments-after-transcript",
+        },
+        video_index=1,
+        max_comments=50,
+        source_timeout_seconds=1.3,
+    )
+
+    assert source["transcript"] == "Fast transcript."
+    assert source["comments"] == [
+        "TOP-LEVEL COMMENT: What is the fee?\nREPLY 1: The fee is Rs. 500."
+    ]
+
+
+def test_qna_does_not_scan_beyond_the_five_recent_candidates_when_sources_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ):
     from app.services import qna as qna_service
@@ -2147,14 +2314,11 @@ def test_qna_retries_with_alternate_matched_videos_when_first_sources_are_empty(
     Session = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = Session()
-    searches = 0
+    searches: list[dict[str, object]] = []
 
     def search(*_args, **_kwargs):
-        nonlocal searches
-        searches += 1
-        if searches == 1:
-            return [{"video_id": "blocked", "title": "FIA Inspector interview", "url": "https://youtu.be/blocked"}]
-        return [{"video_id": "usable", "title": "FIA Inspector questions and answers", "url": "https://youtu.be/usable"}]
+        searches.append(_kwargs)
+        return [{"video_id": "blocked", "title": "FIA Inspector interview", "url": "https://youtu.be/blocked"}]
 
     monkeypatch.setattr(qna_service, "search_youtube", search)
     monkeypatch.setattr(
@@ -2165,31 +2329,21 @@ def test_qna_retries_with_alternate_matched_videos_when_first_sources_are_empty(
     monkeypatch.setattr(
         qna_service,
         "get_transcript",
-        lambda video_id: "The written test begins with MCQs." if video_id == "usable" else None,
+        lambda _video_id: None,
     )
     monkeypatch.setattr(qna_service, "get_top_comments", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(
-        qna_service,
-        "extract_qna_from_sources",
-        lambda **_kwargs: [{
-            "question": "What is the first written-test stage?",
-            "answer": "The written test begins with MCQs.",
-            "source": "transcript",
-            "video_index": 2,
-        }],
-    )
-
     result = qna_service.fetch_qna_for_job_title(
         db,
         job_id="fallback-job",
         job_title="FIA Inspector jobs in government",
     )
 
-    assert searches == 2
-    assert result["error"] is None
-    assert result["count"] == 1
-    assert result["videos_scanned"] == 2
-    assert result["items"][0].youtube_url == "https://youtu.be/usable"
+    assert len(searches) == 1
+    assert searches[0]["max_results"] == 5
+    assert searches[0]["raise_on_failure"] is True
+    assert "could not be retrieved" in result["error"]
+    assert result["count"] == 0
+    assert result["videos_scanned"] == 1
     db.close()
 
 
@@ -2240,17 +2394,18 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
         {"video_id": "second", "title": "FIA Inspector preparation", "url": "https://youtu.be/second"},
     ]
     searched: dict[str, object] = {}
+    ranking: dict[str, object] = {}
 
     def search(*args, **kwargs):
         searched.update(kwargs)
         return videos
 
     monkeypatch.setattr(qna_service, "search_youtube", search)
-    monkeypatch.setattr(
-        qna_service,
-        "rank_by_similarity",
-        lambda *args, **kwargs: [{**video, "title_similarity": 0.9} for video in videos],
-    )
+    def rank(*_args, **kwargs):
+        ranking.update(kwargs)
+        return [{**video, "title_similarity": 0.9} for video in videos]
+
+    monkeypatch.setattr(qna_service, "rank_by_similarity", rank)
     monkeypatch.setattr(qna_service, "get_transcript", lambda video_id: "useful transcript")
     monkeypatch.setattr(qna_service, "get_top_comments", lambda video_id, **kwargs: [])
 
@@ -2276,7 +2431,10 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     assert result["count"] == 1
     assert result["videos_scanned"] == 2
     assert result["error"] is None
-    assert searched["max_results"] == 25
+    assert searched["max_results"] == 5
+    assert searched["raise_on_failure"] is True
+    assert ranking["raw_cosine_only"] is True
+    assert ranking["preserve_order"] is True
     assert extracted_titles == [
         "FIA Inspector interview",
         "FIA Inspector preparation",
@@ -2593,6 +2751,68 @@ def test_youtube_api_preserves_comment_questions_with_their_replies(
     ]
 
 
+def test_youtube_api_fetches_every_paginated_reply_in_each_selected_thread(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import youtube
+
+    class Response:
+        def __init__(self, payload: dict):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    reply_pages = [
+        {
+            "items": [
+                {"snippet": {"textDisplay": "First complete answer."}},
+                {"snippet": {"textDisplay": "Second supporting answer."}},
+            ],
+            "nextPageToken": "next-replies",
+        },
+        {"items": [{"snippet": {"textDisplay": "Final reply."}}]},
+    ]
+
+    def get(url: str, **_kwargs):
+        if url.endswith("/commentThreads"):
+            return Response(
+                {
+                    "items": [
+                        {
+                            "snippet": {
+                                "totalReplyCount": 3,
+                                "topLevelComment": {
+                                    "id": "thread-with-pages",
+                                    "snippet": {"textDisplay": "How does selection work?"},
+                                },
+                            },
+                            "replies": {
+                                "comments": [
+                                    {"snippet": {"textDisplay": "Embedded partial reply."}}
+                                ]
+                            },
+                        }
+                    ]
+                }
+            )
+        return Response(reply_pages.pop(0))
+
+    monkeypatch.setattr(youtube.httpx, "get", get)
+    rows = youtube._comments_api("video", 50, 10)
+
+    assert rows == [
+        "TOP-LEVEL COMMENT: How does selection work?\n"
+        "REPLY 1: First complete answer.\n"
+        "REPLY 2: Second supporting answer.\n"
+        "REPLY 3: Final reply."
+    ]
+    assert not reply_pages
+
+
 def test_ytdlp_transcript_fallback_reads_generated_json3(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -2789,6 +3009,7 @@ def test_deepseek_qna_disables_thinking_and_retries_empty_json(
         lambda *_args, **_kwargs: {
             "provider": "deepseek",
             "model": "deepseek-v4-pro",
+            "model_label": "DeepSeek-V4-Pro-0813",
             "api_key": "test-key",
             "base_url": "https://api.deepseek.com/v1",
             "temperature": 0.1,
@@ -2804,9 +3025,41 @@ def test_deepseek_qna_disables_thinking_and_retries_empty_json(
     )
 
     assert content.startswith('{"qna"')
+    assert payloads[0]["model"] == "deepseek-v4-pro"
     assert payloads[0]["thinking"] == {"type": "disabled"}
     assert payloads[0]["response_format"] == {"type": "json_object"}
     assert "response_format" not in payloads[1]
+
+
+def test_qna_production_config_matches_the_requested_pipeline_contract():
+    from app.config import load_config
+
+    load_config.cache_clear()
+    config = load_config()
+    task = config["llm"]["tasks"]["qna_extraction"]
+    youtube = config["youtube_qna"]
+
+    assert task["provider"] == "deepseek"
+    assert task["model"] == "DeepSeek-V4-Pro-0813"
+    assert task["api_model"] == "deepseek-v4-pro"
+    assert youtube["max_youtube_search_results"] == 5
+    assert youtube["max_youtube_videos"] == 5
+    assert youtube["min_title_similarity"] == 0.8
+    assert youtube["max_comments"] == 50
+    assert youtube["max_qna"] == 20
+
+
+def test_requested_deepseek_release_uses_the_official_api_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services.llm import resolve_task_llm
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-production-looking-test-key")
+    resolved = resolve_task_llm("qna_extraction")
+
+    assert resolved["provider"] == "deepseek"
+    assert resolved["model_label"] == "DeepSeek-V4-Pro-0813"
+    assert resolved["model"] == "deepseek-v4-pro"
 
 
 def test_sitemap_data_includes_newly_created_job(client: TestClient):

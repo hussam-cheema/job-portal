@@ -74,10 +74,16 @@ def resolve_task_llm(task: str = "qna_extraction") -> dict[str, Any]:
             if name != "ollama" and _placeholder(creds["api_key"]):
                 continue
         pconf = providers_cfg.get(name) or {}
-        model = task_cfg.get("model") or pconf.get("model") or "gpt-4o-mini"
+        configured_model = task_cfg.get("model") or pconf.get("model") or "gpt-4o-mini"
+        api_model = (
+            task_cfg.get("api_model")
+            or pconf.get("api_model")
+            or configured_model
+        )
         return {
             "provider": name,
-            "model": model,
+            "model": api_model,
+            "model_label": configured_model,
             "api_key": creds["api_key"],
             "base_url": creds["base_url"],
             "temperature": float(llm.get("temperature", 0.1)),
@@ -93,6 +99,7 @@ def resolve_task_llm(task: str = "qna_extraction") -> dict[str, Any]:
     return {
         "provider": "ollama",
         "model": ((providers_cfg.get("ollama") or {}).get("model") or "llama3.2"),
+        "model_label": ((providers_cfg.get("ollama") or {}).get("model") or "llama3.2"),
         "api_key": "ollama",
         "base_url": env("OLLAMA_BASE_URL") or "http://localhost:11434/v1",
         "temperature": 0.1,

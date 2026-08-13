@@ -244,6 +244,23 @@ test("existing R2 images load inside the job editor through the media proxy", as
     .toBeGreaterThan(0);
 });
 
+test("YouTube Q&A replacement shows the newly stored grounded pairs", async ({ page }) => {
+  await page.goto("/admin/jobs/closed-role");
+  await page.getByRole("button", { name: "Replace Q&A from YouTube" }).click();
+
+  await expect(
+    page.getByText("Stored 1 Q&A pair from 3 relevant videos.", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByText("Q: What is the written-test format?", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("A: The written test begins with an MCQ stage.", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "FPSC written test preparation" })).toHaveAttribute(
+    "href",
+    "https://www.youtube.com/watch?v=qna-e2e-video"
+  );
+});
+
 test("clipboard image paste uploads and renders through the media proxy", async ({ page }) => {
   await page.goto("/admin/jobs/new");
   const editor = page.locator(".ql-editor").first();

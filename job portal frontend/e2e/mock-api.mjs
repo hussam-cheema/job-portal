@@ -220,6 +220,25 @@ const server = createServer((request, response) => {
   if (path === "/api/stats") {
     return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
   }
+  if (path === "/api/admin/jobs/closed-role/fetch-qna" && request.method === "POST") {
+    return json(response, {
+      items: [
+        {
+          id: "qna-e2e-1",
+          job_id: "closed-role",
+          question: "What is the written-test format?",
+          answer: "The written test begins with an MCQ stage.",
+          source: "mixed",
+          youtube_url: "https://www.youtube.com/watch?v=qna-e2e-video",
+          youtube_title: "FPSC written test preparation",
+        },
+      ],
+      count: 1,
+      elapsed_seconds: 4.2,
+      error: null,
+      videos_scanned: 3,
+    });
+  }
   if (path === "/api/jobs/closed-role" || path === "/api/jobs/legacy-closed-role-id") {
     return json(response, {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",

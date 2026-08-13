@@ -5,7 +5,6 @@ import re
 import time
 import unicodedata
 from concurrent.futures import (
-    FIRST_COMPLETED,
     ThreadPoolExecutor,
     wait,
 )
@@ -743,11 +742,10 @@ def _collect_video_source(
     transcript: str | None = None
     comments: list[str] = []
     video_id = str(video.get("video_id") or "")
-    # Captions and comments are independent sources. Fetching them sequentially
-    # meant a blocked caption request could consume the entire source deadline
-    # and discard comments that YouTube had already returned. Run both at once,
-    # and once either yields useful content give the other only a short grace
-    # period before returning the available source.
+    # Captions and comments are independent required sources. Run them together,
+    # but allow both the complete per-video deadline: returning as soon as a fast
+    # transcript finishes used to discard the selected comment threads after a
+    # one-second grace period.
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qna-video-source")
     transcript_future = executor.submit(get_transcript, video_id)
     comments_future = executor.submit(
@@ -755,13 +753,12 @@ def _collect_video_source(
         video_id,
         max_comments=max_comments,
         timeout_seconds=source_timeout_seconds,
+        raise_on_failure=True,
     )
     futures = {transcript_future, comments_future}
-    started = time.monotonic()
     done, pending = wait(
         futures,
         timeout=max(1.0, source_timeout_seconds),
-        return_when=FIRST_COMPLETED,
     )
 
     def consume(completed) -> None:
@@ -786,11 +783,6 @@ def _collect_video_source(
                 )
 
     consume(done)
-    remaining = max(0.0, source_timeout_seconds - (time.monotonic() - started))
-    if pending and remaining > 0:
-        grace = min(1.0, remaining) if transcript or comments else remaining
-        completed, pending = wait(pending, timeout=grace)
-        consume(completed)
     for future in pending:
         future.cancel()
     executor.shutdown(wait=False, cancel_futures=True)
@@ -856,10 +848,13 @@ def fetch_qna_for_job_title(
     Videos ranked by embedding similarity to job title. Max 20 pairs. Timeout configurable.
     """
     conf = cfg("youtube_qna") or {}
-    max_qna = int(conf.get("max_qna") or 20)
-    max_videos = int(conf.get("max_youtube_videos") or 5)
-    max_search_results = int(conf.get("max_youtube_search_results") or 50)
-    max_comments = int(conf.get("max_comments") or 50)
+    max_qna = min(20, max(1, int(conf.get("max_qna") or 20)))
+    max_videos = min(5, max(1, int(conf.get("max_youtube_videos") or 5)))
+    max_search_results = min(
+        max_videos,
+        int(conf.get("max_youtube_search_results") or max_videos),
+    )
+    max_comments = min(50, max(1, int(conf.get("max_comments") or 50)))
     max_per_topic = max(1, int(conf.get("max_qna_per_topic") or 3))
     timeout = float(conf.get("timeout_seconds") or 60)
     ai_timeout = float(
@@ -871,8 +866,9 @@ def fetch_qna_for_job_title(
     source_collection_timeout = float(conf.get("source_collection_timeout_seconds") or 45)
     source_workers = max(1, int(conf.get("source_workers") or 5))
     configured_min_similarity = conf.get("min_title_similarity")
-    min_sim = float(
-        0.95 if configured_min_similarity is None else configured_min_similarity
+    min_sim = max(
+        0.80,
+        float(0.80 if configured_min_similarity is None else configured_min_similarity),
     )
     started = time.monotonic()
     deadline = started + timeout
@@ -886,17 +882,22 @@ def fetch_qna_for_job_title(
     role_title = _canonical_job_title(job_title)
     try:
         query = f"{role_title} jobs interview eligibility test preparation Pakistan".strip()
-        # Fetch more than max_videos then rank by embedding similarity
+        # YouTube returns these candidates newest-first. Score that bounded set
+        # with raw embedding cosine and retain the recent order required by the
+        # product workflow rather than re-sorting it by a calibrated score.
         raw_videos = search_youtube(
             query,
             max_results=max_search_results,
             timeout_seconds=min(15.0, max(1.0, deadline - time.monotonic())),
+            raise_on_failure=True,
         )
         ranked = rank_by_similarity(
             job_title,
             raw_videos,
             key="title",
             score_key="title_similarity",
+            raw_cosine_only=True,
+            preserve_order=True,
         )
         videos = [
             video
@@ -926,61 +927,6 @@ def fetch_qna_for_job_title(
         usable_sources = [
             source for source in sources if source.get("transcript") or source.get("comments")
         ]
-        # Some highly relevant videos disable both captions and comments. If
-        # the complete first selection has no usable source, try one alternate
-        # interview/Q&A query and replacement videos. The same configured
-        # min_title_similarity remains mandatory; this only avoids giving up
-        # because the first titles happened to expose no retrievable content.
-        if videos and not usable_sources and deadline - time.monotonic() > 5:
-            fallback_query = f"{role_title} interview questions answers preparation Pakistan".strip()
-            fallback_raw = search_youtube(
-                fallback_query,
-                max_results=max_search_results,
-                timeout_seconds=min(15.0, max(1.0, deadline - time.monotonic())),
-            )
-            attempted_ids = {str(video.get("video_id") or "") for video in videos}
-            fallback_ranked = rank_by_similarity(
-                job_title,
-                [
-                    video
-                    for video in fallback_raw
-                    if str(video.get("video_id") or "") not in attempted_ids
-                ],
-                key="title",
-                score_key="title_similarity",
-            )
-            fallback_videos = [
-                video
-                for video in fallback_ranked
-                if float(video.get("title_similarity") or 0) >= min_sim
-            ][:max_videos]
-            if fallback_videos:
-                fallback_sources = _collect_video_sources(
-                    fallback_videos,
-                    start_index=len(videos) + 1,
-                    max_comments=max_comments,
-                    source_timeout_seconds=source_timeout,
-                    collection_timeout_seconds=min(
-                        source_collection_timeout,
-                        max(1.0, deadline - time.monotonic() - 2),
-                    ),
-                    source_workers=source_workers,
-                )
-                sources.extend(fallback_sources)
-                videos.extend(fallback_videos)
-                videos_scanned = len(videos)
-                usable_sources = [
-                    source
-                    for source in sources
-                    if source.get("transcript") or source.get("comments")
-                ]
-                logger.info(
-                    "qna_source_fallback job_id=%s candidates=%s matched=%s usable=%s",
-                    job_id,
-                    len(fallback_raw),
-                    len(fallback_videos),
-                    len(usable_sources),
-                )
         if videos and not usable_sources:
             error = (
                 "Relevant YouTube videos were found, but their transcripts and comments "

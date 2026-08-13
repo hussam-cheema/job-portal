@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
+
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+os.environ.setdefault("JOBPORTAL_TESTING", "true")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,9 +27,9 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
     configuration = {
         "max_qna": 10,
         "max_youtube_videos": 5,
-        "max_youtube_search_results": 50,
+        "max_youtube_search_results": 5,
         "max_comments": 50,
-        "min_title_similarity": 0.70,
+        "min_title_similarity": 0.80,
         "timeout_seconds": 30,
         "ai_timeout_seconds": 10,
         "source_timeout_seconds": 5,
@@ -54,19 +58,19 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
     ]
 
     def search(_query, **kwargs):
-        assert kwargs["max_results"] == 50
+        assert kwargs["max_results"] == 5
+        assert kwargs["raise_on_failure"] is True
         return videos
 
     monkeypatch.setattr(qna, "search_youtube", search)
 
-    # Qwen3 Embedding can give related short titles a moderate raw cosine.
-    # 0.5-0.6. The production calibration must let role-token matches clear a
-    # configured 0.70 threshold without admitting a generic careers video.
+    # The production gate uses the raw cosine exactly as returned by the
+    # embedding model. Only titles at or above 0.80 may proceed.
     def semantic_vectors(texts, *, query_first=False):
         assert query_first is True
         values = [[1.0, 0.0]]
         for text in texts[1:]:
-            raw_cosine = 0.58 if "fia" in text.lower() and "inspector" in text.lower() else 0.10
+            raw_cosine = 0.82 if "fia" in text.lower() and "inspector" in text.lower() else 0.10
             values.append([raw_cosine, math.sqrt(1.0 - raw_cosine**2)])
         return values
 
@@ -142,6 +146,8 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
             videos,
             key="title",
             score_key="title_similarity",
+            raw_cosine_only=True,
+            preserve_order=True,
         )
         selected_videos = [
             row

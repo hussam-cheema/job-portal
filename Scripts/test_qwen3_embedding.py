@@ -31,13 +31,14 @@ def check() -> str:
             {"title": "FIA Inspector ki age limit aur test pattern"},
         ],
         score_key="similarity",
+        raw_cosine_only=True,
     )
     if not ranked or "fia" not in ranked[0]["title"].lower():
         raise CheckFailed(f"Qwen3 ranked an unrelated title first: {ranked}")
     if not 0 <= float(ranked[0]["similarity"]) <= 1:
         raise CheckFailed(f"Invalid cosine similarity: {ranked[0]}")
     configured_threshold = float(
-        cfg("youtube_qna", "min_title_similarity", default=0.30)
+        cfg("youtube_qna", "min_title_similarity", default=0.80)
     )
     matched = [
         row for row in ranked if float(row["similarity"]) >= configured_threshold

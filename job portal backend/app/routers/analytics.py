@@ -4,9 +4,11 @@ import hashlib
 import hmac
 import ipaddress
 import re
+import threading
+import time
+from collections import OrderedDict
 from calendar import monthrange
 from datetime import datetime, timedelta
-from functools import lru_cache
 from urllib.parse import quote, unquote
 from uuid import uuid4
 
@@ -18,12 +20,20 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_admin
 from app.config import cfg, jwt_secret
 from app.database import get_db
+from app.logging_config import get_logger
 from app.models import AnalyticsVisit, User
 from app.schemas import AnalyticsDashboard, AnalyticsRealtime, AnalyticsVisitIn
 
 router = APIRouter()
+logger = get_logger("jobportal.analytics")
 BOT_PATTERN = re.compile(r"bot|crawler|spider|slurp|preview|headless", re.I)
-INVALID_COUNTRY_CODES = {"", "XX", "T1"}
+INVALID_COUNTRY_CODES = {"", "XX", "ZZ", "T1", "UNKNOWN"}
+_LOCATION_CACHE_MAX = 2048
+_LOCATION_CACHE: OrderedDict[
+    str,
+    tuple[float, tuple[str, str | None, str | None]],
+] = OrderedDict()
+_LOCATION_CACHE_LOCK = threading.Lock()
 
 
 def _enabled(value: object) -> bool:
@@ -36,12 +46,31 @@ def _clean_country(value: str | None) -> str | None:
     country = (value or "").strip()
     if country.upper() in INVALID_COUNTRY_CODES:
         return None
+    if len(country) == 2 and country.isalpha():
+        country = country.upper()
     return country[:100] or None
 
 
 def _clean_location_name(value: str | None, limit: int = 150) -> str | None:
     clean = unquote(value or "").strip()
     return clean[:limit] or None
+
+
+def _global_ip(value: str | None) -> str | None:
+    raw = (value or "").strip().strip('"')
+    if not raw:
+        return None
+    if raw.lower().startswith("for="):
+        raw = raw[4:].strip().strip('"')
+    if raw.startswith("[") and "]" in raw:
+        raw = raw[1 : raw.index("]")]
+    elif raw.count(":") == 1 and "." in raw:
+        raw = raw.rsplit(":", 1)[0]
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return None
+    return str(address) if address.is_global else None
 
 
 def _client_ip(request: Request) -> str | None:
@@ -51,42 +80,83 @@ def _client_ip(request: Request) -> str | None:
         candidates.extend(
             [
                 request.headers.get("cf-connecting-ip"),
-                (request.headers.get("x-forwarded-for") or "").split(",", 1)[0],
+                request.headers.get("true-client-ip"),
+                # Railway documents X-Real-IP as the original client address.
                 request.headers.get("x-real-ip"),
             ]
         )
+        candidates.extend((request.headers.get("x-forwarded-for") or "").split(","))
+        forwarded = request.headers.get("forwarded") or ""
+        candidates.extend(
+            part.strip()
+            for entry in forwarded.split(",")
+            for part in entry.split(";")
+            if part.strip().lower().startswith("for=")
+        )
     candidates.append(request.client.host if request.client else None)
     for candidate in candidates:
-        try:
-            address = ipaddress.ip_address((candidate or "").strip())
-            if address.is_global:
-                return str(address)
-        except ValueError:
-            continue
+        if address := _global_ip(candidate):
+            return address
     return None
 
 
-@lru_cache(maxsize=2048)
 def _lookup_public_ip(ip: str) -> tuple[str | None, str | None, str | None]:
     if not _enabled(cfg("analytics", "geolocation_enabled", default=True)):
         return None, None, None
-    template = str(
+    now = time.monotonic()
+    with _LOCATION_CACHE_LOCK:
+        cached = _LOCATION_CACHE.get(ip)
+        if cached and cached[0] > now:
+            _LOCATION_CACHE.move_to_end(ip)
+            return cached[1]
+        if cached:
+            _LOCATION_CACHE.pop(ip, None)
+
+    primary = str(
         cfg("analytics", "geolocation_url", default="https://ipwho.is/{ip}")
         or "https://ipwho.is/{ip}"
     )
+    fallback = str(cfg("analytics", "geolocation_fallback_url", default="") or "").strip()
+    templates = list(dict.fromkeys(value for value in (primary, fallback) if value))
     timeout = float(cfg("analytics", "geolocation_timeout_seconds", default=4) or 4)
-    try:
-        response = httpx.get(template.format(ip=quote(ip, safe="")), timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success") is False:
-            return None, None, None
-        country = _clean_country(data.get("country") or data.get("country_code"))
-        region = _clean_location_name(data.get("region") or data.get("regionName"))
-        city = _clean_location_name(data.get("city"))
-        return country, region, city
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
-        return None, None, None
+    for template in templates:
+        try:
+            response = httpx.get(template.format(ip=quote(ip, safe="")), timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict) or data.get("success") is False or data.get("error") is True:
+                continue
+            country = _clean_country(
+                data.get("country_code") or data.get("country") or data.get("country_name")
+            )
+            if not country:
+                continue
+            resolved = (
+                country,
+                _clean_location_name(data.get("region") or data.get("regionName")),
+                _clean_location_name(data.get("city")),
+            )
+            ttl = max(
+                60.0,
+                float(cfg("analytics", "geolocation_cache_seconds", default=86400) or 86400),
+            )
+            with _LOCATION_CACHE_LOCK:
+                _LOCATION_CACHE[ip] = (now + ttl, resolved)
+                _LOCATION_CACHE.move_to_end(ip)
+                while len(_LOCATION_CACHE) > _LOCATION_CACHE_MAX:
+                    _LOCATION_CACHE.popitem(last=False)
+            return resolved
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            logger.debug("analytics_geolocation_provider_failed provider=%s", template)
+    # Do not cache failures: a transient provider outage must be retried by the
+    # next heartbeat instead of making this visitor Unknown for the process life.
+    return None, None, None
+
+
+def _clear_location_cache() -> None:
+    """Test/operations helper for immediately discarding cached successful lookups."""
+    with _LOCATION_CACHE_LOCK:
+        _LOCATION_CACHE.clear()
 
 
 def _location(request: Request) -> tuple[str, str | None, str | None, bool]:
@@ -95,6 +165,7 @@ def _location(request: Request) -> tuple[str, str | None, str | None, bool]:
         country = _clean_country(
             request.headers.get("cf-ipcountry")
             or request.headers.get("x-vercel-ip-country")
+            or request.headers.get("cloudfront-viewer-country")
             or request.headers.get("x-country-code")
         )
         if country:
@@ -113,6 +184,55 @@ def _location(request: Request) -> tuple[str, str | None, str | None, bool]:
     ip = _client_ip(request)
     country, region, city = _lookup_public_ip(ip) if ip else (None, None, None)
     return country or "Unknown", region, city, bool(country)
+
+
+def _latest_verified_location(
+    db: Session,
+    visitor_hash: str,
+) -> tuple[str, str | None, str | None] | None:
+    row = db.execute(
+        select(AnalyticsVisit)
+        .where(
+            AnalyticsVisit.visitor_hash == visitor_hash,
+            AnalyticsVisit.location_verified.is_(True),
+        )
+        .order_by(AnalyticsVisit.visited_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if not row or not _clean_country(row.country):
+        return None
+    return row.country, row.region, row.city
+
+
+def _verified_locations_by_visitor(
+    db: Session,
+    visitor_hashes: set[str],
+) -> dict[str, tuple[str, str | None, str | None]]:
+    """Resolve legacy Unknown rows from a later verified visit by the same browser."""
+    resolved: dict[str, tuple[str, str | None, str | None]] = {}
+    hashes = list(visitor_hashes)
+    for start in range(0, len(hashes), 500):
+        rows = db.execute(
+            select(AnalyticsVisit)
+            .where(
+                AnalyticsVisit.visitor_hash.in_(hashes[start : start + 500]),
+                AnalyticsVisit.location_verified.is_(True),
+            )
+            .order_by(AnalyticsVisit.visited_at.desc())
+        ).scalars().all()
+        for row in rows:
+            if row.visitor_hash not in resolved and _clean_country(row.country):
+                resolved[row.visitor_hash] = (row.country, row.region, row.city)
+    return resolved
+
+
+def _effective_row_location(
+    row: AnalyticsVisit,
+    verified: dict[str, tuple[str, str | None, str | None]],
+) -> tuple[str, str | None, str | None]:
+    if row.location_verified and _clean_country(row.country):
+        return row.country, row.region, row.city
+    return verified.get(row.visitor_hash, ("Unknown", None, None))
 
 
 @router.post("/analytics/visit", status_code=201)
@@ -136,14 +256,26 @@ def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depe
         duplicate.visited_at = datetime.utcnow()
         if not duplicate.location_verified or not duplicate.city:
             country, region, city, location_verified = _location(request)
+            if not location_verified:
+                previous = _latest_verified_location(db, visitor_hash)
+                if previous:
+                    country, region, city = previous
+                    location_verified = True
             if location_verified:
                 duplicate.country = country
-                duplicate.region = region
-                duplicate.city = city
+                if region:
+                    duplicate.region = region
+                if city:
+                    duplicate.city = city
                 duplicate.location_verified = True
         db.commit()
     else:
         country, region, city, location_verified = _location(request)
+        if not location_verified:
+            previous = _latest_verified_location(db, visitor_hash)
+            if previous:
+                country, region, city = previous
+                location_verified = True
         db.add(
             AnalyticsVisit(
                 id=str(uuid4()),
@@ -175,6 +307,14 @@ def realtime_analytics(
     ).scalars().all()
 
     active_visitors = {row.visitor_hash for row in rows}
+    verified_locations = _verified_locations_by_visitor(
+        db,
+        {
+            row.visitor_hash
+            for row in rows
+            if not row.location_verified or not _clean_country(row.country)
+        },
+    )
     pages: dict[str, dict[str, object]] = {}
     locations: dict[tuple[str, str | None, str | None], dict[str, object]] = {}
     for row in rows:
@@ -186,11 +326,7 @@ def realtime_analytics(
         page["page_views"] = int(page["page_views"]) + 1
         if row.visited_at > page["last_seen"]:  # type: ignore[operator]
             page["last_seen"] = row.visited_at
-        location_key = (
-            (row.country or "Unknown") if row.location_verified else "Unknown",
-            row.region if row.location_verified else None,
-            row.city if row.location_verified else None,
-        )
+        location_key = _effective_row_location(row, verified_locations)
         location = locations.setdefault(
             location_key,
             {"visitors": set(), "last_seen": row.visited_at},
@@ -259,6 +395,14 @@ def analytics_dashboard(
     daily: dict[str, dict[str, set[str] | int]] = {}
     locations: dict[tuple[str, str | None, str | None], dict[str, set[str] | int]] = {}
     all_visitors: set[str] = set()
+    verified_locations = _verified_locations_by_visitor(
+        db,
+        {
+            row.visitor_hash
+            for row in rows
+            if not row.location_verified or not _clean_country(row.country)
+        },
+    )
     for row in rows:
         all_visitors.add(row.visitor_hash)
         day = row.visited_at.strftime("%Y-%m-%d")
@@ -266,11 +410,7 @@ def analytics_dashboard(
         day_data["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         day_data["page_views"] = int(day_data["page_views"]) + 1
 
-        key = (
-            (row.country or "Unknown") if row.location_verified else "Unknown",
-            row.region if row.location_verified else None,
-            row.city if row.location_verified else None,
-        )
+        key = _effective_row_location(row, verified_locations)
         location = locations.setdefault(key, {"visitors": set(), "page_views": 0})
         location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         location["page_views"] = int(location["page_views"]) + 1

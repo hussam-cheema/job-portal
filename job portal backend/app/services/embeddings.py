@@ -169,7 +169,12 @@ def text_similarity(a: str, b: str) -> float:
     return cosine_similarity(vectors[0], vectors[1])
 
 
-def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
+def _title_similarity_scores(
+    query: str,
+    titles: list[str],
+    *,
+    raw_cosine_only: bool = False,
+) -> list[float]:
     if not titles:
         return []
     vectors = _semantic_embeddings([query, *titles], query_first=True)
@@ -202,7 +207,11 @@ def _title_similarity_scores(query: str, titles: list[str]) -> list[float]:
         calibrated = ((raw_cosine + 1.0) / 2.0) * (
             0.55 + (0.45 * lexical_coverage)
         )
-        scores.append(max(0.0, min(1.0, max(raw_cosine, calibrated))))
+        scores.append(
+            raw_cosine
+            if raw_cosine_only
+            else max(0.0, min(1.0, max(raw_cosine, calibrated)))
+        )
     return scores
 
 
@@ -222,12 +231,17 @@ def rank_by_similarity(
     candidates: list[dict],
     key: str = "title",
     score_key: str | None = None,
+    *,
+    raw_cosine_only: bool = False,
+    preserve_order: bool = False,
 ) -> list[dict]:
-    """Rank candidates by normalized embedding cosine similarity."""
+    """Score candidates by embedding cosine, optionally retaining input order."""
     if not candidates:
         return []
     scores = _title_similarity_scores(
-        query, [str(candidate.get(key) or "") for candidate in candidates]
+        query,
+        [str(candidate.get(key) or "") for candidate in candidates],
+        raw_cosine_only=raw_cosine_only,
     )
     scored: list[tuple[float, dict]] = []
     for score, candidate in zip(scores, candidates):
@@ -235,7 +249,8 @@ def rank_by_similarity(
         if score_key:
             row[score_key] = round(score, 4)
         scored.append((score, row))
-    scored.sort(key=lambda item: item[0], reverse=True)
+    if not preserve_order:
+        scored.sort(key=lambda item: item[0], reverse=True)
     return [row for _, row in scored]
 
 

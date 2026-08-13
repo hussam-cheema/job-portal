@@ -17,7 +17,9 @@ def check() -> str:
     api_key = require_env("DEEPSEEK_API_KEY")
     base_url = (env("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1") or "").rstrip("/")
     model = str(
-        config("llm", "tasks", "qna_extraction", "model", default=None)
+        config("llm", "tasks", "qna_extraction", "api_model", default=None)
+        or config("llm", "tasks", "qna_extraction", "model", default=None)
+        or config("llm", "providers", "deepseek", "api_model", default=None)
         or config("llm", "providers", "deepseek", "model", default="deepseek-chat")
     )
     started = time.monotonic()
