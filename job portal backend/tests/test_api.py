@@ -2458,7 +2458,17 @@ def test_qna_does_not_scan_beyond_the_five_recent_candidates_when_sources_are_em
     assert len(searches) == 1
     assert searches[0]["max_results"] == 5
     assert searches[0]["raise_on_failure"] is True
-    assert "could not be retrieved" in result["error"]
+    assert "audio transcript could be retrieved" in result["error"]
+    assert result["videos_compared"] == 1
+    assert result["matched_videos"] == [
+        {
+            "title": "FIA Inspector interview",
+            "url": "https://youtu.be/blocked",
+            "similarity_percent": 90.0,
+            "has_transcript": False,
+            "comment_threads": 0,
+        }
+    ]
     assert result["count"] == 0
     assert result["videos_scanned"] == 1
     db.close()
@@ -2490,7 +2500,7 @@ def test_qna_no_match_keeps_existing_rows_and_returns_visible_error(
     )
 
     assert result["count"] == 0
-    assert "No sufficiently relevant" in result["error"]
+    assert "none met the 80% raw cosine similarity threshold" in result["error"]
     assert [row.id for row in result["items"]] == ["existing-qna"]
     assert db.query(JobQnA).filter(JobQnA.job_id == "job-no-match").count() == 1
     db.close()
@@ -2551,8 +2561,8 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     assert result["error"] is None
     assert searched["max_results"] == 5
     assert searched["raise_on_failure"] is True
-    assert searched["query"] == "FIA Inspector"
-    assert "raw_cosine_only" not in ranking
+    assert searched["query"] == "FIA Inspector jobs in government"
+    assert ranking["raw_cosine_only"] is True
     assert ranking["preserve_order"] is True
     assert extracted_titles == [
         "FIA Inspector interview",
@@ -2626,10 +2636,109 @@ def test_qna_runtime_options_override_default_threshold_videos_and_comments(
     )
 
     assert result["count"] == 1
-    assert captured["query"] == "NADRA 2026 Deputy Assistant Director (Technical)"
+    assert captured["query"] == (
+        "NADRA Jobs 2026 – Deputy Assistant Director (Technical) | Apply Online"
+    )
     assert captured["search"]["max_results"] == 12
     assert captured["collection"]["max_comments"] == 75
     assert len(captured["selected_videos"]) == 1
+    db.close()
+
+
+def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import math
+
+    from app.services import embeddings
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    title = "NADRA Jobs 2026 – Deputy Assistant Director (Technical) | Apply Online"
+    videos = [
+        {"video_id": "newest", "title": "NADRA Jobs 2026 and new vacancies", "url": "https://youtu.be/newest"},
+        {"video_id": "general", "title": "NADRA careers application guide", "url": "https://youtu.be/general"},
+        {"video_id": "unrelated", "title": "General student career advice", "url": "https://youtu.be/unrelated"},
+        {"video_id": "legal", "title": "NADRA Deputy Assistant Director Legal", "url": "https://youtu.be/legal"},
+        {
+            "video_id": "technical",
+            "title": "NADRA Jobs 2026 | Deputy Assistant Director Technical | Apply Online",
+            "url": "https://youtu.be/technical",
+        },
+    ]
+    cosine_by_title = {
+        videos[0]["title"]: 0.62,
+        videos[1]["title"]: 0.58,
+        videos[2]["title"]: 0.31,
+        videos[3]["title"]: 0.55,
+        videos[4]["title"]: 0.93,
+    }
+
+    def search(query, **kwargs):
+        assert query == title
+        assert kwargs["max_results"] == 5
+        return videos
+
+    def vectors(texts, *, query_first=False):
+        assert query_first is True
+        output = [[1.0, 0.0]]
+        for candidate_title in texts[1:]:
+            cosine = cosine_by_title[candidate_title]
+            output.append([cosine, math.sqrt(1.0 - cosine**2)])
+        return output
+
+    selected: list[dict[str, object]] = []
+
+    def collect(rows, **_kwargs):
+        selected.extend(rows)
+        technical = rows[-1]
+        return [
+            {
+                **technical,
+                "video_index": len(rows),
+                "transcript": "Candidates must submit applications through the NADRA portal.",
+                "comments": [],
+            }
+        ]
+
+    monkeypatch.setattr(qna_service, "search_youtube", search)
+    monkeypatch.setattr(embeddings, "_semantic_embeddings", vectors)
+    monkeypatch.setattr(qna_service, "_collect_video_sources", collect)
+    monkeypatch.setattr(
+        qna_service,
+        "extract_qna_from_sources",
+        lambda **_kwargs: [
+            {
+                "question": "How must candidates apply?",
+                "answer": "Candidates must submit applications through the NADRA portal.",
+                "source": "transcript",
+                "video_index": 4,
+            }
+        ],
+    )
+
+    result = qna_service.fetch_qna_for_job_title(
+        db,
+        job_id="nadra-exact-title",
+        job_title=title,
+        min_similarity_percent=35,
+        youtube_video_count=5,
+    )
+
+    assert [row["video_id"] for row in selected] == [
+        "newest",
+        "general",
+        "legal",
+        "technical",
+    ]
+    assert result["videos_compared"] == 5
+    assert result["videos_scanned"] == 4
+    assert result["count"] == 1
+    assert result["items"][0].youtube_url == "https://youtu.be/technical"
+    assert result["matched_videos"][-1]["similarity_percent"] == 93.0
     db.close()
 
 
@@ -3092,6 +3201,65 @@ def test_ytdlp_transcript_fallback_reads_generated_json3(
     )
 
 
+def test_captionless_video_audio_is_transcribed_with_bounded_openai_upload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    from app.services import youtube
+
+    class TemporaryDirectory:
+        def __init__(self, **_kwargs):
+            self.path = tmp_path
+
+        def __enter__(self):
+            return str(self.path)
+
+        def __exit__(self, *_args):
+            return None
+
+    command_seen: list[str] = []
+
+    def run(command, **_kwargs):
+        command_seen.extend(command)
+        output_pattern = command[command.index("--output") + 1]
+        Path(output_pattern.replace("%(ext)s", "webm")).write_bytes(b"public-audio")
+        return type("Result", (), {"returncode": 0})()
+
+    request: dict[str, object] = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"text": "Candidates apply online through the NADRA portal."}
+
+    def post(url, **kwargs):
+        request["url"] = url
+        request.update(kwargs)
+        return Response()
+
+    environment = {
+        "OPENAI_API_KEY": "real-test-key",
+        "OPENAI_BASE_URL": "https://api.openai.test/v1",
+    }
+    monkeypatch.setattr(youtube.tempfile, "TemporaryDirectory", TemporaryDirectory)
+    monkeypatch.setattr(youtube.subprocess, "run", run)
+    monkeypatch.setattr(youtube.httpx, "post", post)
+    monkeypatch.setattr(youtube, "env", lambda key: environment.get(key))
+    monkeypatch.setattr(youtube, "_yt_cfg", lambda: {})
+
+    transcript = youtube._transcript_openai_audio("nadra-video", timeout_seconds=30)
+
+    assert transcript == "Candidates apply online through the NADRA portal."
+    assert "--max-filesize" in command_seen
+    assert request["url"] == "https://api.openai.test/v1/audio/transcriptions"
+    assert request["data"] == {
+        "model": "gpt-4o-mini-transcribe",
+        "response_format": "json",
+    }
+
+
 def test_qna_chunks_all_source_content_and_keeps_grounded_late_result(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -3140,6 +3308,49 @@ def test_qna_chunks_all_source_content_and_keeps_grounded_late_result(
     assert len(prompts) > 1
     assert any(late_evidence in prompt for prompt in prompts)
     assert rows[0]["answer"] == late_evidence
+
+
+def test_deepseek_pair_alias_and_grounded_answer_work_without_evidence_field(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    evidence = "The last date to apply online is 31 August 2026."
+    monkeypatch.setattr(
+        qna_service,
+        "chat_completion",
+        lambda *_args, **_kwargs: json.dumps(
+            {
+                "qna_pairs": [
+                    {
+                        "question": "What is the last date to apply online?",
+                        "answer": evidence,
+                        "topic": "deadline",
+                        "intent": "application_deadline",
+                        "video_index": 1,
+                    }
+                ]
+            }
+        ),
+    )
+
+    rows = qna_service.extract_qna_from_sources(
+        job_title="NADRA Deputy Assistant Director Technical",
+        sources=[
+            {
+                "video_index": 1,
+                "title": "NADRA Jobs 2026",
+                "title_similarity": 0.9,
+                "transcript": f"Applications are open now. {evidence}",
+                "comments": [],
+            }
+        ],
+        max_qna=20,
+        timeout_seconds=10,
+    )
+
+    assert rows[0]["question"] == "What is the last date to apply online?"
+    assert rows[0]["answer"] == evidence
 
 
 def test_qna_global_chunk_selection_prefers_higher_ranked_video(

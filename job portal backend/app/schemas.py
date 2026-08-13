@@ -562,7 +562,9 @@ class QnAFetchResult(BaseModel):
     count: int = 0
     elapsed_seconds: float = 0
     error: Optional[str] = None
+    videos_compared: int = 0
     videos_scanned: int = 0
+    matched_videos: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class QnAFetchOptions(BaseModel):

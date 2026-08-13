@@ -236,7 +236,15 @@ const server = createServer((request, response) => {
       count: 1,
       elapsed_seconds: 4.2,
       error: null,
-      videos_scanned: 3,
+      videos_compared: 5,
+      videos_scanned: 1,
+      matched_videos: [{
+        title: "FPSC written test preparation",
+        url: "https://www.youtube.com/watch?v=qna-e2e-video",
+        similarity_percent: 91.4,
+        has_transcript: true,
+        comment_threads: 12,
+      }],
     });
   }
   if (path === "/api/jobs/closed-role" || path === "/api/jobs/legacy-closed-role-id") {

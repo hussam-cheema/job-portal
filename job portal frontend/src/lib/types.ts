@@ -316,7 +316,17 @@ export type QnAFetchResult = {
   count: number;
   elapsed_seconds: number;
   error?: string | null;
+  videos_compared: number;
   videos_scanned: number;
+  matched_videos: QnAMatchedVideo[];
+};
+
+export type QnAMatchedVideo = {
+  title: string;
+  url: string;
+  similarity_percent: number;
+  has_transcript: boolean;
+  comment_threads: number;
 };
 
 export type QnAFetchOptions = {

@@ -275,13 +275,19 @@ test("YouTube Q&A replacement shows the newly stored grounded pairs", async ({ p
   });
   await expect(page.getByText(/^Timer:/)).toHaveCount(0);
   await expect(
-    page.getByText("Stored 1 Q&A pair from 3 relevant videos.", { exact: true })
+    page.getByText("Stored 1 Q&A pair from 1 relevant video.", { exact: true })
   ).toBeVisible();
   await expect(page.getByText("Q: What is the written-test format?", { exact: true })).toBeVisible();
   await expect(
     page.getByText("A: The written test begins with an MCQ stage.", { exact: true })
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "FPSC written test preparation" })).toHaveAttribute(
+  await expect(
+    page.getByText("Compared 5 newest YouTube videos; 1 met the raw cosine threshold.")
+  ).toBeVisible();
+  await expect(
+    page.getByText(/91\.4% cosine; transcript available; 12 comment threads/)
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "FPSC written test preparation" }).last()).toHaveAttribute(
     "href",
     "https://www.youtube.com/watch?v=qna-e2e-video"
   );

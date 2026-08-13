@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import re
 import subprocess
 import tempfile
@@ -28,6 +29,14 @@ def _has_api_key() -> bool:
     if not key:
         return False
     low = key.lower()
+    return not any(p in low for p in ("your-", "changeme", "xxx", "todo", "replace"))
+
+
+def _usable_secret(value: str | None) -> bool:
+    clean = (value or "").strip()
+    if not clean:
+        return False
+    low = clean.lower()
     return not any(p in low for p in ("your-", "changeme", "xxx", "todo", "replace"))
 
 
@@ -189,13 +198,37 @@ def get_transcript(video_id: str) -> str | None:
     # auto-generated subtitle tracks to yt-dlp. This independent fallback keeps
     # those English/Urdu captions available without downloading the video.
     try:
-        return _transcript_ytdlp(
+        transcript = _transcript_ytdlp(
             video_id,
             timeout_seconds=float(_yt_cfg().get("source_timeout_seconds") or 60),
         )
+        if transcript:
+            return transcript
     except Exception as exc:
         logger.debug("transcript_ytdlp_failed video_id=%s error=%s", video_id, exc)
-        return None
+
+    # Many relevant job videos have neither authored nor auto-generated
+    # captions. When an OpenAI key is already configured for embeddings, use
+    # the same public video audio to create the missing transcript. DeepSeek is
+    # still responsible for the subsequent Q&A extraction.
+    conf = _yt_cfg()
+    if conf.get("transcribe_audio_when_captions_missing", True):
+        try:
+            transcript = _transcript_openai_audio(
+                video_id,
+                timeout_seconds=float(
+                    conf.get("audio_transcription_timeout_seconds") or 120
+                ),
+            )
+            if transcript:
+                return transcript
+        except Exception as exc:
+            logger.warning(
+                "transcript_audio_fallback_failed video_id=%s error=%s",
+                video_id,
+                str(exc)[:200],
+            )
+    return None
 
 
 def _transcript_ytdlp(video_id: str, *, timeout_seconds: float) -> str | None:
@@ -219,7 +252,7 @@ def _transcript_ytdlp(video_id: str, *, timeout_seconds: float) -> str | None:
             ],
             capture_output=True,
             text=True,
-            timeout=max(1.0, timeout_seconds),
+            timeout=max(1.0, min(60.0, timeout_seconds)),
             check=False,
         )
         subtitle_files = sorted(Path(directory).glob(f"{video_id}*.json3"))
@@ -243,6 +276,86 @@ def _transcript_ytdlp(video_id: str, *, timeout_seconds: float) -> str | None:
             if transcript:
                 return transcript
     return None
+
+
+def _transcript_openai_audio(video_id: str, *, timeout_seconds: float) -> str | None:
+    """Download a bounded public audio stream and transcribe it when captions are absent."""
+    api_key = env("OPENAI_API_KEY")
+    if not _usable_secret(api_key):
+        return None
+    conf = _yt_cfg()
+    max_bytes = max(
+        1_000_000,
+        min(24_000_000, int(conf.get("max_transcription_audio_bytes") or 24_000_000)),
+    )
+    with tempfile.TemporaryDirectory(prefix="jobportal-youtube-audio-") as directory:
+        output = str(Path(directory) / "audio.%(ext)s")
+        proc = subprocess.run(
+            [
+                "yt-dlp",
+                f"https://www.youtube.com/watch?v={video_id}",
+                "--no-playlist",
+                "--format",
+                "bestaudio[filesize<24M]/bestaudio[filesize_approx<24M]/bestaudio",
+                "--max-filesize",
+                str(max_bytes),
+                "--output",
+                output,
+                "--quiet",
+                "--no-warnings",
+                "--no-progress",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, min(60.0, timeout_seconds)),
+            check=False,
+        )
+        audio_files = sorted(
+            path
+            for path in Path(directory).glob("audio.*")
+            if path.is_file() and path.suffix != ".part"
+        )
+        if proc.returncode != 0 or not audio_files:
+            return None
+        audio_path = audio_files[0]
+        if audio_path.stat().st_size > max_bytes:
+            logger.warning(
+                "youtube_audio_too_large video_id=%s bytes=%s",
+                video_id,
+                audio_path.stat().st_size,
+            )
+            return None
+
+        base_url = (
+            env("OPENAI_TRANSCRIPTION_BASE_URL")
+            or env("OPENAI_BASE_URL")
+            or "https://api.openai.com/v1"
+        ).rstrip("/")
+        model = str(
+            env("OPENAI_TRANSCRIPTION_MODEL")
+            or conf.get("audio_transcription_model")
+            or "gpt-4o-mini-transcribe"
+        )
+        mime_type = mimetypes.guess_type(audio_path.name)[0] or "application/octet-stream"
+        with audio_path.open("rb") as audio:
+            response = httpx.post(
+                f"{base_url}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                data={"model": model, "response_format": "json"},
+                files={"file": (audio_path.name, audio, mime_type)},
+                timeout=max(1.0, timeout_seconds),
+            )
+        response.raise_for_status()
+        payload = response.json()
+        transcript = str(payload.get("text") or "").strip()
+        if transcript:
+            logger.info(
+                "youtube_audio_transcribed video_id=%s model=%s chars=%s",
+                video_id,
+                model,
+                len(transcript),
+            )
+        return transcript or None
 
 
 def get_top_comments(

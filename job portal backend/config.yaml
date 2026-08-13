@@ -101,12 +101,19 @@ youtube_qna:
   # English, Urdu, and Roman-Urdu questions retain their answer hierarchy.
   extract_transcripts: true
   extract_comments: true
+  # When captions are missing, download a bounded public audio stream and use
+  # the configured OpenAI transcription endpoint to create the script. Q&A
+  # extraction itself remains on DeepSeek-V4-Pro-0813.
+  transcribe_audio_when_captions_missing: true
+  audio_transcription_model: "gpt-4o-mini-transcribe"
+  audio_transcription_timeout_seconds: 120
+  max_transcription_audio_bytes: 24000000
   ai_timeout_seconds: 100
-  source_timeout_seconds: 60
-  source_collection_timeout_seconds: 60
+  source_timeout_seconds: 180
+  source_collection_timeout_seconds: 180
   source_workers: 5
-  # Require at least 80% after embedding relevance is calibrated with exact
-  # title-keyword evidence, avoiding false negatives for employer names such as NADRA.
+  # Require at least 80% raw embedding cosine similarity by default. The admin
+  # input can override this with any whole percentage from 1 to 100.
   min_title_similarity: 0.8
   # YOUTUBE_API_KEY in .env
 

@@ -393,6 +393,37 @@ def _locate_answer_evidence(
         for source_type, segment in segments:
             if normalized_evidence in _normalized_text(segment):
                 return int(source["video_index"]), source_type, evidence
+            # DeepSeek can preserve the source wording while normalizing light
+            # punctuation or dropping a short lead-in. Match only very close
+            # sentence-level evidence, then persist the actual source sentence
+            # rather than the model's reconstruction.
+            for sentence in re.split(r"(?<=[.!?])\s+|\n+", segment):
+                source_sentence = re.sub(
+                    r"^(?:TOP-LEVEL COMMENT|REPLY\s+\d+):\s*",
+                    "",
+                    sentence.strip(),
+                    flags=re.I,
+                )
+                normalized_sentence = _normalized_text(source_sentence)
+                if len(normalized_sentence.split()) < 2:
+                    continue
+                evidence_tokens = set(normalized_evidence.split())
+                sentence_tokens = set(normalized_sentence.split())
+                containment = (
+                    len(evidence_tokens & sentence_tokens)
+                    / max(1, min(len(evidence_tokens), len(sentence_tokens)))
+                )
+                similarity = SequenceMatcher(
+                    None,
+                    normalized_evidence,
+                    normalized_sentence,
+                ).ratio()
+                if similarity >= 0.88 and containment >= 0.85:
+                    return (
+                        int(source["video_index"]),
+                        source_type,
+                        source_sentence,
+                    )
     return None
 
 
@@ -522,12 +553,25 @@ def _extract_qna_batch(
     valid_indexes = {int(source["video_index"]) for source in sources}
     default_index = int(sources[0]["video_index"])
     items: list[dict[str, Any]] = []
-    for row in data.get("qna") or []:
+    raw_rows = (
+        data.get("qna")
+        or data.get("qna_pairs")
+        or data.get("pairs")
+        or data.get("items")
+        or data.get("questions_and_answers")
+        or []
+    )
+    for row in raw_rows:
         if not isinstance(row, dict):
             continue
         question = str(row.get("question") or "").strip()
         proposed_answer = str(row.get("answer") or "").strip()
-        answer_evidence = str(row.get("answer_evidence") or "").strip()
+        # V4-Pro occasionally places the exact source excerpt in ``answer``
+        # while omitting the redundant evidence field. It is still accepted
+        # only if the excerpt can be located in the supplied source below.
+        answer_evidence = str(
+            row.get("answer_evidence") or proposed_answer
+        ).strip()
         if (
             len(question) < 5
             or len(proposed_answer) < 8
@@ -850,7 +894,8 @@ def fetch_qna_for_job_title(
 ) -> dict[str, Any]:
     """
     YouTube Data API search + transcripts + comments → LLM extracts complete Q&A pairs.
-    Videos ranked by embedding and title-keyword relevance. Max 20 pairs.
+    Compare the job-title embedding with newest-first YouTube title embeddings,
+    then use DeepSeek to extract at most 20 grounded pairs from matched sources.
     """
     conf = cfg("youtube_qna") or {}
     max_qna = min(20, max(1, int(conf.get("max_qna") or 20)))
@@ -914,29 +959,35 @@ def fetch_qna_for_job_title(
     search_succeeded = False
     collected: list[dict[str, Any]] = []
     videos: list[dict[str, Any]] = []
+    raw_videos: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    video_matches: list[dict[str, Any]] = []
+    videos_compared = 0
     videos_scanned = 0
     topic_counts: dict[str, int] = {}
     selected_intents: set[str] = set()
-    role_title = _canonical_job_title(job_title)
     try:
-        query = role_title
-        # YouTube returns these candidates newest-first. Score that bounded set
-        # with semantic embeddings plus exact title-keyword evidence. Short,
-        # clearly related titles (for example "NADRA Jobs 2026") often have raw
-        # embedding cosines below 0.80 despite sharing the recruiting body and
-        # year, so the calibrated score prevents those false negatives. Retain
-        # YouTube's newest-first order after applying the relevance threshold.
+        # Search the exact saved title. Stripping words such as "Jobs" and
+        # "Apply Online" changed YouTube's newest-first result set and could
+        # exclude an exact role video before embeddings were ever generated.
+        # The runtime input controls how many newest candidates are compared.
         raw_videos = search_youtube(
-            query,
+            job_title.strip(),
             max_results=max_search_results,
             timeout_seconds=15.0,
             raise_on_failure=True,
         )
+        videos_compared = len(raw_videos)
+        # Generate one embedding for the full job title and one for every
+        # returned video title in a single provider batch. The configured input
+        # percentage applies to raw cosine similarity—no lexical calibration or
+        # hidden score transformation is used by this gate.
         ranked = rank_by_similarity(
             job_title,
             raw_videos,
             key="title",
             score_key="title_similarity",
+            raw_cosine_only=True,
             preserve_order=True,
         )
         videos = [
@@ -946,11 +997,19 @@ def fetch_qna_for_job_title(
         ][:max_videos]
         search_succeeded = True
         logger.info(
-            "qna_title_filter job_id=%s threshold=%.2f candidates=%s matched=%s",
+            "qna_title_filter job_id=%s threshold=%.2f candidates=%s matched=%s scores=%s",
             job_id,
             min_sim,
             len(raw_videos),
             len(videos),
+            [
+                {
+                    "video_id": video.get("video_id"),
+                    "score": video.get("title_similarity"),
+                    "title": str(video.get("title") or "")[:120],
+                }
+                for video in ranked
+            ],
         )
 
         videos_scanned = len(videos)
@@ -966,10 +1025,30 @@ def fetch_qna_for_job_title(
         usable_sources = [
             source for source in sources if source.get("transcript") or source.get("comments")
         ]
+        source_by_id = {str(source.get("video_id") or ""): source for source in sources}
+        video_matches = [
+            {
+                "title": str(video.get("title") or ""),
+                "url": str(video.get("url") or ""),
+                "similarity_percent": round(
+                    float(video.get("title_similarity") or 0) * 100,
+                    1,
+                ),
+                "has_transcript": bool(
+                    source_by_id.get(str(video.get("video_id") or ""), {}).get("transcript")
+                ),
+                "comment_threads": len(
+                    source_by_id.get(str(video.get("video_id") or ""), {}).get("comments")
+                    or []
+                ),
+            }
+            for video in videos
+        ]
         if videos and not usable_sources:
             error = (
-                "Relevant YouTube videos were found, but their transcripts and comments "
-                "could not be retrieved."
+                f"Matched {len(videos)} of {videos_compared} recent YouTube videos at or "
+                f"above {min_sim * 100:g}% cosine similarity, but no captions, comments, "
+                "or audio transcript could be retrieved from them."
             )
         elif usable_sources:
             try:
@@ -1042,17 +1121,24 @@ def fetch_qna_for_job_title(
             ]
             if not error:
                 error = (
-                    "No relevant question-and-answer pairs were found in matching "
-                    "YouTube transcripts or comments."
+                    f"Matched {len(videos)} of {videos_compared} recent YouTube videos at or "
+                    f"above {min_sim * 100:g}% cosine similarity and retrieved source "
+                    f"content from {len(usable_sources)}, but DeepSeek-V4-Pro-0813 found "
+                    "no fully grounded question-and-answer pairs."
                     if videos
-                    else "No sufficiently relevant YouTube videos were found for this job title."
+                    else (
+                        f"Compared {videos_compared} recent YouTube videos; none met the "
+                        f"{min_sim * 100:g}% raw cosine similarity threshold."
+                    )
                 )
             return {
                 "items": existing,
                 "count": 0,
                 "elapsed_seconds": round(time.monotonic() - started, 2),
                 "error": error,
+                "videos_compared": videos_compared,
                 "videos_scanned": videos_scanned,
+                "matched_videos": video_matches,
             }
         # A valid partial result is a successful refresh. Do not surface an
         # earlier candidate-video error after useful Q&A has been collected.
@@ -1087,5 +1173,7 @@ def fetch_qna_for_job_title(
         "count": len(saved),
         "elapsed_seconds": round(elapsed, 2),
         "error": error,
+        "videos_compared": videos_compared,
         "videos_scanned": videos_scanned,
+        "matched_videos": video_matches,
     }

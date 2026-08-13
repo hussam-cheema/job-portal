@@ -145,6 +145,7 @@ def test_fia_inspector_pipeline_passes_all_four_stages(monkeypatch):
             videos,
             key="title",
             score_key="title_similarity",
+            raw_cosine_only=True,
             preserve_order=True,
         )
         selected_videos = [

@@ -566,13 +566,23 @@ def admin_fetch_qna(
             count=result.get("count") or 0,
             elapsed_seconds=result.get("elapsed_seconds") or 0,
             error=result.get("error"),
+            videos_compared=result.get("videos_compared") or 0,
             videos_scanned=result.get("videos_scanned") or 0,
+            matched_videos=result.get("matched_videos") or [],
         )
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("admin_fetch_qna failed id=%s", job_id)
-        return QnAFetchResult(items=[], count=0, elapsed_seconds=0, error=str(exc), videos_scanned=0)
+        return QnAFetchResult(
+            items=[],
+            count=0,
+            elapsed_seconds=0,
+            error=str(exc),
+            videos_compared=0,
+            videos_scanned=0,
+            matched_videos=[],
+        )
 
 
 @router.get("/filters", response_model=FiltersResponse)

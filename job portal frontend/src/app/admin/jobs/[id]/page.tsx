@@ -24,7 +24,7 @@ import {
   readEditorDraft,
   saveEditorDraft,
 } from "@/lib/editorDrafts";
-import type { JobQnA, TaxonomyTerm } from "@/lib/types";
+import type { JobQnA, QnAMatchedVideo, TaxonomyTerm } from "@/lib/types";
 import { dateInputToApiValue, toDateInputValue, todayInPakistan } from "@/lib/format";
 
 const empty = {
@@ -192,6 +192,10 @@ export default function JobFormPage() {
   const [qna, setQna] = useState<JobQnA[]>([]);
   const [qnaError, setQnaError] = useState<string | null>(null);
   const [qnaMessage, setQnaMessage] = useState<string | null>(null);
+  const [qnaPipeline, setQnaPipeline] = useState<{
+    videosCompared: number;
+    matchedVideos: QnAMatchedVideo[];
+  } | null>(null);
   const [qnaLoading, setQnaLoading] = useState(false);
   const [qnaSimilarityPercent, setQnaSimilarityPercent] = useState("");
   const [qnaVideoCount, setQnaVideoCount] = useState("");
@@ -479,6 +483,7 @@ export default function JobFormPage() {
     setQnaLoading(true);
     setQnaError(null);
     setQnaMessage(null);
+    setQnaPipeline(null);
     try {
       if (!savedId) {
         setQnaError("Save the job before fetching YouTube Q&A.");
@@ -505,6 +510,10 @@ export default function JobFormPage() {
         ),
       });
       setQna(result.items || []);
+      setQnaPipeline({
+        videosCompared: result.videos_compared || 0,
+        matchedVideos: result.matched_videos || [],
+      });
       if (result.error) {
         setQnaError(result.error);
       } else if (result.count > 0) {
@@ -985,6 +994,36 @@ export default function JobFormPage() {
           </div>
           {qnaError && <p className="field-error mt-2">{qnaError}</p>}
           {qnaMessage && <p className="mt-2 text-sm font-medium text-[var(--success)]">{qnaMessage}</p>}
+          {qnaPipeline && qnaPipeline.videosCompared > 0 && (
+            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--navy-850)] p-4 text-sm">
+              <p className="font-medium text-[var(--navy-100)]">
+                Compared {qnaPipeline.videosCompared} newest YouTube video
+                {qnaPipeline.videosCompared === 1 ? "" : "s"}; {qnaPipeline.matchedVideos.length}{" "}
+                met the raw cosine threshold.
+              </p>
+              {qnaPipeline.matchedVideos.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {qnaPipeline.matchedVideos.map((video) => (
+                    <li key={video.url} className="text-[var(--muted)]">
+                      <a
+                        href={video.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-[var(--accent)] hover:underline"
+                      >
+                        {video.title}
+                      </a>
+                      {` — ${video.similarity_percent.toFixed(1)}% cosine; `}
+                      {video.has_transcript ? "transcript available" : "no transcript"}
+                      {`; ${video.comment_threads} comment ${
+                        video.comment_threads === 1 ? "thread" : "threads"
+                      }`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {qna.length > 0 && (
             <ol className="mt-4 space-y-3 list-decimal list-inside">
               {qna.map((item, idx) => (
