@@ -58,6 +58,19 @@ test("all remaining admin navigation pages render", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
+test("site analytics shows full, non-redundant country names", async ({ page }) => {
+  await page.goto("/admin/analytics");
+  const realtimeLocations = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Realtime visitor locations", exact: true }),
+  });
+
+  await expect(realtimeLocations.locator("tbody tr")).toHaveCount(2);
+  await expect(realtimeLocations.getByText("Pakistan", { exact: true })).toHaveCount(1);
+  await expect(realtimeLocations.getByText("United States", { exact: true })).toHaveCount(1);
+  await expect(realtimeLocations.getByText("PK", { exact: true })).toHaveCount(0);
+  await expect(realtimeLocations.getByText("US", { exact: true })).toHaveCount(0);
+});
+
 test("infrastructure analytics only shows active services and the payment-aware cost ledger", async ({
   page,
 }) => {
@@ -501,6 +514,8 @@ test("keyword rankings scroll after twenty unique rows", async ({ page }) => {
   await expect(section.getByRole("columnheader", { name: "Avg position" })).toBeVisible();
   await expect(section.getByRole("columnheader", { name: "Impressions" })).toBeVisible();
   await expect(section.getByRole("columnheader", { name: "CTR" })).toBeVisible();
+  await expect(section.getByRole("columnheader", { name: "Top URL" })).toBeVisible();
+  await expect(section.getByText("+2 more ranking URLs", { exact: true })).toBeVisible();
   await expect(section.getByRole("columnheader", { name: "Page", exact: true })).toHaveCount(0);
 });
 

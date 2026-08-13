@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -464,7 +465,7 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
             "startDate": start.isoformat(),
             "endDate": end.isoformat(),
             "dimensions": ["query", "page"],
-            "rowLimit": 100,
+            "rowLimit": 1000,
         }
         resp = service.searchanalytics().query(siteUrl=site, body=body).execute()
         rows = resp.get("rows") or []
@@ -519,18 +520,21 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                 }
             )
         db.commit()
+        unique_keywords = list_keyword_ranks(db, limit=1000)
         set_setting(db, "gsc_last_sync", datetime.utcnow().isoformat())
         set_setting(db, "gsc_period_start", start.isoformat())
         set_setting(db, "gsc_period_end", end.isoformat())
         return {
             "connected": True,
             "site": site,
-            "rows": len(keywords_out),
-            "keywords": keywords_out[:50],
+            "rows": len(unique_keywords),
+            "query_url_rows": len(keywords_out),
+            "keywords": unique_keywords[:50],
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
             "message": (
-                f"Synced {len(keywords_out)} query/URL rows from Google Search Console "
+                f"Synced {len(unique_keywords)} unique search queries across "
+                f"{len(keywords_out)} query/URL rows from Google Search Console "
                 f"for {start.isoformat()} to {end.isoformat()}."
             ),
         }
@@ -558,12 +562,17 @@ def _match_entity(db: Session, page_url: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
+def _normalized_keyword(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _keyword_url_rows(db: Session, limit: int = 1000) -> list[dict[str, Any]]:
+    """Return the latest row for each normalized Search Console query/URL pair."""
     rows = (
         db.execute(
             select(SEOKeywordRank)
             .order_by(SEOKeywordRank.recorded_at.desc())
-            .limit(max(limit * 5, 200))
+            .limit(max(limit, 200))
         )
         .scalars()
         .all()
@@ -571,17 +580,20 @@ def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     unique_rows: list[SEOKeywordRank] = []
     seen: set[tuple[str, str]] = set()
     for row in rows:
-        key = (row.keyword.strip().casefold(), row.url.strip().rstrip("/").casefold())
+        key = (
+            _normalized_keyword(row.keyword).casefold(),
+            row.url.strip().rstrip("/").casefold(),
+        )
+        if not key[0] or not key[1]:
+            continue
         if key in seen:
             continue
         seen.add(key)
         unique_rows.append(row)
-        if len(unique_rows) >= limit:
-            break
     return [
         {
             "id": r.id,
-            "keyword": r.keyword,
+            "keyword": _normalized_keyword(r.keyword),
             "url": r.url,
             "position": r.position,
             "average_position": r.position,
@@ -594,6 +606,80 @@ def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
         }
         for r in unique_rows
     ]
+
+
+def list_keyword_ranks(db: Session, limit: int = 100) -> list[dict[str, Any]]:
+    """Aggregate every URL-level GSC row into one unique normalized query."""
+    rows = _keyword_url_rows(db, limit=max(limit * 20, 1000))
+    by_keyword: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        keyword = _normalized_keyword(row.get("keyword"))
+        key = keyword.casefold()
+        if not key:
+            continue
+        impressions = int(row.get("impressions") or 0)
+        clicks = int(row.get("clicks") or 0)
+        position = float(row.get("position") or 0)
+        weight = impressions if impressions > 0 else 1
+        candidate_score = (impressions, clicks, -position)
+        aggregate = by_keyword.get(key)
+        if aggregate is None:
+            aggregate = {
+                **row,
+                "keyword": keyword,
+                "impressions": 0,
+                "clicks": 0,
+                "ctr": 0.0,
+                "position": 0.0,
+                "average_position": 0.0,
+                "url_count": 0,
+                "_urls": set(),
+                "_position_total": 0.0,
+                "_position_weight": 0,
+                "_top_url_score": candidate_score,
+            }
+            by_keyword[key] = aggregate
+        elif candidate_score > aggregate["_top_url_score"]:
+            aggregate["id"] = row["id"]
+            aggregate["url"] = row["url"]
+            aggregate["entity_type"] = row.get("entity_type")
+            aggregate["entity_id"] = row.get("entity_id")
+            aggregate["_top_url_score"] = candidate_score
+        aggregate["impressions"] += impressions
+        aggregate["clicks"] += clicks
+        aggregate["_position_total"] += position * weight
+        aggregate["_position_weight"] += weight
+        aggregate["_urls"].add(row["url"].strip().rstrip("/").casefold())
+        recorded_at = row.get("recorded_at")
+        if recorded_at and (
+            not aggregate.get("recorded_at") or recorded_at > aggregate["recorded_at"]
+        ):
+            aggregate["recorded_at"] = recorded_at
+
+    aggregated: list[dict[str, Any]] = []
+    for row in by_keyword.values():
+        row["average_position"] = round(
+            row.pop("_position_total") / max(row.pop("_position_weight"), 1),
+            2,
+        )
+        row["position"] = row["average_position"]
+        row["ctr"] = (
+            round(row["clicks"] / row["impressions"], 6)
+            if row["impressions"] > 0
+            else 0.0
+        )
+        row["url_count"] = len(row.pop("_urls"))
+        row.pop("_top_url_score", None)
+        aggregated.append(row)
+    aggregated.sort(
+        key=lambda row: (
+            -int(row["impressions"]),
+            -int(row["clicks"]),
+            float(row["average_position"]),
+            str(row["keyword"]).casefold(),
+        )
+    )
+    return aggregated[: max(1, limit)]
 
 
 def _canonical_backlink_url(value: str | None) -> str:
@@ -758,7 +844,7 @@ def discover_backlinks_basic(db: Session) -> dict[str, Any]:
 
 def entity_rank_summary(db: Session) -> list[dict[str, Any]]:
     """Aggregate Search Console query rows into impression-weighted URL metrics."""
-    rows = list_keyword_ranks(db, limit=200)
+    rows = _keyword_url_rows(db, limit=5000)
     by_url: dict[str, dict[str, Any]] = {}
     for r in rows:
         u = r["url"]

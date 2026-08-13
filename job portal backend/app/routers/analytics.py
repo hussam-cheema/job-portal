@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote
 from uuid import uuid4
 
 import httpx
+import pycountry
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,6 +29,11 @@ router = APIRouter()
 logger = get_logger("jobportal.analytics")
 BOT_PATTERN = re.compile(r"bot|crawler|spider|slurp|preview|headless", re.I)
 INVALID_COUNTRY_CODES = {"", "XX", "ZZ", "T1", "UNKNOWN"}
+COUNTRY_ALIASES = {
+    "EL": "Greece",
+    "UK": "United Kingdom",
+    "XK": "Kosovo",
+}
 _LOCATION_CACHE_MAX = 2048
 _LOCATION_CACHE: OrderedDict[
     str,
@@ -43,16 +49,35 @@ def _enabled(value: object) -> bool:
 
 
 def _clean_country(value: str | None) -> str | None:
-    country = (value or "").strip()
-    if country.upper() in INVALID_COUNTRY_CODES:
+    country = unquote(value or "").strip().strip('"')
+    upper = country.upper()
+    if upper in INVALID_COUNTRY_CODES:
         return None
-    if len(country) == 2 and country.isalpha():
-        country = country.upper()
+    if upper in COUNTRY_ALIASES:
+        return COUNTRY_ALIASES[upper]
+    try:
+        match = (
+            pycountry.countries.get(alpha_2=upper)
+            if len(upper) == 2 and upper.isalpha()
+            else pycountry.countries.lookup(country)
+        )
+    except LookupError:
+        match = None
+    if match is not None:
+        return str(getattr(match, "common_name", match.name))[:100]
+    # Preserve an already human-readable provider value, but never leak an
+    # unresolved two/three-letter code into the dashboard.
+    if len(country) <= 3 and country.isalpha():
+        return None
     return country[:100] or None
 
 
 def _clean_location_name(value: str | None, limit: int = 150) -> str | None:
-    clean = unquote(value or "").strip()
+    clean = re.sub(r"\s+", " ", unquote(value or "").strip().strip('"'))
+    if clean.casefold() in {"", "unknown", "n/a", "none", "null"}:
+        return None
+    if clean.islower():
+        clean = clean.title()
     return clean[:limit] or None
 
 
@@ -201,7 +226,11 @@ def _latest_verified_location(
     ).scalar_one_or_none()
     if not row or not _clean_country(row.country):
         return None
-    return row.country, row.region, row.city
+    return (
+        _clean_country(row.country) or "Unknown",
+        _clean_location_name(row.region),
+        _clean_location_name(row.city),
+    )
 
 
 def _verified_locations_by_visitor(
@@ -221,8 +250,13 @@ def _verified_locations_by_visitor(
             .order_by(AnalyticsVisit.visited_at.desc())
         ).scalars().all()
         for row in rows:
-            if row.visitor_hash not in resolved and _clean_country(row.country):
-                resolved[row.visitor_hash] = (row.country, row.region, row.city)
+            country = _clean_country(row.country)
+            if row.visitor_hash not in resolved and country:
+                resolved[row.visitor_hash] = (
+                    country,
+                    _clean_location_name(row.region),
+                    _clean_location_name(row.city),
+                )
     return resolved
 
 
@@ -230,9 +264,26 @@ def _effective_row_location(
     row: AnalyticsVisit,
     verified: dict[str, tuple[str, str | None, str | None]],
 ) -> tuple[str, str | None, str | None]:
-    if row.location_verified and _clean_country(row.country):
-        return row.country, row.region, row.city
+    country = _clean_country(row.country)
+    if row.location_verified and country:
+        return (
+            country,
+            _clean_location_name(row.region),
+            _clean_location_name(row.city),
+        )
     return verified.get(row.visitor_hash, ("Unknown", None, None))
+
+
+def _location_identity(
+    location: tuple[str, str | None, str | None],
+) -> tuple[str, str | None, str | None]:
+    """Use case-insensitive location identity while preserving display spelling."""
+    country, region, city = location
+    return (
+        country.casefold(),
+        region.casefold() if region else None,
+        city.casefold() if city else None,
+    )
 
 
 @router.post("/analytics/visit", status_code=201)
@@ -326,10 +377,17 @@ def realtime_analytics(
         page["page_views"] = int(page["page_views"]) + 1
         if row.visited_at > page["last_seen"]:  # type: ignore[operator]
             page["last_seen"] = row.visited_at
-        location_key = _effective_row_location(row, verified_locations)
+        display_location = _effective_row_location(row, verified_locations)
+        location_key = _location_identity(display_location)
         location = locations.setdefault(
             location_key,
-            {"visitors": set(), "last_seen": row.visited_at},
+            {
+                "country": display_location[0],
+                "region": display_location[1],
+                "city": display_location[2],
+                "visitors": set(),
+                "last_seen": row.visited_at,
+            },
         )
         location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         if row.visited_at > location["last_seen"]:  # type: ignore[operator]
@@ -347,13 +405,13 @@ def realtime_analytics(
     page_rows.sort(key=lambda item: item["last_seen"], reverse=True)
     location_rows = [
         {
-            "country": country,
-            "region": region,
-            "city": city,
+            "country": data["country"],
+            "region": data["region"],
+            "city": data["city"],
             "visitors": len(data["visitors"]),
             "last_seen": data["last_seen"],
         }
-        for (country, region, city), data in locations.items()
+        for data in locations.values()
     ]
     location_rows.sort(key=lambda item: item["last_seen"], reverse=True)
     return AnalyticsRealtime(
@@ -393,7 +451,7 @@ def analytics_dashboard(
     ).scalars().all()
 
     daily: dict[str, dict[str, set[str] | int]] = {}
-    locations: dict[tuple[str, str | None, str | None], dict[str, set[str] | int]] = {}
+    locations: dict[tuple[str, str | None, str | None], dict[str, object]] = {}
     all_visitors: set[str] = set()
     verified_locations = _verified_locations_by_visitor(
         db,
@@ -410,8 +468,18 @@ def analytics_dashboard(
         day_data["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         day_data["page_views"] = int(day_data["page_views"]) + 1
 
-        key = _effective_row_location(row, verified_locations)
-        location = locations.setdefault(key, {"visitors": set(), "page_views": 0})
+        display_location = _effective_row_location(row, verified_locations)
+        key = _location_identity(display_location)
+        location = locations.setdefault(
+            key,
+            {
+                "country": display_location[0],
+                "region": display_location[1],
+                "city": display_location[2],
+                "visitors": set(),
+                "page_views": 0,
+            },
+        )
         location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         location["page_views"] = int(location["page_views"]) + 1
 
@@ -426,13 +494,13 @@ def analytics_dashboard(
     location_points = sorted(
         (
             {
-                "country": country,
-                "region": region,
-                "city": city,
+                "country": data["country"],
+                "region": data["region"],
+                "city": data["city"],
                 "visitors": len(data["visitors"]),
                 "page_views": data["page_views"],
             }
-            for (country, region, city), data in locations.items()
+            for data in locations.values()
         ),
         key=lambda item: int(item["visitors"]),
         reverse=True,

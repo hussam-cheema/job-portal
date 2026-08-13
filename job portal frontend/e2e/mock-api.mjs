@@ -330,14 +330,20 @@ const server = createServer((request, response) => {
   if (path === "/api/admin/contact") return json(response, []);
   if (path === "/api/admin/analytics/realtime") {
     return json(response, {
-      window_minutes: 5, active_visitors: 0, page_views: 0,
-      generated_at: new Date().toISOString(), pages: [], locations: [],
+      window_minutes: 5, active_visitors: 3, page_views: 3,
+      generated_at: new Date().toISOString(), pages: [], locations: [
+        { country: "Pakistan", region: "Punjab", city: "Lahore", visitors: 2, last_seen: new Date().toISOString() },
+        { country: "United States", region: "Oregon", city: "Boardman", visitors: 1, last_seen: new Date().toISOString() },
+      ],
     });
   }
   if (path === "/api/admin/analytics") {
     return json(response, {
-      month: new Date().toISOString().slice(0, 7), unique_visitors: 0,
-      page_views: 0, daily: [], locations: [],
+      month: new Date().toISOString().slice(0, 7), unique_visitors: 3,
+      page_views: 3, daily: [], locations: [
+        { country: "Pakistan", region: "Punjab", city: "Lahore", visitors: 2, page_views: 2 },
+        { country: "United States", region: "Oregon", city: "Boardman", visitors: 1, page_views: 1 },
+      ],
     });
   }
   if (path === "/api/admin/infrastructure") {
@@ -409,6 +415,7 @@ const server = createServer((request, response) => {
         clicks: index,
         impressions: index + 10,
         ctr: index / (index + 10),
+        url_count: index === 0 ? 3 : 1,
       })),
       url_ranks: [{
         url: "https://pakistanjobsmarket.com/jobs/role-0",

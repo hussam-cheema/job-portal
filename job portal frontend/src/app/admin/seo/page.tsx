@@ -293,9 +293,9 @@ export default function AdminSeoPage() {
             <section className="card-panel p-5 space-y-3">
               <h3 className="font-semibold text-[var(--navy-100)]">Keyword rankings</h3>
               <p className="text-xs text-[var(--muted)]">
-                Real query/URL performance from Search Console for searches where Google recorded
-                an impression. “Avg position” is an aggregate—not a promise that the URL currently
-                appears at that exact spot.
+                Unique Google search queries from Search Console. Metrics are combined across every
+                URL that ranked for the same normalized keyword; “Avg position” is
+                impression-weighted, not a fixed live rank.
               </p>
               {(data.keyword_ranks || []).length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">No keywords yet — sync GSC.</p>
@@ -311,7 +311,7 @@ export default function AdminSeoPage() {
                     <thead className="sticky top-0 z-10 bg-[var(--card)]">
                       <tr className="text-left text-[var(--muted)]">
                         <th className="py-2 pr-3">Keyword</th>
-                        <th className="py-2 pr-3">URL</th>
+                        <th className="py-2 pr-3">Top URL</th>
                         <th className="py-2 pr-3">Avg position</th>
                         <th className="py-2 pr-3">Impressions</th>
                         <th className="py-2 pr-3">CTR</th>
@@ -319,10 +319,23 @@ export default function AdminSeoPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(data.keyword_ranks || []).map((r, i) => (
-                        <tr key={i} className="border-t border-[var(--border)]">
+                      {(data.keyword_ranks || []).map((r) => (
+                        <tr
+                          key={String(r.keyword).trim().toLowerCase()}
+                          className="border-t border-[var(--border)]"
+                        >
                           <td className="py-2 pr-3 text-[var(--navy-100)]">{String(r.keyword)}</td>
-                          <td className="py-2 pr-3 max-w-[200px] truncate">{String(r.url)}</td>
+                          <td className="py-2 pr-3 max-w-[220px]">
+                            <div className="truncate" title={String(r.url)}>
+                              {String(r.url)}
+                            </div>
+                            {Number(r.url_count || 0) > 1 && (
+                              <div className="text-xs text-[var(--muted)]">
+                                +{Number(r.url_count) - 1} more ranking URL
+                                {Number(r.url_count) === 2 ? "" : "s"}
+                              </div>
+                            )}
+                          </td>
                           <td className="py-2 pr-3">
                             {Number(r.average_position ?? r.position).toFixed(1)}
                           </td>

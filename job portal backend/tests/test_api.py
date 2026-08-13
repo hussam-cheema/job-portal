@@ -1752,7 +1752,7 @@ def test_monthly_analytics(client: TestClient):
     data = response.json()
     assert data["unique_visitors"] == 2
     assert data["page_views"] == 2
-    assert data["locations"][0]["country"] == "PK"
+    assert data["locations"][0]["country"] == "Pakistan"
     assert data["locations"][0]["region"] == "Sindh"
     assert data["locations"][0]["city"] == "Karachi"
 
@@ -1778,7 +1778,7 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     assert live.json()["pages"][0]["path"] == "/jobs/live-role"
     assert live.json()["locations"] == [
         {
-            "country": "PK",
+            "country": "Pakistan",
             "region": "Punjab",
             "city": "Lahore",
             "visitors": 1,
@@ -1788,6 +1788,79 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
 
     monthly = client.get("/api/admin/analytics", headers=auth)
     assert monthly.json()["page_views"] == 1
+
+
+def test_analytics_uses_full_country_names_and_merges_legacy_code_rows(
+    client: TestClient,
+):
+    from datetime import datetime, timedelta
+
+    from app.models import AnalyticsVisit
+    from app.routers import analytics as analytics_router
+
+    assert analytics_router._clean_country("US") == "United States"
+    assert analytics_router._clean_country("SE") == "Sweden"
+    assert analytics_router._clean_country("IE") == "Ireland"
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        now = datetime.utcnow()
+        db.add_all(
+            [
+                AnalyticsVisit(
+                    id="legacy-pk-location",
+                    visitor_hash="legacy-pk-visitor",
+                    path="/legacy-code",
+                    country="PK",
+                    region="Punjab",
+                    city="Lahore",
+                    location_verified=True,
+                    visited_at=now,
+                ),
+                AnalyticsVisit(
+                    id="full-pakistan-location",
+                    visitor_hash="full-pakistan-visitor",
+                    path="/full-name",
+                    country="Pakistan",
+                    region="punjab",
+                    city="lahore",
+                    location_verified=True,
+                    visited_at=now - timedelta(seconds=1),
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    realtime = client.get("/api/admin/analytics/realtime?window_minutes=5", headers=auth)
+    monthly = client.get("/api/admin/analytics", headers=auth)
+
+    assert realtime.status_code == 200
+    assert realtime.json()["locations"] == [
+        {
+            "country": "Pakistan",
+            "region": "Punjab",
+            "city": "Lahore",
+            "visitors": 2,
+            "last_seen": realtime.json()["locations"][0]["last_seen"],
+        }
+    ]
+    assert monthly.status_code == 200
+    assert monthly.json()["locations"] == [
+        {
+            "country": "Pakistan",
+            "region": "Punjab",
+            "city": "Lahore",
+            "visitors": 2,
+            "page_views": 2,
+        }
+    ]
 
 
 def test_analytics_resolves_railway_x_real_ip(
@@ -1856,7 +1929,7 @@ def test_analytics_reuses_verified_location_for_legacy_unknown_rows(client: Test
     ).json()
     assert dashboard["locations"] == [
         {
-            "country": "PK",
+            "country": "Pakistan",
             "region": "Sindh",
             "city": "Karachi",
             "visitors": 1,
@@ -1903,7 +1976,7 @@ def test_analytics_geolocation_uses_country_fallback_and_does_not_cache_failures
 
     monkeypatch.setattr(analytics_router, "cfg", cfg)
     monkeypatch.setattr(analytics_router.httpx, "get", get)
-    assert analytics_router._lookup_public_ip("8.8.4.4") == ("PK", None, None)
+    assert analytics_router._lookup_public_ip("8.8.4.4") == ("Pakistan", None, None)
     assert calls == [
         "https://primary.test/8.8.4.4",
         "https://fallback.test/8.8.4.4",
@@ -1911,7 +1984,7 @@ def test_analytics_geolocation_uses_country_fallback_and_does_not_cache_failures
 
     # A successful lookup is cached, while the implementation deliberately
     # leaves total failures uncached for a later heartbeat retry.
-    assert analytics_router._lookup_public_ip("8.8.4.4") == ("PK", None, None)
+    assert analytics_router._lookup_public_ip("8.8.4.4") == ("Pakistan", None, None)
     assert len(calls) == 2
     analytics_router._clear_location_cache()
     outcomes.extend(
@@ -2027,7 +2100,7 @@ def test_infrastructure_cost_total_keeps_accrued_retired_azure_charges(
     }
 
 
-def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
+def test_keyword_rank_list_aggregates_each_unique_keyword_across_urls(client: TestClient):
     from datetime import datetime, timedelta
     from app.models import SEOKeywordRank
     from app.services.seo_tools import list_keyword_ranks
@@ -2044,6 +2117,8 @@ def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
                     url="https://pakistanjobsmarket.com/",
                     position=9,
                     search_page=1,
+                    impressions=100,
+                    clicks=10,
                     recorded_at=now - timedelta(minutes=1),
                 ),
                 SEOKeywordRank(
@@ -2052,7 +2127,19 @@ def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
                     url="https://pakistanjobsmarket.com",
                     position=7,
                     search_page=1,
+                    impressions=10,
+                    clicks=1,
                     recorded_at=now,
+                ),
+                SEOKeywordRank(
+                    id="keyword-other-url",
+                    keyword="  PAKJOBS  ",
+                    url="https://pakistanjobsmarket.com/jobs/guide",
+                    position=3,
+                    search_page=1,
+                    impressions=30,
+                    clicks=3,
+                    recorded_at=now + timedelta(seconds=1),
                 ),
                 SEOKeywordRank(
                     id="keyword-distinct",
@@ -2060,6 +2147,8 @@ def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
                     url="https://pakistanjobsmarket.com/tags/lahore",
                     position=8,
                     search_page=1,
+                    impressions=2,
+                    clicks=0,
                     recorded_at=now,
                 ),
             ]
@@ -2070,11 +2159,15 @@ def test_keyword_rank_list_deduplicates_keyword_url_pairs(client: TestClient):
         db.close()
 
     assert len(rows) == 2
-    assert next(row for row in rows if row["keyword"].casefold() == "pakjobs")["id"] == "keyword-new"
-    assert {(row["keyword"].casefold(), row["url"].rstrip("/")) for row in rows} == {
-        ("pakjobs", "https://pakistanjobsmarket.com"),
-        ("lahore jobs", "https://pakistanjobsmarket.com/tags/lahore"),
-    }
+    pakjobs = next(row for row in rows if row["keyword"].casefold() == "pakjobs")
+    assert pakjobs["id"] == "keyword-other-url"
+    assert pakjobs["url"] == "https://pakistanjobsmarket.com/jobs/guide"
+    assert pakjobs["url_count"] == 2
+    assert pakjobs["impressions"] == 40
+    assert pakjobs["clicks"] == 4
+    assert pakjobs["average_position"] == 4.0
+    assert pakjobs["ctr"] == 0.1
+    assert [row["keyword"].casefold() for row in rows] == ["pakjobs", "lahore jobs"]
 
 
 def test_backlink_add_is_idempotent_and_existing_rows_are_deduplicated(client: TestClient):
