@@ -1,5 +1,6 @@
 # Job Portal Configuration (manual admin posting)
 
+# Railway deployment marker: loads repository-root-relative monorepo watch paths.
 site:
   name: "Pakistan Jobs Market"
   title: "Pakistan Jobs Market"
