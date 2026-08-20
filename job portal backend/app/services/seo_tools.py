@@ -174,19 +174,25 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 newspapers.add(job.newspaper.strip())
             if job.education_required and job.education_required.strip():
                 qualifications.add(job.education_required.strip())
-        categories = (
+        category_names = (
             db.execute(
-                select(TaxonomyTerm.slug).where(
+                select(TaxonomyTerm.name).where(
                     TaxonomyTerm.kind == "category", TaxonomyTerm.is_active.is_(True)
                 )
             )
             .scalars()
             .all()
         )
-        for term_slug in categories:
+        # Public category routes resolve a category's display name from the
+        # filters payload. Keep sitemap slugs on that same name-based contract
+        # even when an older taxonomy row has a custom/stale database slug.
+        for category_name in category_names:
+            category_slug = slugify(category_name)
+            if not category_slug:
+                continue
             urls.append(
                 {
-                    "loc": f"{base}/categories/{term_slug}",
+                    "loc": f"{base}/categories/{category_slug}",
                     "changefreq": "weekly",
                     "priority": 0.6,
                 }

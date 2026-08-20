@@ -1240,11 +1240,23 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     renamed = client.put(
         f"/api/admin/taxonomy/{created_term.json()['id']}",
         headers=auth,
-        json={"name": "Analytics", "slug": "analytics"},
+        json={"name": "Analytics", "slug": "analytics-careers"},
     )
     assert renamed.status_code == 200
     changed_job = client.get(f"/api/jobs/{valid.json()['id']}").json()
     assert changed_job["tags"] == ["Analytics"]
+    directory_categories = client.get("/api/site-directory").json()["taxonomies"][
+        "job_categories"
+    ]
+    assert any(
+        item["name"] == "Analytics" and item["slug"] == "analytics"
+        for item in directory_categories
+    )
+    sitemap_urls = {
+        item["loc"] for item in client.get("/api/sitemap-data").json()["urls"]
+    }
+    assert any(url.endswith("/categories/analytics") for url in sitemap_urls)
+    assert not any(url.endswith("/categories/analytics-careers") for url in sitemap_urls)
 
     removable = client.post(
         "/api/admin/taxonomy",
