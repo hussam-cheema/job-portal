@@ -2,13 +2,13 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.railway"
 watchPatterns = [
-  "app/**",
-  "migration/export_railway_env.py",
-  "migration/verify_production.py",
-  "config.yaml",
-  "requirements.txt",
-  "Dockerfile.railway",
-  "railway.verify.toml",
+  "/job portal backend/app/**",
+  "/job portal backend/migration/export_railway_env.py",
+  "/job portal backend/migration/verify_production.py",
+  "/job portal backend/config.yaml",
+  "/job portal backend/requirements.txt",
+  "/job portal backend/Dockerfile.railway",
+  "/job portal backend/railway.verify.toml",
 ]
 
 [deploy]

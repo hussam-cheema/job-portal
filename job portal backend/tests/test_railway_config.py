@@ -12,7 +12,8 @@ def test_api_deployment_teardown_values_are_numeric():
 
     deploy = config["deploy"]
 
-    assert "railway.api.toml" in config["build"]["watchPatterns"]
+    assert "/job portal backend/railway.api.toml" in config["build"]["watchPatterns"]
+    assert "/job portal backend/app/**" in config["build"]["watchPatterns"]
     assert "startCommand" not in deploy
     assert deploy["overlapSeconds"] == 30
     assert deploy["drainingSeconds"] == 30
@@ -33,7 +34,10 @@ def test_production_verifier_is_a_one_time_railway_job():
         config = tomllib.load(config_file)
 
     assert config["build"]["dockerfilePath"] == "Dockerfile.railway"
-    assert "migration/verify_production.py" in config["build"]["watchPatterns"]
+    assert (
+        "/job portal backend/migration/verify_production.py"
+        in config["build"]["watchPatterns"]
+    )
     assert (
         config["deploy"]["startCommand"]
         == "python -u migration/verify_production.py"

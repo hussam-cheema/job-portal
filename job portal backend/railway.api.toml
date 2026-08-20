@@ -2,11 +2,11 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.railway"
 watchPatterns = [
-  "app/**",
-  "config.yaml",
-  "requirements.txt",
-  "Dockerfile.railway",
-  "railway.api.toml",
+  "/job portal backend/app/**",
+  "/job portal backend/config.yaml",
+  "/job portal backend/requirements.txt",
+  "/job portal backend/Dockerfile.railway",
+  "/job portal backend/railway.api.toml",
 ]
 
 [deploy]
