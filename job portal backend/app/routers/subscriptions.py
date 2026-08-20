@@ -79,17 +79,23 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
     # explicitly asked to leave the mailing list.
     db.delete(row)
     db.commit()
-    return SubscriptionResult(status="unsubscribed", message="You have been unsubscribed.")
+    return SubscriptionResult(
+        status="unsubscribed", message="You have been unsubscribed."
+    )
 
 
 @router.get("/admin/subscriptions", response_model=DigestAdminSummary)
 def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     total, active = subscriber_counts(db)
     subject, body = digest_templates(db)
-    last = db.execute(
-        select(SubscriptionDigestRun).order_by(SubscriptionDigestRun.window_end.desc())
-    ).scalars().first()
-    last_job = db.get(Job, last.job_id) if last and last.job_id else None
+    last_row = db.execute(
+        select(SubscriptionDigestRun, Job.title)
+        .outerjoin(Job, Job.id == SubscriptionDigestRun.job_id)
+        .order_by(SubscriptionDigestRun.window_end.desc())
+        .limit(1)
+    ).first()
+    last = last_row[0] if last_row else None
+    last_job_title = last_row[1] if last_row else None
     provider, delivery_ready, delivery_message = email_delivery_status()
     return DigestAdminSummary(
         subscriber_count=total,
@@ -99,7 +105,7 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
         last_digest_at=last.completed_at if last else None,
         last_digest_status=last.status if last else None,
         last_digest_job_id=last.job_id if last else None,
-        last_digest_job_title=last_job.title if last_job else None,
+        last_digest_job_title=last_job_title,
         last_digest_recipients_count=last.recipients_count if last else 0,
         last_digest_sent_count=last.sent_count if last else 0,
         last_digest_failed_count=last.failed_count if last else 0,
@@ -138,9 +144,13 @@ def resend_latest_job_alert(
             "failed_count": 0,
             "message": delivery_message,
         }
-    latest = db.execute(
-        select(Job).order_by(Job.created_at.desc(), Job.published_date.desc())
-    ).scalars().first()
+    latest = (
+        db.execute(
+            select(Job).order_by(Job.created_at.desc(), Job.published_date.desc())
+        )
+        .scalars()
+        .first()
+    )
     if not latest:
         return {
             "status": "no_jobs",

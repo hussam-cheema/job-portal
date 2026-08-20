@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -14,15 +23,25 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=True)
     auth_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    password_reset_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    password_reset_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    password_reset_token_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    password_reset_requested_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -31,20 +50,44 @@ class PasswordResetAttempt(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     requester_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    attempted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
 
 
 class AnalyticsVisit(Base):
     __tablename__ = "analytics_visits"
+    __table_args__ = (
+        Index(
+            "ix_analytics_visitor_path_visited",
+            "visitor_hash",
+            "path",
+            "visited_at",
+        ),
+        Index(
+            "ix_analytics_verified_visitor_visited",
+            "visitor_hash",
+            "location_verified",
+            "visited_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     visitor_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
-    country: Mapped[str] = mapped_column(String(100), nullable=False, default="Unknown", index=True)
-    region: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
+    country: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="Unknown", index=True
+    )
+    region: Mapped[Optional[str]] = mapped_column(
+        String(150), nullable=True, index=True
+    )
     city: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
-    location_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    visited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    location_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    visited_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
 
 
 class InfrastructureCostSnapshot(Base):
@@ -59,7 +102,9 @@ class InfrastructureCostSnapshot(Base):
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    source: Mapped[str] = mapped_column(String(200), nullable=False, default="configuration")
+    source: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="configuration"
+    )
     estimated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -69,21 +114,35 @@ class InfrastructureCostSnapshot(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (
+        Index("ix_jobs_published_created", "published_date", "created_at"),
+        Index("ix_jobs_type_published", "job_type", "published_date"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    slug: Mapped[str] = mapped_column(String(400), unique=True, nullable=False, index=True)
+    slug: Mapped[str] = mapped_column(
+        String(400), unique=True, nullable=False, index=True
+    )
     title: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    published_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    published_date: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, index=True
+    )
     deadline_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     salary_range: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     reference_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     application_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    experience_required: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    education_required: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    experience_required: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )
+    education_required: Mapped[Optional[str]] = mapped_column(
+        String(300), nullable=True
+    )
     skills: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
-    job_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)  # government | private
+    job_type: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, index=True
+    )  # government | private
     cities: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     provinces: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     tags: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
@@ -96,6 +155,7 @@ class Job(Base):
 
 class JobAttachment(Base):
     __tablename__ = "job_attachments"
+    __table_args__ = (Index("ix_job_attachments_job_created", "job_id", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
@@ -110,6 +170,7 @@ class JobAttachment(Base):
 
 class JobQnA(Base):
     __tablename__ = "job_qna"
+    __table_args__ = (Index("ix_job_qna_job_created", "job_id", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
@@ -125,7 +186,9 @@ class Page(Base):
     __tablename__ = "pages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    slug: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
+    slug: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=False, index=True
+    )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     is_published: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -137,17 +200,34 @@ class Page(Base):
 
 class BlogPost(Base):
     __tablename__ = "blog_posts"
+    __table_args__ = (
+        Index(
+            "ix_blog_public_published_created",
+            "is_published",
+            "published_at",
+            "created_at",
+        ),
+        Index("ix_blog_updated", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    slug: Mapped[str] = mapped_column(String(400), unique=True, nullable=False, index=True)
+    slug: Mapped[str] = mapped_column(
+        String(400), unique=True, nullable=False, index=True
+    )
     title: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     author: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    category: Mapped[Optional[str]] = mapped_column(String(150), nullable=True, index=True)
+    category: Mapped[Optional[str]] = mapped_column(
+        String(150), nullable=True, index=True
+    )
     tags: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -156,6 +236,7 @@ class BlogPost(Base):
 
 class ContactMessage(Base):
     __tablename__ = "contact_messages"
+    __table_args__ = (Index("ix_contact_messages_created", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -168,9 +249,15 @@ class ContactMessage(Base):
 
 class SEOMeta(Base):
     __tablename__ = "seo_meta"
+    __table_args__ = (
+        Index("ix_seo_meta_entity", "entity_type", "entity_id"),
+        Index("ix_seo_meta_updated", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # job | page | blog
+    entity_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )  # job | page | blog
     entity_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     slug: Mapped[Optional[str]] = mapped_column(String(400), nullable=True, index=True)
     meta_title: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
@@ -202,7 +289,9 @@ class SEOMetric(Base):
     value: Mapped[float] = mapped_column(Float, default=0)
     unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     details: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
 
 
 class SiteSetting(Base):
@@ -221,13 +310,20 @@ class TaxonomyTerm(Base):
     """Administrator-managed category/tag available to job posts."""
 
     __tablename__ = "taxonomy_terms"
-    __table_args__ = (UniqueConstraint("kind", "slug", name="uq_taxonomy_kind_slug"),)
+    __table_args__ = (
+        UniqueConstraint("kind", "slug", name="uq_taxonomy_kind_slug"),
+        Index("ix_taxonomy_kind_active_name", "kind", "is_active", "name"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="category", index=True)
+    kind: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="category", index=True
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(140), nullable=False, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -236,6 +332,9 @@ class TaxonomyTerm(Base):
 
 class EmailSubscriber(Base):
     __tablename__ = "email_subscribers"
+    __table_args__ = (
+        Index("ix_subscribers_active_subscribed", "is_active", "subscribed_at"),
+    )
 
     user_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
     subscribed_email: Mapped[str] = mapped_column(
@@ -244,10 +343,14 @@ class EmailSubscriber(Base):
     unsubscribe_token: Mapped[str] = mapped_column(
         String(96), unique=True, nullable=False, index=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, index=True
+    )
     subscribed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_digest_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_digest_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -285,13 +388,22 @@ class SubscriptionEmailDelivery(Base):
             "subscriber_id",
             name="uq_subscription_email_deliveries_job_subscriber",
         ),
+        Index(
+            "ix_deliveries_due",
+            "status",
+            "next_attempt_at",
+            "created_at",
+        ),
+        Index("ix_deliveries_job_status", "job_id", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     subscriber_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="pending", index=True
+    )
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     smtp_message_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -308,12 +420,15 @@ class SubscriptionEmailDelivery(Base):
 
 class SEOBacklink(Base):
     __tablename__ = "seo_backlinks"
+    __table_args__ = (Index("ix_seo_backlinks_last_seen", "last_seen"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     target_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     anchor_text: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    domain: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_dofollow: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -324,6 +439,9 @@ class SEOKeywordRank(Base):
     """Keyword → URL ranking snapshot (from GSC or manual)."""
 
     __tablename__ = "seo_keyword_ranks"
+    __table_args__ = (
+        Index("ix_keyword_ranks_recorded_keyword", "recorded_at", "keyword"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     keyword: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
@@ -335,4 +453,6 @@ class SEOKeywordRank(Base):
     clicks: Mapped[int] = mapped_column(Integer, default=0)
     impressions: Mapped[int] = mapped_column(Integer, default=0)
     ctr: Mapped[float] = mapped_column(Float, default=0)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )

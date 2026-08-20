@@ -25,6 +25,23 @@ from app.utils import slugify
 router = APIRouter()
 logger = get_logger("jobportal.blog")
 
+BLOG_LIST_COLUMNS = (
+    BlogPost.id,
+    BlogPost.slug,
+    BlogPost.title,
+    BlogPost.excerpt,
+    # Lists need only enough content for an excerpt fallback. Full content is
+    # fetched by /blog/{slug} or /admin/blog/{id}.
+    func.substr(BlogPost.content, 1, 1200).label("content"),
+    BlogPost.author,
+    BlogPost.category,
+    BlogPost.tags,
+    BlogPost.is_published,
+    BlogPost.published_at,
+    BlogPost.created_at,
+    BlogPost.updated_at,
+)
+
 
 def _public_filter(stmt):
     now = datetime.utcnow()
@@ -61,15 +78,27 @@ def list_blog_posts(
     db: Session = Depends(get_db),
 ):
     try:
-        base = _apply_filters(_public_filter(select(BlogPost)), q, category, tag)
-        total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
-        items = db.execute(
-            base.order_by(
-                BlogPost.published_at.desc().nullslast(), BlogPost.created_at.desc()
+        base = _apply_filters(
+            _public_filter(select(*BLOG_LIST_COLUMNS)), q, category, tag
+        )
+        count_stmt = _apply_filters(
+            _public_filter(select(func.count()).select_from(BlogPost)),
+            q,
+            category,
+            tag,
+        )
+        total = db.execute(count_stmt).scalar() or 0
+        items = (
+            db.execute(
+                base.order_by(
+                    BlogPost.published_at.desc().nullslast(), BlogPost.created_at.desc()
+                )
+                .offset((page - 1) * page_size)
+                .limit(page_size)
             )
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).scalars().all()
+            .mappings()
+            .all()
+        )
         return {
             "items": items,
             "total": total,
@@ -79,13 +108,21 @@ def list_blog_posts(
         }
     except Exception:
         logger.exception("list_blog_posts failed")
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+            "pages": 0,
+        }
 
 
 @router.get("/blog/filters", response_model=BlogFiltersResponse)
 def blog_filters(db: Session = Depends(get_db)):
     try:
-        posts = db.execute(_public_filter(select(BlogPost))).scalars().all()
+        posts = db.execute(
+            _public_filter(select(BlogPost.category, BlogPost.tags))
+        ).all()
         return {
             "categories": sorted({p.category for p in posts if p.category}),
             "tags": sorted({str(tag) for p in posts for tag in (p.tags or []) if tag}),
@@ -108,7 +145,9 @@ def get_blog_post(slug: str, db: Session = Depends(get_db)):
         raise
     except Exception:
         logger.exception("get_blog_post failed slug=%s", slug)
-        raise HTTPException(status_code=500, detail="Failed to load blog post") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to load blog post"
+        ) from None
 
 
 @router.get("/admin/blog", response_model=BlogPostListResponse)
@@ -122,17 +161,26 @@ def admin_list_blog_posts(
     _: User = Depends(get_current_admin),
 ):
     try:
-        stmt = _apply_filters(select(BlogPost), q, category, None)
+        stmt = _apply_filters(select(*BLOG_LIST_COLUMNS), q, category, None)
+        count_stmt = _apply_filters(
+            select(func.count()).select_from(BlogPost), q, category, None
+        )
         if status == "published":
             stmt = stmt.where(BlogPost.is_published.is_(True))
+            count_stmt = count_stmt.where(BlogPost.is_published.is_(True))
         elif status == "draft":
             stmt = stmt.where(BlogPost.is_published.is_(False))
-        total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
-        items = db.execute(
-            stmt.order_by(BlogPost.updated_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).scalars().all()
+            count_stmt = count_stmt.where(BlogPost.is_published.is_(False))
+        total = db.execute(count_stmt).scalar() or 0
+        items = (
+            db.execute(
+                stmt.order_by(BlogPost.updated_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+            .mappings()
+            .all()
+        )
         return {
             "items": items,
             "total": total,
@@ -142,7 +190,9 @@ def admin_list_blog_posts(
         }
     except Exception:
         logger.exception("admin_list_blog_posts failed")
-        raise HTTPException(status_code=500, detail="Failed to load blog posts") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to load blog posts"
+        ) from None
 
 
 @router.get("/admin/blog/{post_id}", response_model=BlogPostOut)
@@ -167,7 +217,9 @@ def create_blog_post(
         slug = slugify(payload.slug or payload.title)
         if not slug:
             raise HTTPException(status_code=400, detail="A valid slug is required")
-        if db.execute(select(BlogPost).where(BlogPost.slug == slug)).scalar_one_or_none():
+        if db.execute(
+            select(BlogPost).where(BlogPost.slug == slug)
+        ).scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Slug already exists")
         now = datetime.utcnow()
         post = BlogPost(
@@ -180,7 +232,8 @@ def create_blog_post(
             category=(payload.category or "").strip() or None,
             tags=list(dict.fromkeys(t.strip() for t in payload.tags if t.strip())),
             is_published=payload.is_published,
-            published_at=payload.published_at or (now if payload.is_published else None),
+            published_at=payload.published_at
+            or (now if payload.is_published else None),
             created_at=now,
             updated_at=now,
         )
@@ -194,7 +247,9 @@ def create_blog_post(
     except Exception:
         db.rollback()
         logger.exception("create_blog_post failed")
-        raise HTTPException(status_code=500, detail="Failed to create blog post") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to create blog post"
+        ) from None
 
 
 @router.put("/admin/blog/{post_id}", response_model=BlogPostOut)
@@ -213,13 +268,17 @@ def update_blog_post(
         if data.get("slug"):
             candidate = slugify(data["slug"])
             duplicate = db.execute(
-                select(BlogPost).where(BlogPost.slug == candidate, BlogPost.id != post_id)
+                select(BlogPost).where(
+                    BlogPost.slug == candidate, BlogPost.id != post_id
+                )
             ).scalar_one_or_none()
             if duplicate:
                 raise HTTPException(status_code=400, detail="Slug already exists")
             data["slug"] = candidate
         if "tags" in data and data["tags"] is not None:
-            data["tags"] = list(dict.fromkeys(t.strip() for t in data["tags"] if t.strip()))
+            data["tags"] = list(
+                dict.fromkeys(t.strip() for t in data["tags"] if t.strip())
+            )
         was_published = post.is_published
         for key, value in data.items():
             setattr(post, key, value)
@@ -239,7 +298,9 @@ def update_blog_post(
     except Exception:
         db.rollback()
         logger.exception("update_blog_post failed id=%s", post_id)
-        raise HTTPException(status_code=500, detail="Failed to update blog post") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to update blog post"
+        ) from None
 
 
 @router.delete("/admin/blog/{post_id}")
@@ -261,4 +322,6 @@ def delete_blog_post(
     except Exception:
         db.rollback()
         logger.exception("delete_blog_post failed id=%s", post_id)
-        raise HTTPException(status_code=500, detail="Failed to delete blog post") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to delete blog post"
+        ) from None

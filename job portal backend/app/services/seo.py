@@ -108,7 +108,9 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
         from app.services.yoast import analyze_yoast
 
         existing = db.execute(
-            select(SEOMeta).where(SEOMeta.entity_type == "job", SEOMeta.entity_id == job.id)
+            select(SEOMeta).where(
+                SEOMeta.entity_type == "job", SEOMeta.entity_id == job.id
+            )
         ).scalar_one_or_none()
         ov = seo_override or {}
 
@@ -116,7 +118,9 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
         auto_desc = strip_html(job.description or "", 160)
         if not auto_desc:
             cities = ", ".join(job.cities or []) if isinstance(job.cities, list) else ""
-            auto_desc = f"{job.title} job in Pakistan{(' — ' + cities) if cities else ''}."
+            auto_desc = (
+                f"{job.title} job in Pakistan{(' — ' + cities) if cities else ''}."
+            )
         keywords_parts = []
         if job.keywords:
             keywords_parts.append(strip_html(job.keywords, 300))
@@ -191,16 +195,22 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
         raise
 
 
-def upsert_page_seo(db: Session, page: Page, seo_override: dict | None = None) -> SEOMeta:
+def upsert_page_seo(
+    db: Session, page: Page, seo_override: dict | None = None
+) -> SEOMeta:
     try:
         from app.services.yoast import analyze_yoast
 
         existing = db.execute(
-            select(SEOMeta).where(SEOMeta.entity_type == "page", SEOMeta.entity_id == page.id)
+            select(SEOMeta).where(
+                SEOMeta.entity_type == "page", SEOMeta.entity_id == page.id
+            )
         ).scalar_one_or_none()
         ov = seo_override or {}
         auto_title = f"{page.title} | {site_name()}"
-        auto_desc = strip_html(page.content or "", 160) or f"{page.title} — {site_name()}"
+        auto_desc = (
+            strip_html(page.content or "", 160) or f"{page.title} — {site_name()}"
+        )
         path = (
             f"/p/{page.slug}"
             if page.slug not in {"about", "contact", "privacy", "disclaimer"}
@@ -208,7 +218,9 @@ def upsert_page_seo(db: Session, page: Page, seo_override: dict | None = None) -
         )
         title = (ov.get("meta_title") or auto_title)[:300]
         desc = (ov.get("meta_description") or auto_desc)[:500]
-        keywords = ov.get("meta_keywords") or f"{page.title}, {site_name()}, Pakistan jobs"
+        keywords = (
+            ov.get("meta_keywords") or f"{page.title}, {site_name()}, Pakistan jobs"
+        )
         focus = (ov.get("focus_keyword") or "").strip() or None
         analysis = analyze_yoast(
             title=page.title,
@@ -224,7 +236,11 @@ def upsert_page_seo(db: Session, page: Page, seo_override: dict | None = None) -
             "name": page.title,
             "description": desc,
             "url": _canonical(path),
-            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": canonical_site_url()},
+            "isPartOf": {
+                "@type": "WebSite",
+                "name": site_name(),
+                "url": canonical_site_url(),
+            },
         }
         if existing:
             existing.slug = page.slug
@@ -320,12 +336,18 @@ def upsert_blog_seo(
             "headline": post.title,
             "description": desc,
             "articleBody": strip_html(post.content or "", 10000),
-            "datePublished": post.published_at.isoformat() if post.published_at else None,
+            "datePublished": post.published_at.isoformat()
+            if post.published_at
+            else None,
             "dateModified": post.updated_at.isoformat() if post.updated_at else None,
             "author": {"@type": "Person", "name": post.author or site_name()},
             "mainEntityOfPage": _canonical(path),
             "url": _canonical(path),
-            "isPartOf": {"@type": "WebSite", "name": site_name(), "url": canonical_site_url()},
+            "isPartOf": {
+                "@type": "WebSite",
+                "name": site_name(),
+                "url": canonical_site_url(),
+            },
         }
         values = {
             "slug": post.slug,
@@ -369,20 +391,26 @@ def build_seo_dashboard(db: Session) -> dict[str, Any]:
         total_pages = db.execute(select(func.count()).select_from(Page)).scalar() or 0
         jobs_seo = (
             db.execute(
-                select(func.count()).select_from(SEOMeta).where(SEOMeta.entity_type == "job")
+                select(func.count())
+                .select_from(SEOMeta)
+                .where(SEOMeta.entity_type == "job")
             ).scalar()
             or 0
         )
         pages_seo = (
             db.execute(
-                select(func.count()).select_from(SEOMeta).where(SEOMeta.entity_type == "page")
+                select(func.count())
+                .select_from(SEOMeta)
+                .where(SEOMeta.entity_type == "page")
             ).scalar()
             or 0
         )
 
         issues: list[str] = []
         # On-page checks
-        jobs = db.execute(select(Job)).scalars().all()
+        jobs = db.execute(
+            select(Job.title, Job.description, Job.keywords, Job.tags, Job.slug)
+        ).all()
         missing_desc = 0
         short_title = 0
         no_keywords = 0
@@ -469,7 +497,9 @@ def build_seo_dashboard(db: Session) -> dict[str, Any]:
         db.commit()
 
         recent = (
-            db.execute(select(SEOMetric).order_by(SEOMetric.recorded_at.desc()).limit(40))
+            db.execute(
+                select(SEOMetric).order_by(SEOMetric.recorded_at.desc()).limit(40)
+            )
             .scalars()
             .all()
         )

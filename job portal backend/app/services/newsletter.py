@@ -32,10 +32,7 @@ LEGACY_DIGEST_BODY = (
     "Here are the job postings published from {range_start} to {range_end}."
 )
 DEFAULT_ALERT_SUBJECT = "New Job Alert: {job_title} — {site_title}"
-DEFAULT_ALERT_BODY = (
-    "Dear Sir/Madam,\n\n"
-    "A new job has been published on {site_title}."
-)
+DEFAULT_ALERT_BODY = "Dear Sir/Madam,\n\nA new job has been published on {site_title}."
 
 
 def _setting(db: Session, key: str, default: str) -> str:
@@ -54,7 +51,9 @@ def digest_templates(db: Session) -> tuple[str, str]:
     return subject, body
 
 
-def set_digest_templates(db: Session, *, subject_template: str, body_template: str) -> None:
+def set_digest_templates(
+    db: Session, *, subject_template: str, body_template: str
+) -> None:
     for key, value in (
         ("digest_subject_template", subject_template.strip()),
         ("digest_body_template", body_template.strip()),
@@ -85,8 +84,14 @@ def build_job_alert_message(
     db: Session,
     subscriber: EmailSubscriber,
     job: Job,
+    *,
+    rendering_context: tuple[str, str, str] | None = None,
 ) -> EmailMessage:
-    title = _site_title(db)
+    if rendering_context is None:
+        title = _site_title(db)
+        subject_template, body_template = digest_templates(db)
+    else:
+        title, subject_template, body_template = rendering_context
     base_url = canonical_site_url()
     job_url = f"{base_url}/jobs/{job.slug or job.id}"
     published = (job.published_date or job.created_at or datetime.utcnow()).strftime(
@@ -97,7 +102,6 @@ def build_job_alert_message(
         if job.deadline_date
         else "Not specified"
     )
-    subject_template, body_template = digest_templates(db)
     values = {
         "site_title": title,
         "date": published,
@@ -137,9 +141,13 @@ def build_job_alert_message(
         f'<a href="{html.escape(unsubscribe_url, quote=True)}">Unsubscribe from job alerts</a>.</p>'
     )
 
-    from_email = env("EMAIL_FROM_EMAIL") or env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")
+    from_email = (
+        env("EMAIL_FROM_EMAIL") or env("SMTP_FROM_EMAIL") or env("SMTP_USERNAME")
+    )
     if not from_email:
-        raise RuntimeError("EMAIL_FROM_EMAIL, SMTP_FROM_EMAIL, or SMTP_USERNAME must be configured")
+        raise RuntimeError(
+            "EMAIL_FROM_EMAIL, SMTP_FROM_EMAIL, or SMTP_USERNAME must be configured"
+        )
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr((title, from_email))
@@ -156,6 +164,29 @@ def build_job_alert_message(
     message.set_content(plain)
     message.add_alternative(html_body, subtype="html")
     return message
+
+
+def _alert_rendering_context(db: Session) -> tuple[str, str, str]:
+    """Load all shared email-template settings once for a delivery batch."""
+    keys = {
+        "site_title",
+        "digest_subject_template",
+        "digest_body_template",
+    }
+    settings = {
+        key: value
+        for key, value in db.execute(
+            select(SiteSetting.key, SiteSetting.value).where(SiteSetting.key.in_(keys))
+        ).all()
+    }
+    title = settings.get("site_title") or str(cfg("site", "title", default=site_name()))
+    subject = settings.get("digest_subject_template") or DEFAULT_ALERT_SUBJECT
+    body = settings.get("digest_body_template") or DEFAULT_ALERT_BODY
+    if subject.strip() == LEGACY_DIGEST_SUBJECT:
+        subject = DEFAULT_ALERT_SUBJECT
+    if body.strip() == LEGACY_DIGEST_BODY:
+        body = DEFAULT_ALERT_BODY
+    return title, subject, body
 
 
 def _send_smtp_message(message: EmailMessage):
@@ -206,15 +237,13 @@ def _refresh_run_summary(db: Session, run_id: str) -> SubscriptionDigestRun | No
     run = db.get(SubscriptionDigestRun, run_id)
     if not run:
         return None
-    deliveries = (
-        db.execute(
-            select(SubscriptionEmailDelivery).where(
-                SubscriptionEmailDelivery.run_id == run_id
-            )
-        )
-        .scalars()
-        .all()
-    )
+    deliveries = db.execute(
+        select(
+            SubscriptionEmailDelivery.status,
+            SubscriptionEmailDelivery.subscriber_id,
+            SubscriptionEmailDelivery.last_error,
+        ).where(SubscriptionEmailDelivery.run_id == run_id)
+    ).all()
     run.recipients_count = len(deliveries)
     run.sent_count = sum(item.status == "delivered" for item in deliveries)
     run.failed_count = len(deliveries) - run.sent_count
@@ -290,23 +319,17 @@ def process_pending_job_alerts(
     )
     if job_id:
         due = due.where(SubscriptionEmailDelivery.job_id == job_id)
+    candidate_ids = (
+        due.order_by(SubscriptionEmailDelivery.created_at.asc())
+        .limit(max(1, min(1000, max_deliveries)))
+        .scalar_subquery()
+    )
+    claimed_at = datetime.utcnow()
     delivery_ids = list(
         db.execute(
-            due.order_by(SubscriptionEmailDelivery.created_at.asc()).limit(
-                max(1, min(1000, max_deliveries))
-            )
-        ).scalars()
-    )
-    db.commit()
-
-    touched_runs: set[str] = set()
-    delivered_count = 0
-    for delivery_id in delivery_ids:
-        claimed_at = datetime.utcnow()
-        claimed = db.execute(
             update(SubscriptionEmailDelivery)
             .where(
-                SubscriptionEmailDelivery.id == delivery_id,
+                SubscriptionEmailDelivery.id.in_(candidate_ids),
                 SubscriptionEmailDelivery.status.in_(["pending", "retrying"]),
             )
             .values(
@@ -315,17 +338,35 @@ def process_pending_job_alerts(
                 last_attempt_at=claimed_at,
                 updated_at=claimed_at,
             )
-        )
-        db.commit()
-        if not claimed.rowcount:
-            continue
+            .returning(SubscriptionEmailDelivery.id)
+        ).scalars()
+    )
+    db.commit()
 
-        delivery = db.get(SubscriptionEmailDelivery, delivery_id)
-        if not delivery:
+    touched_runs: set[str] = set()
+    delivered_count = 0
+    claimed_rows = db.execute(
+        select(SubscriptionEmailDelivery, Job, EmailSubscriber)
+        .outerjoin(Job, Job.id == SubscriptionEmailDelivery.job_id)
+        .outerjoin(
+            EmailSubscriber,
+            EmailSubscriber.user_uuid == SubscriptionEmailDelivery.subscriber_id,
+        )
+        .where(SubscriptionEmailDelivery.id.in_(delivery_ids))
+    ).all()
+    deliveries_by_id = {
+        delivery.id: (delivery, job, subscriber)
+        for delivery, job, subscriber in claimed_rows
+    }
+    rendering_context = _alert_rendering_context(db) if delivery_ids else None
+    previous_expire_on_commit = db.expire_on_commit
+    db.expire_on_commit = False
+    for delivery_id in delivery_ids:
+        loaded = deliveries_by_id.get(delivery_id)
+        if loaded is None:
             continue
+        delivery, job, subscriber = loaded
         touched_runs.add(delivery.run_id)
-        job = db.get(Job, delivery.job_id)
-        subscriber = db.get(EmailSubscriber, delivery.subscriber_id)
         if not job or not subscriber or not subscriber.is_active:
             delivery.status = "cancelled"
             delivery.last_error = "Job or active subscriber no longer exists"
@@ -334,7 +375,12 @@ def process_pending_job_alerts(
             continue
 
         try:
-            message = build_job_alert_message(db, subscriber, job)
+            message = build_job_alert_message(
+                db,
+                subscriber,
+                job,
+                rendering_context=rendering_context,
+            )
             receipt = _deliver_with_retries(message)
             delivered_at = datetime.utcnow()
             delivery.status = "delivered"
@@ -375,6 +421,8 @@ def process_pending_job_alerts(
             )
         db.commit()
 
+    db.expire_on_commit = previous_expire_on_commit
+
     for run_id in touched_runs:
         _refresh_run_summary(db, run_id)
     db.commit()
@@ -411,9 +459,9 @@ def queue_new_job_alert(
         db.delete(existing)
         db.flush()
 
-    subscribers = (
+    subscriber_ids = (
         db.execute(
-            select(EmailSubscriber)
+            select(EmailSubscriber.user_uuid)
             .where(EmailSubscriber.is_active.is_(True))
             .order_by(EmailSubscriber.subscribed_at.asc())
         )
@@ -428,7 +476,7 @@ def queue_new_job_alert(
         window_end=now,
         status="running",
         jobs_count=1,
-        recipients_count=len(subscribers),
+        recipients_count=len(subscriber_ids),
         sent_count=0,
         failed_count=0,
         created_at=now,
@@ -436,18 +484,18 @@ def queue_new_job_alert(
     db.add(run)
     db.flush()
 
-    if not subscribers:
+    if not subscriber_ids:
         run.status = "no_subscribers"
         run.completed_at = now
         return run
 
-    for subscriber in subscribers:
+    for subscriber_id in subscriber_ids:
         db.add(
             SubscriptionEmailDelivery(
                 id=uuid4().hex,
                 run_id=run.id,
                 job_id=job.id,
-                subscriber_id=subscriber.user_uuid,
+                subscriber_id=subscriber_id,
                 status="pending",
                 attempts=0,
                 next_attempt_at=now,
@@ -485,9 +533,12 @@ def send_new_job_alert(
 
 def subscriber_counts(db: Session) -> tuple[int, int]:
     total = db.execute(select(func.count()).select_from(EmailSubscriber)).scalar() or 0
-    active = db.execute(
-        select(func.count())
-        .select_from(EmailSubscriber)
-        .where(EmailSubscriber.is_active.is_(True))
-    ).scalar() or 0
+    active = (
+        db.execute(
+            select(func.count())
+            .select_from(EmailSubscriber)
+            .where(EmailSubscriber.is_active.is_(True))
+        ).scalar()
+        or 0
+    )
     return int(total), int(active)

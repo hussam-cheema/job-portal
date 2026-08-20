@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import resource
 import sys
 import threading
@@ -13,20 +14,27 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import cfg, env, r2_enabled
 from app.logging_config import get_logger
-from app.models import InfrastructureCostSnapshot
+from app.models import (
+    EmailSubscriber,
+    InfrastructureCostSnapshot,
+    Job,
+    SubscriptionEmailDelivery,
+)
 from app.schemas import (
     InfrastructureAlert,
     InfrastructureComputeMetric,
     InfrastructureConnectionMetric,
+    InfrastructureCostDriver,
     InfrastructureCostHistoryPoint,
     InfrastructureCostItem,
     InfrastructureCostSummary,
     InfrastructureDashboard,
+    InfrastructureProviderBilling,
     InfrastructureQuotaMetric,
     InfrastructureStorageMetric,
 )
@@ -45,6 +53,37 @@ _R2_CACHE_SECONDS = 300
 _azure_cost_cache_lock = threading.Lock()
 _azure_cost_cache: dict[str, Any] = {}
 _AZURE_COST_CACHE_SECONDS = 900
+_provider_usage_cache_lock = threading.Lock()
+_provider_usage_cache: dict[str, Any] = {}
+_PROVIDER_USAGE_CACHE_SECONDS = 300
+
+_R2_CLASS_A_ACTIONS = {
+    "ListBuckets",
+    "PutBucket",
+    "ListObjects",
+    "PutObject",
+    "CopyObject",
+    "CompleteMultipartUpload",
+    "CreateMultipartUpload",
+    "LifecycleStorageTierTransition",
+    "ListMultipartUploads",
+    "UploadPart",
+    "UploadPartCopy",
+    "ListParts",
+    "PutBucketEncryption",
+    "PutBucketCors",
+    "PutBucketLifecycleConfiguration",
+}
+_R2_CLASS_B_ACTIONS = {
+    "HeadBucket",
+    "HeadObject",
+    "GetObject",
+    "UsageSummary",
+    "GetBucketEncryption",
+    "GetBucketLocation",
+    "GetBucketCors",
+    "GetBucketLifecycleConfiguration",
+}
 
 
 def _env_float(name: str, default: float | None = None) -> float | None:
@@ -66,6 +105,81 @@ def _env_int(name: str, default: int) -> int:
         return max(0, int(raw))
     except ValueError:
         return default
+
+
+def _env_datetime(name: str) -> datetime | None:
+    raw = (env(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _calendar_billing_window(now: datetime | None = None) -> tuple[datetime, datetime]:
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    start = current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start, end
+
+
+def _billing_window(prefix: str) -> tuple[datetime, datetime]:
+    fallback_start, fallback_end = _calendar_billing_window()
+    start = _env_datetime(f"{prefix}_BILLING_PERIOD_START") or fallback_start
+    end = _env_datetime(f"{prefix}_BILLING_PERIOD_END") or fallback_end
+    if end <= start:
+        return fallback_start, fallback_end
+    return start, end
+
+
+def _project_month_end(
+    value: float | None, start: datetime, end: datetime
+) -> float | None:
+    if value is None:
+        return None
+    now = datetime.now(timezone.utc)
+    elapsed = max(
+        3600.0, min((now - start).total_seconds(), (end - start).total_seconds())
+    )
+    total = max(elapsed, (end - start).total_seconds())
+    return round(max(0.0, float(value)) * total / elapsed, 2)
+
+
+def _remaining(used: float | None, included: float | None) -> float | None:
+    if used is None or included is None:
+        return None
+    return round(max(0.0, included - used), 4)
+
+
+def _driver_status(used: float | None, included: float | None) -> str:
+    if used is None:
+        return "unknown"
+    return _status(_percent(used, included)) if included is not None else "healthy"
+
+
+def _cached_provider_value(key: str, *, force_refresh: bool) -> Any | None:
+    with _provider_usage_cache_lock:
+        cached = _provider_usage_cache.get(key)
+        if (
+            cached
+            and not force_refresh
+            and time.monotonic() - cached["at"] < _PROVIDER_USAGE_CACHE_SECONDS
+        ):
+            return cached["value"]
+    return None
+
+
+def _store_provider_value(key: str, value: Any) -> Any:
+    with _provider_usage_cache_lock:
+        _provider_usage_cache[key] = {"at": time.monotonic(), "value": value}
+    return value
 
 
 def _percent(used: float | int | None, total: float | int | None) -> float | None:
@@ -98,7 +212,9 @@ def _read_number(path: str) -> int | None:
 
 def _cgroup_cpu_limit() -> float | None:
     try:
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()
+        quota, period = (
+            Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()
+        )
         if quota != "max" and int(period) > 0:
             return int(quota) / int(period)
     except (OSError, ValueError):
@@ -127,7 +243,9 @@ def _memory_used() -> int | None:
     if current is not None:
         return current
     try:
-        resident_pages = int(Path("/proc/self/statm").read_text(encoding="utf-8").split()[1])
+        resident_pages = int(
+            Path("/proc/self/statm").read_text(encoding="utf-8").split()[1]
+        )
         return resident_pages * int(os.sysconf("SC_PAGE_SIZE"))
     except (OSError, ValueError, IndexError):
         try:
@@ -145,7 +263,9 @@ def _cpu_used_percent(allocated_cores: float) -> float:
         _cpu_previous = now
     elapsed = max(0.001, now[0] - previous[0])
     cpu_elapsed = max(0.0, now[1] - previous[1])
-    return round(min(100.0, (cpu_elapsed / elapsed / max(allocated_cores, 0.001)) * 100), 1)
+    return round(
+        min(100.0, (cpu_elapsed / elapsed / max(allocated_cores, 0.001)) * 100), 1
+    )
 
 
 def _r2_storage(force_refresh: bool) -> InfrastructureStorageMetric:
@@ -173,7 +293,11 @@ def _r2_storage(force_refresh: bool) -> InfrastructureStorageMetric:
     cache_key = f"{bucket}:{prefix}"
     with _r2_cache_lock:
         cached = _r2_cache.get(cache_key)
-        if cached and not force_refresh and time.monotonic() - cached["at"] < _R2_CACHE_SECONDS:
+        if (
+            cached
+            and not force_refresh
+            and time.monotonic() - cached["at"] < _R2_CACHE_SECONDS
+        ):
             used_bytes, object_count = cached["used_bytes"], cached["object_count"]
         else:
             used_bytes = object_count = None
@@ -223,11 +347,17 @@ def _r2_storage(force_refresh: bool) -> InfrastructureStorageMetric:
 
 def _database_storage(db: Session) -> InfrastructureStorageMetric:
     total_bytes = int((_env_float("DB_STORAGE_LIMIT_GB", 32.0) or 0) * GIB) or None
-    database_provider = env("DATABASE_PROVIDER", "Azure PostgreSQL") or "Azure PostgreSQL"
+    database_provider = (
+        env("DATABASE_PROVIDER", "Azure PostgreSQL") or "Azure PostgreSQL"
+    )
     try:
         dialect = db.get_bind().dialect.name
         if dialect == "postgresql":
-            used_bytes = int(db.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+            used_bytes = int(
+                db.execute(
+                    text("SELECT pg_database_size(current_database())")
+                ).scalar_one()
+            )
             source = "PostgreSQL pg_database_size"
         elif dialect == "sqlite":
             page_count = int(db.execute(text("PRAGMA page_count")).scalar_one())
@@ -288,15 +418,20 @@ def _database_connections(db: Session) -> InfrastructureConnectionMetric:
 
 
 def _compute_metrics() -> list[InfrastructureComputeMetric]:
-    backend_provider = env("BACKEND_PROVIDER", "Azure Container Apps") or "Azure Container Apps"
-    backend_runtime = (
-        env("BACKEND_RUNTIME_MODEL", "Dedicated per replica")
-        or "Dedicated per replica"
+    backend_provider = (
+        env("BACKEND_PROVIDER", "Azure Container Apps") or "Azure Container Apps"
     )
-    cpu_allocation = _cgroup_cpu_limit() or _env_float("BACKEND_CPU_LIMIT_CORES", 0.5) or 0.5
+    backend_runtime = (
+        env("BACKEND_RUNTIME_MODEL", "Dedicated per replica") or "Dedicated per replica"
+    )
+    cpu_allocation = (
+        _cgroup_cpu_limit() or _env_float("BACKEND_CPU_LIMIT_CORES", 0.5) or 0.5
+    )
     memory_allocation = _cgroup_memory_limit()
     if memory_allocation is None:
-        memory_allocation = int((_env_float("BACKEND_MEMORY_LIMIT_MB", 1024.0) or 1024.0) * MIB)
+        memory_allocation = int(
+            (_env_float("BACKEND_MEMORY_LIMIT_MB", 1024.0) or 1024.0) * MIB
+        )
     memory_used = _memory_used()
     memory_percent = _percent(memory_used, memory_allocation)
     cpu_percent = _cpu_used_percent(cpu_allocation)
@@ -326,26 +461,326 @@ def _quota_metrics() -> list[InfrastructureQuotaMetric]:
     plan = env("FRONTEND_PLAN", "Free") or "Free"
     app_limit_mb = _env_float("FRONTEND_APP_LIMIT_MB", 250.0) or 250.0
     bandwidth_limit_gb = _env_float("FRONTEND_BANDWIDTH_LIMIT_GB", 100.0) or 100.0
+    app_used_mb = _env_float("FRONTEND_APP_SIZE_MB")
+    bandwidth_used_gb = _env_float("FRONTEND_BANDWIDTH_USED_GB")
     return [
         InfrastructureQuotaMetric(
             id="frontend_assets",
             name="Frontend app size",
             provider=f"Azure Static Web Apps {plan}",
+            used=app_used_mb,
             total=app_limit_mb,
             unit="MB",
-            status="unknown",
-            detail="Provider quota; deployed artifact usage is not exposed to the backend.",
+            utilization_percent=_percent(app_used_mb, app_limit_mb),
+            status=_driver_status(app_used_mb, app_limit_mb),
+            detail="Per-app deployment limit; configure the current artifact size when Azure does not expose it to the backend.",
         ),
         InfrastructureQuotaMetric(
             id="frontend_bandwidth",
             name="Frontend bandwidth",
             provider=f"Azure Static Web Apps {plan}",
+            used=bandwidth_used_gb,
             total=bandwidth_limit_gb,
             unit="GB/month",
-            status="unknown",
-            detail="Included plan bandwidth; live tenant usage requires Azure Cost Management or Monitor access.",
+            utilization_percent=_percent(bandwidth_used_gb, bandwidth_limit_gb),
+            status=_driver_status(bandwidth_used_gb, bandwidth_limit_gb),
+            detail="Free serves up to 100 GB per subscription each month; live usage requires Azure telemetry or configuration.",
         ),
     ]
+
+
+def _neon_usage(
+    database_metric: InfrastructureStorageMetric,
+    *,
+    force_refresh: bool,
+) -> dict[str, Any]:
+    start, end = _billing_window("NEON")
+    fallback = {
+        "compute_cu_hours": _env_float("NEON_COMPUTE_CU_HOURS"),
+        "storage_gb": (
+            (database_metric.used_bytes or 0) / GIB
+            if database_metric.used_bytes is not None
+            else None
+        ),
+        "history_gb": _env_float("NEON_HISTORY_STORAGE_GB"),
+        "network_gb": _env_float("NEON_NETWORK_TRANSFER_GB"),
+        "branch_count": _env_float("NEON_BRANCH_COUNT"),
+        "period_start": start,
+        "period_end": end,
+        "source": "PostgreSQL size + configuration",
+        "configured": False,
+    }
+    api_key = env("NEON_API_KEY")
+    project_id = env("NEON_PROJECT_ID")
+    if not api_key or not project_id:
+        return fallback
+    cache_key = f"neon:{project_id}"
+    cached = _cached_provider_value(cache_key, force_refresh=force_refresh)
+    if cached is not None:
+        return cached
+    try:
+        response = httpx.get(
+            f"https://console.neon.tech/api/v2/projects/{project_id}",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+            },
+            timeout=12.0,
+        )
+        response.raise_for_status()
+        project = response.json().get("project") or {}
+        api_start = project.get("consumption_period_start")
+        api_end = project.get("consumption_period_end")
+        if api_start:
+            try:
+                start = datetime.fromisoformat(str(api_start).replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        if api_end:
+            try:
+                end = datetime.fromisoformat(str(api_end).replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        elapsed_hours = max(
+            1.0, (datetime.now(timezone.utc) - start).total_seconds() / 3600
+        )
+        storage_byte_hours = float(project.get("data_storage_bytes_hour") or 0)
+        storage_gb = (
+            storage_byte_hours / elapsed_hours / GIB
+            if storage_byte_hours > 0
+            else fallback["storage_gb"]
+        )
+        branch_count = fallback["branch_count"]
+        try:
+            branch_response = httpx.get(
+                f"https://console.neon.tech/api/v2/projects/{project_id}/branches/count",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Accept": "application/json",
+                },
+                timeout=12.0,
+            )
+            branch_response.raise_for_status()
+            raw_branch_count = branch_response.json().get("count")
+            if raw_branch_count is not None:
+                branch_count = float(raw_branch_count)
+        except Exception:
+            logger.warning("Neon branch count collection failed project=%s", project_id)
+        value = {
+            "compute_cu_hours": round(
+                float(project.get("cpu_used_sec") or 0) / 3600, 2
+            ),
+            "storage_gb": round(float(storage_gb or 0), 4),
+            # Free-plan history is limited by retained time or data changes.
+            # written_data_bytes is the closest all-plan API signal for that
+            # pressure; paid plans can override with the exact history metric.
+            "history_gb": (
+                _env_float("NEON_HISTORY_STORAGE_GB")
+                if env("NEON_HISTORY_STORAGE_GB") is not None
+                else round(float(project.get("written_data_bytes") or 0) / GIB, 4)
+            ),
+            "network_gb": round(
+                float(project.get("data_transfer_bytes") or 0) / GIB, 4
+            ),
+            "branch_count": branch_count,
+            "period_start": start,
+            "period_end": end,
+            "source": "Neon project details API (cached up to 5 min)",
+            "configured": True,
+        }
+        return _store_provider_value(cache_key, value)
+    except Exception:
+        logger.exception("Neon usage collection failed project=%s", project_id)
+        fallback["source"] = (
+            "Neon API unavailable; PostgreSQL size + configuration fallback"
+        )
+        return fallback
+
+
+def _quota_header_used(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", value.replace(",", ""))
+    return float(match.group(0)) if match else None
+
+
+def _resend_usage(db: Session, *, force_refresh: bool) -> dict[str, Any]:
+    start, end = _billing_window("RESEND")
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start_naive = start.replace(tzinfo=None)
+    day_start_naive = day_start.replace(tzinfo=None)
+    delivered_month = int(
+        db.execute(
+            select(func.count(SubscriptionEmailDelivery.id)).where(
+                SubscriptionEmailDelivery.delivered_at >= month_start_naive
+            )
+        ).scalar_one()
+    )
+    delivered_today = int(
+        db.execute(
+            select(func.count(SubscriptionEmailDelivery.id)).where(
+                SubscriptionEmailDelivery.delivered_at >= day_start_naive
+            )
+        ).scalar_one()
+    )
+    active_subscribers = int(
+        db.execute(
+            select(func.count(EmailSubscriber.user_uuid)).where(
+                EmailSubscriber.is_active.is_(True)
+            )
+        ).scalar_one()
+    )
+    jobs_this_month = int(
+        db.execute(
+            select(func.count(Job.id)).where(Job.created_at >= month_start_naive)
+        ).scalar_one()
+    )
+    value = {
+        "monthly_used": float(delivered_month),
+        "daily_used": float(delivered_today),
+        "active_subscribers": float(active_subscribers),
+        "jobs_this_month": float(jobs_this_month),
+        "period_start": start,
+        "period_end": end,
+        "source": "Application delivery ledger",
+        "configured": False,
+    }
+    api_key = env("RESEND_API_KEY")
+    if not api_key:
+        return value
+    cache_key = "resend:quota"
+    cached = _cached_provider_value(cache_key, force_refresh=force_refresh)
+    if cached is not None:
+        # Subscriber/job demand is local and should not be frozen with the API cache.
+        return {
+            **cached,
+            "active_subscribers": float(active_subscribers),
+            "jobs_this_month": float(jobs_this_month),
+        }
+    try:
+        api_url = (env("RESEND_API_URL") or "https://api.resend.com/emails").rstrip("/")
+        response = httpx.get(
+            api_url,
+            params={"limit": 1},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+                "User-Agent": "pakistan-jobs-market-infrastructure/1.0",
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        monthly_header = _quota_header_used(
+            response.headers.get("x-resend-monthly-quota")
+        )
+        daily_header = _quota_header_used(response.headers.get("x-resend-daily-quota"))
+        value.update(
+            {
+                "monthly_used": monthly_header
+                if monthly_header is not None
+                else float(delivered_month),
+                "daily_used": daily_header
+                if daily_header is not None
+                else float(delivered_today),
+                "source": (
+                    "Resend quota headers (cached up to 5 min)"
+                    if monthly_header is not None
+                    else "Resend API reachable; application delivery ledger"
+                ),
+                "configured": True,
+            }
+        )
+        return _store_provider_value(cache_key, value)
+    except Exception:
+        logger.exception("Resend quota collection failed")
+        value["source"] = "Resend API unavailable; application delivery ledger fallback"
+        return value
+
+
+def _r2_operation_usage(*, force_refresh: bool) -> dict[str, Any]:
+    start, end = _billing_window("R2")
+    fallback = {
+        "class_a": _env_float("R2_CLASS_A_OPERATIONS"),
+        "class_b": _env_float("R2_CLASS_B_OPERATIONS"),
+        "period_start": start,
+        "period_end": end,
+        "source": "configuration",
+        "configured": False,
+    }
+    token = env("CLOUDFLARE_API_TOKEN")
+    account_id = env("R2_ACCOUNT_ID")
+    bucket = storage._bucket()
+    if not token or not account_id or not bucket:
+        return fallback
+    cache_key = f"r2-operations:{account_id}:{bucket}"
+    cached = _cached_provider_value(cache_key, force_refresh=force_refresh)
+    if cached is not None:
+        return cached
+    query = """
+    query R2Operations($accountTag: string!, $startDate: Time, $endDate: Time, $bucketName: string) {
+      viewer {
+        accounts(filter: {accountTag: $accountTag}) {
+          r2OperationsAdaptiveGroups(
+            limit: 10000
+            filter: {datetime_geq: $startDate, datetime_leq: $endDate, bucketName: $bucketName}
+          ) {
+            sum { requests }
+            dimensions { actionType }
+          }
+        }
+      }
+    }
+    """
+    try:
+        response = httpx.post(
+            "https://api.cloudflare.com/client/v4/graphql",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "query": query,
+                "variables": {
+                    "accountTag": account_id,
+                    "startDate": start.isoformat().replace("+00:00", "Z"),
+                    "endDate": min(datetime.now(timezone.utc), end)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    "bucketName": bucket,
+                },
+            },
+            timeout=12.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise RuntimeError(str(payload["errors"])[:300])
+        accounts = ((payload.get("data") or {}).get("viewer") or {}).get(
+            "accounts"
+        ) or []
+        groups = (
+            (accounts[0].get("r2OperationsAdaptiveGroups") or []) if accounts else []
+        )
+        class_a = 0.0
+        class_b = 0.0
+        for group in groups:
+            action = str((group.get("dimensions") or {}).get("actionType") or "")
+            requests = float((group.get("sum") or {}).get("requests") or 0)
+            if action in _R2_CLASS_A_ACTIONS:
+                class_a += requests
+            elif action in _R2_CLASS_B_ACTIONS:
+                class_b += requests
+        value = {
+            "class_a": class_a,
+            "class_b": class_b,
+            "period_start": start,
+            "period_end": end,
+            "source": "Cloudflare GraphQL Analytics API (cached up to 5 min)",
+            "configured": True,
+        }
+        return _store_provider_value(cache_key, value)
+    except Exception:
+        logger.exception("Cloudflare R2 operation collection failed bucket=%s", bucket)
+        fallback["source"] = "Cloudflare Analytics unavailable; configuration fallback"
+        return fallback
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -454,9 +889,7 @@ def _query_azure_cost_scope(scope: str, token: str) -> dict[str, Any]:
             "timeframe": "MonthToDate",
             "dataset": {
                 "granularity": "None",
-                "aggregation": {
-                    "totalCost": {"name": "PreTaxCost", "function": "Sum"}
-                },
+                "aggregation": {"totalCost": {"name": "PreTaxCost", "function": "Sum"}},
                 "grouping": [
                     {"type": "Dimension", "name": "ResourceId"},
                     {"type": "Dimension", "name": "ResourceType"},
@@ -498,7 +931,7 @@ def _azure_month_to_date_costs(force_refresh: bool) -> dict[str, Any] | None:
         resource_ids: dict[str, list[str]] = {}
         currency = "USD"
         for scope in scopes:
-            properties = (_query_azure_cost_scope(scope, token).get("properties") or {})
+            properties = _query_azure_cost_scope(scope, token).get("properties") or {}
             columns = [
                 str(column.get("name") or "")
                 for column in properties.get("columns") or []
@@ -638,13 +1071,19 @@ def _cost_history(
 
     try:
         changed = False
-        for provider, cost in current_provider_costs.items():
-            row = db.execute(
+        existing_rows = (
+            db.execute(
                 select(InfrastructureCostSnapshot).where(
                     InfrastructureCostSnapshot.month == current_month,
-                    InfrastructureCostSnapshot.provider == provider,
+                    InfrastructureCostSnapshot.provider.in_(current_provider_costs),
                 )
-            ).scalar_one_or_none()
+            )
+            .scalars()
+            .all()
+        )
+        existing_by_provider = {row.provider: row for row in existing_rows}
+        for provider, cost in current_provider_costs.items():
+            row = existing_by_provider.get(provider)
             if row is None:
                 db.add(
                     InfrastructureCostSnapshot(
@@ -688,9 +1127,9 @@ def _cost_history(
     estimated_by_month: dict[str, bool] = {}
     for row in rows:
         by_month.setdefault(row.month, {})[row.provider] = round(row.cost_usd, 2)
-        estimated_by_month[row.month] = estimated_by_month.get(row.month, False) or bool(
-            row.estimated
-        )
+        estimated_by_month[row.month] = estimated_by_month.get(
+            row.month, False
+        ) or bool(row.estimated)
 
     manual = _manual_cost_history()
     for month, entry in manual.items():
@@ -701,7 +1140,9 @@ def _cost_history(
     # Railway and Neon did not exist before cutover. That fact does not imply
     # the retired Azure stack cost $0, so an unbackfilled month is deliberately
     # marked unavailable instead of presenting a misleading zero total.
-    stack_started = env("INFRA_CURRENT_STACK_STARTED_MONTH", current_month) or current_month
+    stack_started = (
+        env("INFRA_CURRENT_STACK_STARTED_MONTH", current_month) or current_month
+    )
     points: list[InfrastructureCostHistoryPoint] = []
     for month in months:
         values = by_month.get(month)
@@ -716,7 +1157,11 @@ def _cost_history(
             estimated = True
             available = False
         else:
-            source = "manual invoice backfill" if month in manual else "stored monthly snapshot"
+            source = (
+                "manual invoice backfill"
+                if month in manual
+                else "stored monthly snapshot"
+            )
             estimated = estimated_by_month.get(month, True)
             available = True
         total = round(sum(values.values()), 2) if available else None
@@ -742,33 +1187,633 @@ def _cost_history(
     return points
 
 
-def _cost_summary(
+def _r2_standard_cost(storage_gb: float, class_a: float, class_b: float) -> float:
+    storage_blocks = math.ceil(max(0.0, storage_gb - 10.0))
+    class_a_blocks = math.ceil(max(0.0, class_a - 1_000_000.0) / 1_000_000.0)
+    class_b_blocks = math.ceil(max(0.0, class_b - 10_000_000.0) / 1_000_000.0)
+    return round(
+        storage_blocks * 0.015 + class_a_blocks * 4.50 + class_b_blocks * 0.36, 2
+    )
+
+
+def _provider_usage_dashboard(
     db: Session,
     r2_metric: InfrastructureStorageMetric,
+    database_metric: InfrastructureStorageMetric,
     *,
     force_refresh: bool,
-) -> InfrastructureCostSummary:
-    # Cloudflare R2 Standard pricing, last verified 2026-07: first 10 GB-month free,
-    # then USD 0.015/GB-month. This snapshot is directional, not an invoice.
-    r2_gb = (r2_metric.used_bytes or 0) / GIB
-    r2_billable_gb = math.ceil(max(0.0, r2_gb - 10.0))
-    r2_estimate = round(r2_billable_gb * 0.015, 2)
+) -> tuple[list[InfrastructureCostDriver], list[InfrastructureProviderBilling]]:
+    drivers: list[InfrastructureCostDriver] = []
+    providers: list[InfrastructureProviderBilling] = []
 
-    railway_plan = env("RAILWAY_PLAN", "Hobby") or "Hobby"
-    railway_actual = _env_float("RAILWAY_MONTH_TO_DATE_COST_USD")
-    railway_estimate = _env_float("RAILWAY_MONTHLY_COST_USD")
-    if railway_estimate is None and railway_plan.casefold() == "hobby":
-        # Railway Hobby has a $5 minimum usage commitment that includes the
-        # first $5 of resource usage.
-        railway_estimate = 5.0
-    railway_cost = railway_actual if railway_actual is not None else railway_estimate
+    # Railway Free is genuinely $0/month with $1 of monthly resource credit.
+    # The old RAILWAY_PLAN/RAILWAY_MONTHLY_COST_USD variables represented the
+    # anticipated Hobby upgrade and must not create a debt while this workspace
+    # is still on Free. RAILWAY_SUBSCRIPTION_PLAN is the authoritative setting.
+    railway_plan = env("RAILWAY_SUBSCRIPTION_PLAN", "Free") or "Free"
+    railway_plan_key = railway_plan.casefold()
+    railway_start, railway_end = _billing_window("RAILWAY")
+    railway_subscription = (
+        _env_float(
+            "RAILWAY_SUBSCRIPTION_FEE_USD",
+            {"free": 0.0, "hobby": 5.0, "pro": 20.0}.get(railway_plan_key, 0.0),
+        )
+        or 0.0
+    )
+    railway_credit = (
+        _env_float(
+            "RAILWAY_INCLUDED_USAGE_USD",
+            {"free": 1.0, "hobby": 5.0, "pro": 20.0}.get(railway_plan_key, 0.0),
+        )
+        or 0.0
+    )
+    railway_cpu = _env_float("RAILWAY_CPU_VCPU_HOURS")
+    railway_memory = _env_float("RAILWAY_MEMORY_GB_HOURS")
+    railway_egress = _env_float("RAILWAY_NETWORK_EGRESS_GB")
+    railway_volume = _env_float("RAILWAY_VOLUME_GB_MONTHS")
+    calculated_railway_usage = (
+        (railway_cpu or 0) * (20 / 730)
+        + (railway_memory or 0) * (10 / 730)
+        + (railway_egress or 0) * 0.05
+        + (railway_volume or 0) * 0.15
+        if any(
+            value is not None
+            for value in (railway_cpu, railway_memory, railway_egress, railway_volume)
+        )
+        else None
+    )
+    railway_usage = _env_float("RAILWAY_CURRENT_USAGE_USD")
+    if railway_usage is None:
+        railway_usage = _env_float("RAILWAY_MONTH_TO_DATE_COST_USD")
+    if railway_usage is None:
+        railway_usage = calculated_railway_usage
+    railway_projected = _env_float("RAILWAY_PROJECTED_USAGE_USD")
+    if railway_projected is None:
+        railway_projected = _project_month_end(
+            railway_usage, railway_start, railway_end
+        )
+    railway_due = (
+        0.0
+        if railway_plan_key == "free"
+        else round(max(railway_subscription, railway_usage or 0.0), 2)
+    )
+    railway_projected_due = (
+        0.0
+        if railway_plan_key == "free"
+        else round(max(railway_subscription, railway_projected or 0.0), 2)
+    )
+    railway_source = (
+        "Railway Usage configuration"
+        if railway_usage is not None
+        else "Railway Free subscription limits; add usage values for live spend"
+    )
+    providers.append(
+        InfrastructureProviderBilling(
+            id="railway",
+            provider="Railway",
+            plan=railway_plan,
+            subscription_fee_usd=railway_subscription,
+            included_credit_usd=railway_credit,
+            current_usage_usd=round(railway_usage, 2)
+            if railway_usage is not None
+            else None,
+            current_amount_due_usd=railway_due,
+            projected_usage_usd=round(railway_projected, 2)
+            if railway_projected is not None
+            else None,
+            projected_amount_due_usd=railway_projected_due,
+            billing_period_start=railway_start,
+            billing_period_end=railway_end,
+            next_charge_at=railway_end if railway_plan_key != "free" else None,
+            configured=railway_usage is not None,
+            status=_driver_status(railway_usage, railway_credit),
+            source=railway_source,
+            detail=(
+                "No $5 is currently owed. Free workloads can use $1 of monthly resources; "
+                "at that limit they must wait for the next reset or upgrade to Hobby ($5/month, "
+                "including the first $5 of usage)."
+                if railway_plan_key == "free"
+                else f"The ${railway_subscription:.0f} subscription is the minimum monthly commitment and offsets the first ${railway_credit:.0f} of usage."
+            ),
+        )
+    )
+    drivers.append(
+        InfrastructureCostDriver(
+            id="railway_usage_credit",
+            provider="Railway",
+            service="Backend API + newsletter retry",
+            plan=railway_plan,
+            metric="Resource usage credit",
+            used=round(railway_usage, 4) if railway_usage is not None else None,
+            included=railway_credit,
+            remaining=_remaining(railway_usage, railway_credit),
+            unit="USD",
+            utilization_percent=_percent(railway_usage, railway_credit),
+            projected_month_end=railway_projected,
+            current_cost_usd=railway_due,
+            projected_cost_usd=railway_projected_due,
+            next_paid_increment_usd=5.0 if railway_plan_key == "free" else None,
+            status=_driver_status(railway_usage, railway_credit),
+            source=railway_source,
+            detail="CPU, RAM, volume storage, and public network egress all consume this shared credit.",
+        )
+    )
+    railway_components = [
+        (
+            "railway_cpu",
+            "CPU time",
+            railway_cpu,
+            "vCPU-hours",
+            20 / 730,
+            "$20/vCPU-month",
+        ),
+        (
+            "railway_memory",
+            "Memory time",
+            railway_memory,
+            "GB-hours",
+            10 / 730,
+            "$10/GB-month",
+        ),
+        ("railway_network", "Network egress", railway_egress, "GB", 0.05, "$0.05/GB"),
+        (
+            "railway_volume",
+            "Volume storage",
+            railway_volume,
+            "GB-month",
+            0.15,
+            "$0.15/GB-month",
+        ),
+    ]
+    for driver_id, metric, used, unit, rate, rate_label in railway_components:
+        projected = _project_month_end(used, railway_start, railway_end)
+        drivers.append(
+            InfrastructureCostDriver(
+                id=driver_id,
+                provider="Railway",
+                service="Backend API + newsletter retry",
+                plan=railway_plan,
+                metric=metric,
+                used=used,
+                unit=unit,
+                projected_month_end=projected,
+                current_cost_usd=round(used * rate, 2) if used is not None else None,
+                projected_cost_usd=round(projected * rate, 2)
+                if projected is not None
+                else None,
+                status="healthy" if used is not None else "unknown",
+                source="Railway Usage configuration",
+                detail=f"Gross usage rate {rate_label}; the plan's shared credit is applied after these components are summed.",
+            )
+        )
 
+    neon_usage = _neon_usage(database_metric, force_refresh=force_refresh)
     neon_plan = env("NEON_PLAN", "Free") or "Free"
-    neon_actual = _env_float("NEON_MONTH_TO_DATE_COST_USD")
-    neon_estimate = _env_float("NEON_MONTHLY_COST_USD")
-    if neon_estimate is None and neon_plan.casefold() == "free":
-        neon_estimate = 0.0
-    neon_cost = neon_actual if neon_actual is not None else neon_estimate
+    neon_plan_key = neon_plan.casefold()
+    neon_start = neon_usage["period_start"]
+    neon_end = neon_usage["period_end"]
+    neon_allowances = (
+        {"compute": 100.0, "storage": 0.5, "history": 1.0, "network": 5.0}
+        if neon_plan_key == "free"
+        else {"compute": None, "storage": None, "history": None, "network": 100.0}
+    )
+    neon_rates = {"compute": 0.106, "storage": 0.35, "history": 0.20, "network": 0.10}
+    neon_values = {
+        "compute": neon_usage["compute_cu_hours"],
+        "storage": neon_usage["storage_gb"],
+        "history": neon_usage["history_gb"],
+        "network": neon_usage["network_gb"],
+    }
+    neon_projected = {
+        key: (
+            value
+            if key in {"storage", "history"}
+            else _project_month_end(value, neon_start, neon_end)
+        )
+        for key, value in neon_values.items()
+    }
+    launch_equivalent = round(
+        (neon_projected["compute"] or 0) * neon_rates["compute"]
+        + (neon_projected["storage"] or 0) * neon_rates["storage"]
+        + (neon_projected["history"] or 0) * neon_rates["history"]
+        + max(0.0, (neon_projected["network"] or 0) - 100.0) * neon_rates["network"],
+        2,
+    )
+    neon_subscription = _env_float("NEON_SUBSCRIPTION_FEE_USD", 0.0) or 0.0
+    neon_due = (
+        0.0
+        if neon_plan_key == "free"
+        else round(
+            (neon_values["compute"] or 0) * neon_rates["compute"]
+            + (neon_values["storage"] or 0) * neon_rates["storage"]
+            + (neon_values["history"] or 0) * neon_rates["history"]
+            + max(0.0, (neon_values["network"] or 0) - 100.0) * neon_rates["network"],
+            2,
+        )
+    )
+    providers.append(
+        InfrastructureProviderBilling(
+            id="neon",
+            provider="Neon",
+            plan=neon_plan,
+            subscription_fee_usd=neon_subscription,
+            current_usage_usd=neon_due,
+            current_amount_due_usd=neon_due,
+            projected_usage_usd=launch_equivalent
+            if neon_plan_key == "free"
+            else neon_due,
+            projected_amount_due_usd=0.0
+            if neon_plan_key == "free"
+            else launch_equivalent,
+            billing_period_start=neon_start,
+            billing_period_end=neon_end,
+            next_charge_at=neon_end if neon_plan_key != "free" else None,
+            configured=bool(neon_usage["configured"]),
+            status=max(
+                (
+                    _driver_status(neon_values[key], neon_allowances[key])
+                    for key in neon_values
+                ),
+                key=lambda value: {
+                    "unknown": 0,
+                    "healthy": 1,
+                    "warning": 2,
+                    "critical": 3,
+                }.get(value, 0),
+            ),
+            source=neon_usage["source"],
+            detail=(
+                f"Free creates no invoice. If its limits require an upgrade, the current month-end workload is approximately ${launch_equivalent:.2f} on Launch before branch-hour charges."
+                if neon_plan_key == "free"
+                else "Usage-based estimate uses current Launch rates for compute, storage, history, and network transfer."
+            ),
+        )
+    )
+    neon_driver_specs = [
+        ("neon_compute", "Compute", "compute", "CU-hours", "$0.106/CU-hour on Launch"),
+        (
+            "neon_storage",
+            "Database storage",
+            "storage",
+            "GB",
+            "$0.35/GB-month on Launch",
+        ),
+        (
+            "neon_history",
+            "History data changes",
+            "history",
+            "GB",
+            "$0.20/GB-month on Launch",
+        ),
+        (
+            "neon_network",
+            "Public network transfer",
+            "network",
+            "GB",
+            "$0.10/GB after 100 GB on Launch",
+        ),
+    ]
+    for driver_id, metric, key, unit, rate_label in neon_driver_specs:
+        used = neon_values[key]
+        included = neon_allowances[key]
+        projected = neon_projected[key]
+        paid_equivalent = (
+            max(0.0, (projected or 0) - 100.0) * neon_rates[key]
+            if key == "network"
+            else (projected or 0) * neon_rates[key]
+        )
+        drivers.append(
+            InfrastructureCostDriver(
+                id=driver_id,
+                provider="Neon",
+                service="PostgreSQL database",
+                plan=neon_plan,
+                metric=metric,
+                used=used,
+                included=included,
+                remaining=_remaining(used, included),
+                unit=unit,
+                utilization_percent=_percent(used, included),
+                projected_month_end=projected,
+                current_cost_usd=0.0
+                if neon_plan_key == "free"
+                else round(paid_equivalent, 2),
+                projected_cost_usd=round(paid_equivalent, 2),
+                next_paid_increment_usd=round(paid_equivalent, 2)
+                if neon_plan_key == "free"
+                else None,
+                status=_driver_status(used, included),
+                source=neon_usage["source"],
+                detail=(
+                    f"Free allowance; exceeding it suspends the relevant compute until reset or upgrade. Paid reference: {rate_label}."
+                    if neon_plan_key == "free"
+                    else f"Usage-based rate: {rate_label}."
+                ),
+            )
+        )
+    neon_branches = neon_usage["branch_count"]
+    drivers.append(
+        InfrastructureCostDriver(
+            id="neon_branches",
+            provider="Neon",
+            service="PostgreSQL database",
+            plan=neon_plan,
+            metric="Active branches",
+            used=neon_branches,
+            included=10.0,
+            remaining=_remaining(neon_branches, 10.0),
+            unit="branches",
+            utilization_percent=_percent(neon_branches, 10.0),
+            next_paid_increment_usd=0.002,
+            status=_driver_status(neon_branches, 10.0),
+            source=neon_usage["source"],
+            detail=(
+                "Free permits 10 branches per project. Launch also includes 10, then charges approximately $0.002 per additional branch-hour."
+            ),
+        )
+    )
+
+    resend_usage = _resend_usage(db, force_refresh=force_refresh)
+    resend_plan = env("RESEND_PLAN", "Free") or "Free"
+    resend_plan_key = resend_plan.casefold()
+    resend_monthly_limit = (
+        _env_float(
+            "RESEND_MONTHLY_EMAIL_LIMIT",
+            3000.0 if resend_plan_key == "free" else 50_000.0,
+        )
+        or 3000.0
+    )
+    resend_daily_limit = (
+        _env_float("RESEND_DAILY_EMAIL_LIMIT", 100.0)
+        if resend_plan_key == "free"
+        else None
+    )
+    resend_subscription = (
+        _env_float(
+            "RESEND_SUBSCRIPTION_FEE_USD",
+            0.0 if resend_plan_key == "free" else 20.0,
+        )
+        or 0.0
+    )
+    resend_monthly_used = resend_usage["monthly_used"]
+    resend_projected = _project_month_end(
+        resend_monthly_used,
+        resend_usage["period_start"],
+        resend_usage["period_end"],
+    )
+    resend_overage = (
+        max(0.0, (resend_monthly_used or 0) - resend_monthly_limit) / 1000 * 0.90
+        if resend_plan_key != "free"
+        else 0.0
+    )
+    resend_projected_overage = (
+        max(0.0, (resend_projected or 0) - resend_monthly_limit) / 1000 * 0.90
+        if resend_plan_key != "free"
+        else 0.0
+    )
+    providers.append(
+        InfrastructureProviderBilling(
+            id="resend",
+            provider="Resend",
+            plan=resend_plan,
+            subscription_fee_usd=resend_subscription,
+            current_usage_usd=round(resend_subscription + resend_overage, 2),
+            current_amount_due_usd=round(resend_subscription + resend_overage, 2),
+            projected_usage_usd=round(
+                resend_subscription + resend_projected_overage, 2
+            ),
+            projected_amount_due_usd=round(
+                resend_subscription + resend_projected_overage, 2
+            ),
+            billing_period_start=resend_usage["period_start"],
+            billing_period_end=resend_usage["period_end"],
+            next_charge_at=resend_usage["period_end"]
+            if resend_plan_key != "free"
+            else None,
+            configured=bool(resend_usage["configured"]),
+            status=_driver_status(resend_monthly_used, resend_monthly_limit),
+            source=resend_usage["source"],
+            detail=(
+                "Free includes 3,000 emails per month and 100 per day. At either limit, sending pauses; Pro starts at $20/month for 50,000 emails."
+                if resend_plan_key == "free"
+                else "Pro includes 50,000 monthly emails; additional emails are estimated at $0.90 per 1,000."
+            ),
+        )
+    )
+    drivers.extend(
+        [
+            InfrastructureCostDriver(
+                id="resend_monthly_emails",
+                provider="Resend",
+                service="Transactional email",
+                plan=resend_plan,
+                metric="Monthly emails",
+                used=resend_monthly_used,
+                included=resend_monthly_limit,
+                remaining=_remaining(resend_monthly_used, resend_monthly_limit),
+                unit="emails/month",
+                utilization_percent=_percent(resend_monthly_used, resend_monthly_limit),
+                projected_month_end=resend_projected,
+                current_cost_usd=round(resend_subscription + resend_overage, 2),
+                projected_cost_usd=round(
+                    resend_subscription + resend_projected_overage, 2
+                ),
+                next_paid_increment_usd=20.0 if resend_plan_key == "free" else 0.90,
+                status=_driver_status(resend_monthly_used, resend_monthly_limit),
+                source=resend_usage["source"],
+                detail="Every To, CC, or BCC recipient counts separately; inbound mail also counts in Resend's provider total.",
+            ),
+            InfrastructureCostDriver(
+                id="resend_daily_emails",
+                provider="Resend",
+                service="Transactional email",
+                plan=resend_plan,
+                metric="Daily emails",
+                used=resend_usage["daily_used"],
+                included=resend_daily_limit,
+                remaining=_remaining(resend_usage["daily_used"], resend_daily_limit),
+                unit="emails/day",
+                utilization_percent=_percent(
+                    resend_usage["daily_used"], resend_daily_limit
+                ),
+                next_paid_increment_usd=20.0 if resend_plan_key == "free" else None,
+                status=_driver_status(resend_usage["daily_used"], resend_daily_limit),
+                source=resend_usage["source"],
+                detail=f"Demand signal: {int(resend_usage['active_subscribers'])} active subscribers and {int(resend_usage['jobs_this_month'])} jobs created this billing month.",
+            ),
+        ]
+    )
+
+    r2_usage = _r2_operation_usage(force_refresh=force_refresh)
+    r2_start, r2_end = r2_usage["period_start"], r2_usage["period_end"]
+    r2_storage_gb = (r2_metric.used_bytes or 0) / GIB
+    r2_a = r2_usage["class_a"]
+    r2_b = r2_usage["class_b"]
+    r2_current = _r2_standard_cost(r2_storage_gb, r2_a or 0, r2_b or 0)
+    r2_projected_a = _project_month_end(r2_a, r2_start, r2_end)
+    r2_projected_b = _project_month_end(r2_b, r2_start, r2_end)
+    r2_projected = _r2_standard_cost(
+        r2_storage_gb,
+        r2_projected_a or r2_a or 0,
+        r2_projected_b or r2_b or 0,
+    )
+    providers.append(
+        InfrastructureProviderBilling(
+            id="r2",
+            provider="Cloudflare R2",
+            plan="Standard",
+            current_usage_usd=r2_current,
+            current_amount_due_usd=r2_current,
+            projected_usage_usd=r2_projected,
+            projected_amount_due_usd=r2_projected,
+            billing_period_start=r2_start,
+            billing_period_end=r2_end,
+            next_charge_at=r2_end if r2_projected > 0 else None,
+            configured=r2_metric.status != "unavailable",
+            status=max(
+                (
+                    _driver_status(r2_storage_gb, 10),
+                    _driver_status(r2_a, 1_000_000),
+                    _driver_status(r2_b, 10_000_000),
+                ),
+                key=lambda value: {
+                    "unknown": 0,
+                    "healthy": 1,
+                    "warning": 2,
+                    "critical": 3,
+                }.get(value, 0),
+            ),
+            source=f"{r2_metric.source}; {r2_usage['source']}",
+            detail="R2 egress is free. Cost is driven by average Standard storage plus Class A writes/lists and Class B reads; usage is rounded to billing blocks.",
+        )
+    )
+    r2_specs = [
+        (
+            "r2_storage",
+            "Stored data snapshot",
+            r2_storage_gb,
+            10.0,
+            "GB-month",
+            0.015,
+            "Next GB-month above the free tier",
+        ),
+        (
+            "r2_class_a",
+            "Class A operations",
+            r2_a,
+            1_000_000.0,
+            "requests/month",
+            4.50,
+            "Next million Class A requests",
+        ),
+        (
+            "r2_class_b",
+            "Class B operations",
+            r2_b,
+            10_000_000.0,
+            "requests/month",
+            0.36,
+            "Next million Class B requests",
+        ),
+    ]
+    for driver_id, metric, used, included, unit, next_cost, detail in r2_specs:
+        projected = (
+            used
+            if driver_id == "r2_storage"
+            else _project_month_end(used, r2_start, r2_end)
+        )
+        drivers.append(
+            InfrastructureCostDriver(
+                id=driver_id,
+                provider="Cloudflare R2",
+                service="Object storage",
+                plan="Standard",
+                metric=metric,
+                used=round(used, 4) if used is not None else None,
+                included=included,
+                remaining=_remaining(used, included),
+                unit=unit,
+                utilization_percent=_percent(used, included),
+                projected_month_end=projected,
+                current_cost_usd=r2_current,
+                projected_cost_usd=r2_projected,
+                next_paid_increment_usd=next_cost,
+                status=_driver_status(used, included),
+                source=r2_metric.source
+                if driver_id == "r2_storage"
+                else r2_usage["source"],
+                detail=(
+                    f"{detail}; billing averages the daily peak storage over the month, "
+                    "and Internet egress remains $0."
+                    if driver_id == "r2_storage"
+                    else f"{detail}; Internet egress remains $0."
+                ),
+            )
+        )
+
+    frontend_plan = env("FRONTEND_PLAN", "Free") or "Free"
+    azure_start, azure_end = _billing_window("AZURE")
+    frontend_bandwidth = _env_float("FRONTEND_BANDWIDTH_USED_GB")
+    frontend_app_size = _env_float("FRONTEND_APP_SIZE_MB")
+    for driver_id, metric, used, included, unit, detail in [
+        (
+            "azure_bandwidth",
+            "Frontend bandwidth",
+            frontend_bandwidth,
+            _env_float("FRONTEND_BANDWIDTH_LIMIT_GB", 100.0),
+            "GB/month",
+            "Free cannot serve beyond 100 GB; Standard supports $0.20/GB overage.",
+        ),
+        (
+            "azure_app_size",
+            "Deployed app size",
+            frontend_app_size,
+            _env_float("FRONTEND_APP_LIMIT_MB", 250.0),
+            "MB",
+            "Free permits 250 MB per deployed app and 500 MB across environments.",
+        ),
+    ]:
+        drivers.append(
+            InfrastructureCostDriver(
+                id=driver_id,
+                provider="Microsoft Azure",
+                service="Static Web Apps frontend",
+                plan=frontend_plan,
+                metric=metric,
+                used=used,
+                included=included,
+                remaining=_remaining(used, included),
+                unit=unit,
+                utilization_percent=_percent(used, included),
+                projected_month_end=(
+                    _project_month_end(used, azure_start, azure_end)
+                    if driver_id == "azure_bandwidth"
+                    else used
+                ),
+                next_paid_increment_usd=(
+                    0.20 if driver_id == "azure_bandwidth" else None
+                ),
+                status=_driver_status(used, included),
+                source="Azure quota configuration",
+                detail=detail,
+            )
+        )
+    return drivers, providers
+
+
+def _cost_summary(
+    db: Session,
+    provider_billing: list[InfrastructureProviderBilling],
+    *,
+    force_refresh: bool,
+) -> tuple[InfrastructureCostSummary, InfrastructureProviderBilling]:
+    billing_by_id = {item.id: item for item in provider_billing}
+    r2_estimate = billing_by_id["r2"].current_amount_due_usd
+    railway_plan = billing_by_id["railway"].plan
+    railway_cost = billing_by_id["railway"].current_amount_due_usd
+    neon_plan = billing_by_id["neon"].plan
+    neon_cost = billing_by_id["neon"].current_amount_due_usd
+    resend_cost = billing_by_id["resend"].current_amount_due_usd
 
     frontend_plan = (env("FRONTEND_PLAN", "Free") or "Free").lower()
     frontend_estimate = (
@@ -798,9 +1843,9 @@ def _cost_summary(
         else frontend_cost
     )
     resources = (azure_live or {}).get("resource_ids") or {}
-    has_actual = any(
-        value is not None for value in (railway_actual, neon_actual)
-    ) or azure_live is not None
+    has_actual = (
+        any(item.configured for item in provider_billing) or azure_live is not None
+    )
     basis = "provider_actuals_and_estimates" if has_actual else "monthly_estimate"
 
     items = [
@@ -809,8 +1854,8 @@ def _cost_summary(
             name="Object storage",
             provider="Cloudflare R2 Standard",
             monthly_estimate_usd=r2_estimate,
-            configured=True,
-            detail="Snapshot estimate: first 10 GB-month free, then $0.015 per GB-month; operations are separate.",
+            configured=billing_by_id["r2"].configured,
+            detail="Live storage plus Class A/B operation estimate. Internet egress is free.",
         ),
         InfrastructureCostItem(
             id="railway",
@@ -818,11 +1863,7 @@ def _cost_summary(
             provider=f"Railway {railway_plan}",
             monthly_estimate_usd=railway_cost,
             configured=railway_cost is not None,
-            detail=(
-                "Live month-to-date Railway cost supplied by configuration."
-                if railway_actual is not None
-                else "Railway plan estimate. Set RAILWAY_MONTH_TO_DATE_COST_USD to mirror the billing dashboard."
-            ),
+            detail=billing_by_id["railway"].detail,
         ),
         InfrastructureCostItem(
             id="neon",
@@ -830,11 +1871,15 @@ def _cost_summary(
             provider=f"Neon {neon_plan}",
             monthly_estimate_usd=neon_cost,
             configured=neon_cost is not None,
-            detail=(
-                "Live month-to-date Neon cost supplied by configuration."
-                if neon_actual is not None
-                else "Neon plan estimate. Free projects do not expose the paid Consumption API."
-            ),
+            detail=billing_by_id["neon"].detail,
+        ),
+        InfrastructureCostItem(
+            id="resend",
+            name="Transactional email",
+            provider=f"Resend {billing_by_id['resend'].plan}",
+            monthly_estimate_usd=resend_cost,
+            configured=billing_by_id["resend"].configured,
+            detail=billing_by_id["resend"].detail,
         ),
         InfrastructureCostItem(
             id="azure_static_web_apps",
@@ -851,13 +1896,16 @@ def _cost_summary(
         ),
     ]
 
-    tracked = round(sum(item.monthly_estimate_usd or 0 for item in items if item.configured), 2)
+    tracked = round(
+        sum(item.monthly_estimate_usd or 0 for item in items if item.configured), 2
+    )
     budget = _env_float("INFRA_MONTHLY_BUDGET_USD", 25.0) or 25.0
     missing = sum(not item.configured for item in items)
     provider_costs = {
         "Cloudflare R2": r2_estimate,
         "Railway": railway_cost,
         "Neon": neon_cost,
+        "Resend": resend_cost,
         "Microsoft Azure": azure_current_total,
     }
     provider_costs = {
@@ -876,14 +1924,42 @@ def _cost_summary(
     current_paid = current_point.paid_usd
     current_outstanding = current_point.outstanding_usd or 0.0
     available_points = [point for point in history if point.available]
-    recorded_total = round(
-        sum(point.total_usd or 0.0 for point in available_points), 2
-    )
+    recorded_total = round(sum(point.total_usd or 0.0 for point in available_points), 2)
     recorded_paid = round(sum(point.paid_usd for point in available_points), 2)
     recorded_outstanding = round(
         sum(point.outstanding_usd or 0.0 for point in available_points), 2
     )
-    return InfrastructureCostSummary(
+    azure_billing = InfrastructureProviderBilling(
+        id="azure",
+        provider="Microsoft Azure",
+        plan=env("FRONTEND_PLAN", "Free") or "Free",
+        current_usage_usd=azure_current_total,
+        current_amount_due_usd=azure_current_total or 0.0,
+        projected_usage_usd=(
+            _env_float("AZURE_PROJECTED_COST_USD")
+            if env("AZURE_PROJECTED_COST_USD") is not None
+            else azure_current_total
+        ),
+        projected_amount_due_usd=(
+            _env_float("AZURE_PROJECTED_COST_USD")
+            if env("AZURE_PROJECTED_COST_USD") is not None
+            else azure_current_total
+        ),
+        billing_period_start=_billing_window("AZURE")[0],
+        billing_period_end=_billing_window("AZURE")[1],
+        next_charge_at=_billing_window("AZURE")[1]
+        if (azure_current_total or 0) > 0
+        else None,
+        configured=azure_live is not None or frontend_estimate is not None,
+        status="healthy",
+        source="Azure Cost Management" if azure_live else "Azure plan configuration",
+        detail=(
+            "Live month-to-date Azure costs, including charges accrued by resources retired during this billing month."
+            if azure_live
+            else "Static Web Apps Free has no subscription fee; exceeding its quota stops service instead of creating bandwidth overage."
+        ),
+    )
+    summary = InfrastructureCostSummary(
         monthly_budget_usd=budget,
         tracked_monthly_estimate_usd=tracked,
         current_month_cost_usd=current_cost,
@@ -895,8 +1971,16 @@ def _cost_summary(
         budget_utilization_percent=_percent(current_outstanding, budget) or 0.0,
         unconfigured_services=missing,
         basis=basis,
-        source="Railway + Neon + retained Azure + Cloudflare R2",
-        forecast_monthly_cost_usd=_env_float("INFRA_FORECAST_MONTHLY_COST_USD"),
+        source="Railway + Neon + Resend + retained Azure + Cloudflare R2",
+        forecast_monthly_cost_usd=(
+            _env_float("INFRA_FORECAST_MONTHLY_COST_USD")
+            if env("INFRA_FORECAST_MONTHLY_COST_USD") is not None
+            else round(
+                sum(item.projected_amount_due_usd or 0 for item in provider_billing)
+                + (azure_billing.projected_amount_due_usd or 0),
+                2,
+            )
+        ),
         items=items,
         history=history,
         detail=(
@@ -905,6 +1989,7 @@ def _cost_summary(
             "application database; INFRA_COST_HISTORY_JSON can backfill invoice totals and payments."
         ),
     )
+    return summary, azure_billing
 
 
 def _alerts(
@@ -979,18 +2064,33 @@ def _alerts(
     return alerts
 
 
-def infrastructure_dashboard(db: Session, *, force_refresh: bool = False) -> InfrastructureDashboard:
+def infrastructure_dashboard(
+    db: Session, *, force_refresh: bool = False
+) -> InfrastructureDashboard:
     storage_metrics = [_r2_storage(force_refresh), _database_storage(db)]
     compute_metrics = _compute_metrics()
     connections = _database_connections(db)
-    costs = _cost_summary(db, storage_metrics[0], force_refresh=force_refresh)
+    cost_drivers, provider_billing = _provider_usage_dashboard(
+        db,
+        storage_metrics[0],
+        storage_metrics[1],
+        force_refresh=force_refresh,
+    )
+    costs, azure_billing = _cost_summary(
+        db,
+        provider_billing,
+        force_refresh=force_refresh,
+    )
+    provider_billing.append(azure_billing)
     return InfrastructureDashboard(
         collected_at=datetime.now(timezone.utc),
         refresh_after_seconds=30,
         storage=storage_metrics,
         compute=compute_metrics,
         database_connections=connections,
-        quotas=[],
+        quotas=_quota_metrics(),
+        cost_drivers=cost_drivers,
+        provider_billing=provider_billing,
         costs=costs,
         alerts=_alerts(storage_metrics, compute_metrics, connections, costs),
     )

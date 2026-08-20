@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
@@ -57,14 +57,33 @@ def submit_contact(
     except Exception:
         db.rollback()
         logger.exception("submit_contact failed")
-        raise HTTPException(status_code=500, detail="Failed to submit message") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to submit message"
+        ) from None
 
 
 @router.get("/admin/contact", response_model=list[ContactOut])
-def list_messages(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+def list_messages(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
     try:
+        total = (
+            db.execute(select(func.count()).select_from(ContactMessage)).scalar() or 0
+        )
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
         return (
-            db.execute(select(ContactMessage).order_by(ContactMessage.created_at.desc()))
+            db.execute(
+                select(ContactMessage)
+                .order_by(ContactMessage.created_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
             .scalars()
             .all()
         )
@@ -74,7 +93,9 @@ def list_messages(db: Session = Depends(get_db), _: User = Depends(get_current_a
 
 
 @router.get("/admin/contact/{msg_id}", response_model=ContactOut)
-def get_message(msg_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+def get_message(
+    msg_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_admin)
+):
     try:
         msg = db.get(ContactMessage, msg_id)
         if not msg:
@@ -107,4 +128,6 @@ def delete_message(
     except Exception:
         db.rollback()
         logger.exception("delete_message failed id=%s", msg_id)
-        raise HTTPException(status_code=500, detail="Failed to delete message") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to delete message"
+        ) from None

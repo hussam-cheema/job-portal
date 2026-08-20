@@ -98,6 +98,7 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
 const providerColors: Record<string, string> = {
   Railway: "#a855f7",
   Neon: "#2dd4bf",
+  Resend: "#f472b6",
   "Microsoft Azure": "#60a5fa",
   "Cloudflare R2": "#f59e0b",
 };
@@ -238,6 +239,127 @@ function ComputeCard({ metric, history }: { metric?: InfrastructureComputeMetric
   );
 }
 
+function formatDriverValue(value: number | null, unit: string) {
+  if (value === null) return "Not reported";
+  if (unit === "USD") return `$${value.toFixed(2)}`;
+  if (unit.includes("requests") || unit.includes("emails")) {
+    return `${Math.round(value).toLocaleString()} ${unit}`;
+  }
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`;
+}
+
+function billingDate(value: string | null) {
+  if (!value) return "No scheduled charge";
+  return new Date(value).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatCostStep(value: number | null) {
+  if (value === null) return "No metered charge";
+  const digits = value > 0 && value < 0.1 ? 3 : 2;
+  return `$${value.toFixed(digits)}`;
+}
+
+function CostDrivers({ data }: { data: InfrastructureDashboard }) {
+  const providerBilling = data.provider_billing ?? [];
+  const costDrivers = data.cost_drivers ?? [];
+  return (
+    <section className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Subscriptions and usage</p>
+        <h3 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">Every active cost driver</h3>
+        <p className="mt-1 max-w-4xl text-xs leading-5 text-[var(--muted)]">
+          Current amount due is separated from gross resource usage. Free-tier limits show when service pauses or a paid upgrade becomes necessary; they are not presented as debt.
+        </p>
+      </div>
+      <div className="space-y-4">
+        {providerBilling.map((provider) => {
+          const drivers = costDrivers.filter((driver) => driver.provider === provider.provider);
+          return (
+            <article key={provider.id} className="card-panel overflow-hidden">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] p-5 sm:p-6">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-base font-semibold text-[var(--navy-100)]">{provider.provider}</h4>
+                    <span className="rounded-full border border-[var(--border-strong)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--navy-300)]">
+                      {provider.plan}
+                    </span>
+                    <StatusBadge status={provider.status} />
+                  </div>
+                  <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--muted)]">{provider.detail}</p>
+                  <p className="mt-1 text-[10px] text-[var(--muted)]">Source: {provider.source}</p>
+                </div>
+                <div className="grid min-w-[280px] grid-cols-2 gap-x-6 gap-y-3 text-right text-xs">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Currently due</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--navy-100)]">${provider.current_amount_due_usd.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Month-end due</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--navy-100)]">
+                      {provider.projected_amount_due_usd === null ? "—" : `$${provider.projected_amount_due_usd.toFixed(2)}`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Subscription / credit</p>
+                    <p className="mt-1 text-[var(--navy-200)]">${provider.subscription_fee_usd.toFixed(2)} / ${provider.included_credit_usd.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Next charge</p>
+                    <p className="mt-1 text-[var(--navy-200)]">{billingDate(provider.next_charge_at)}</p>
+                  </div>
+                </div>
+              </div>
+              {drivers.length > 0 && (
+                <div className="grid gap-px bg-[var(--border)] md:grid-cols-2 xl:grid-cols-3">
+                  {drivers.map((driver) => (
+                    <div key={driver.id} className="bg-[var(--navy-900)] p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-[var(--navy-200)]">{driver.metric}</p>
+                          <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--muted)]">{driver.service}</p>
+                        </div>
+                        <StatusBadge status={driver.status} />
+                      </div>
+                      <p className="mt-4 text-xl font-semibold tabular-nums text-[var(--navy-100)]">
+                        {formatDriverValue(driver.used, driver.unit)}
+                      </p>
+                      {driver.included !== null && (
+                        <>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {driver.remaining === null ? "Remaining unavailable" : `${formatDriverValue(driver.remaining, driver.unit)} remaining`} of {formatDriverValue(driver.included, driver.unit)} included
+                          </p>
+                          <div className="mt-3"><Progress value={driver.utilization_percent} /></div>
+                        </>
+                      )}
+                      <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <dt className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Month-end usage</dt>
+                          <dd className="mt-1 text-[var(--navy-200)]">{formatDriverValue(driver.projected_month_end, driver.unit)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Next paid step</dt>
+                          <dd className="mt-1 text-[var(--navy-200)]">{formatCostStep(driver.next_paid_increment_usd)}</dd>
+                        </div>
+                      </dl>
+                      <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{driver.detail}</p>
+                      <p className="mt-2 text-[10px] text-[var(--muted)]">{driver.source}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function InfrastructureAnalyticsPage() {
   const { token } = useAdminAuth();
   const [data, setData] = useState<InfrastructureDashboard | null>(null);
@@ -310,6 +432,8 @@ export default function InfrastructureAnalyticsPage() {
           <section>
             <ComputeCard metric={resources.backend} history={history} />
           </section>
+
+          <CostDrivers data={data} />
 
           <section>
             <article className="card-panel p-5 sm:p-6">

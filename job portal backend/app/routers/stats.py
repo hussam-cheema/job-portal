@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -20,7 +20,6 @@ logger = get_logger("jobportal.stats")
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(db: Session = Depends(get_db)):
     try:
-        total = db.execute(select(func.count()).select_from(Job)).scalar() or 0
         by_job_type: dict[str, int] = {}
         by_source: dict[str, int] = {}
         by_city: dict[str, int] = {}
@@ -29,7 +28,16 @@ def get_stats(db: Session = Depends(get_db)):
         now = datetime.utcnow()
         open_for_apply = 0
 
-        jobs = db.execute(select(Job)).scalars().all()
+        jobs = db.execute(
+            select(
+                Job.deadline_date,
+                Job.job_type,
+                Job.cities,
+                Job.tags,
+                Job.updated_at,
+            )
+        ).all()
+        total = len(jobs)
         for j in jobs:
             # Still open if no deadline, or deadline is in the future (end of day UTC)
             if j.deadline_date is None or j.deadline_date >= now:
@@ -49,7 +57,7 @@ def get_stats(db: Session = Depends(get_db)):
             for t in as_list(j.tags)[:1]:
                 by_category[t] = by_category.get(t, 0) + 1
 
-        last = db.execute(select(func.max(Job.updated_at))).scalar()
+        last = max((job.updated_at for job in jobs if job.updated_at), default=None)
         logger.info("stats total_jobs=%s open_for_apply=%s", total, open_for_apply)
         return StatsResponse(
             total_jobs=total,

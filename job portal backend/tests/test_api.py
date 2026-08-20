@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import Request
@@ -2006,13 +2007,25 @@ def test_infrastructure_analytics_requires_admin_and_reports_capacity(
 ):
     assert client.get("/api/admin/infrastructure").status_code == 401
     monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "false")
+    # The legacy variables used to make the dashboard invent a $5 Railway
+    # charge. The explicit subscription plan is now authoritative.
     monkeypatch.setenv("RAILWAY_PLAN", "Hobby")
     monkeypatch.setenv("RAILWAY_MONTHLY_COST_USD", "5")
+    monkeypatch.setenv("RAILWAY_SUBSCRIPTION_PLAN", "Free")
+    monkeypatch.setenv("RAILWAY_SUBSCRIPTION_FEE_USD", "0")
+    monkeypatch.setenv("RAILWAY_INCLUDED_USAGE_USD", "1")
+    monkeypatch.setenv("RAILWAY_CURRENT_USAGE_USD", "0.42")
+    monkeypatch.setenv("RAILWAY_PROJECTED_USAGE_USD", "0.88")
     monkeypatch.setenv("NEON_PLAN", "Free")
-    monkeypatch.setenv("NEON_MONTHLY_COST_USD", "0")
+    monkeypatch.setenv("NEON_COMPUTE_CU_HOURS", "65.53")
+    monkeypatch.setenv("NEON_HISTORY_STORAGE_GB", "0")
+    monkeypatch.setenv("NEON_NETWORK_TRANSFER_GB", "4.26")
+    monkeypatch.setenv("RESEND_API_KEY", "")
+    monkeypatch.setenv("R2_CLASS_A_OPERATIONS", "125")
+    monkeypatch.setenv("R2_CLASS_B_OPERATIONS", "810")
     monkeypatch.setenv("FRONTEND_MONTHLY_COST_USD", "0")
     monkeypatch.setenv("INFRA_CURRENT_STACK_STARTED_MONTH", "2026-08")
-    monkeypatch.setenv("INFRA_CURRENT_MONTH_PAID_USD", "2")
+    monkeypatch.setenv("INFRA_CURRENT_MONTH_PAID_USD", "0")
 
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -2030,28 +2043,49 @@ def test_infrastructure_analytics_requires_admin_and_reports_capacity(
         "used_bytes"
     ] > 0
     assert data["costs"]["monthly_budget_usd"] == 25.0
-    assert data["costs"]["tracked_monthly_estimate_usd"] == 5.0
-    assert data["costs"]["current_month_cost_usd"] == 5.0
-    assert data["costs"]["current_month_paid_usd"] == 2.0
-    assert data["costs"]["current_outstanding_usd"] == 3.0
-    assert data["costs"]["recorded_total_usd"] == 5.0
-    assert data["costs"]["recorded_paid_usd"] == 2.0
-    assert data["costs"]["recorded_outstanding_usd"] == 3.0
-    assert data["costs"]["budget_utilization_percent"] == 12.0
+    assert data["costs"]["tracked_monthly_estimate_usd"] == 0.0
+    assert data["costs"]["current_month_cost_usd"] == 0.0
+    assert data["costs"]["current_month_paid_usd"] == 0.0
+    assert data["costs"]["current_outstanding_usd"] == 0.0
+    assert data["costs"]["recorded_total_usd"] == 0.0
+    assert data["costs"]["recorded_paid_usd"] == 0.0
+    assert data["costs"]["recorded_outstanding_usd"] == 0.0
+    assert data["costs"]["budget_utilization_percent"] == 0.0
     assert {item["id"] for item in data["costs"]["items"]} == {
         "r2",
         "railway",
         "neon",
+        "resend",
         "azure_static_web_apps",
     }
     assert len(data["costs"]["history"]) == 12
     assert data["costs"]["history"][-2]["total_usd"] is None
     assert data["costs"]["history"][-2]["available"] is False
-    assert data["costs"]["history"][-1]["provider_costs"]["Railway"] == 5.0
-    assert data["costs"]["history"][-1]["paid_usd"] == 2.0
-    assert data["costs"]["history"][-1]["outstanding_usd"] == 3.0
+    assert data["costs"]["history"][-1]["provider_costs"]["Railway"] == 0.0
+    assert data["costs"]["history"][-1]["provider_costs"]["Resend"] == 0.0
+    assert data["costs"]["history"][-1]["paid_usd"] == 0.0
+    assert data["costs"]["history"][-1]["outstanding_usd"] == 0.0
     assert data["costs"]["history"][-1]["available"] is True
-    assert data["quotas"] == []
+    assert {quota["id"] for quota in data["quotas"]} == {
+        "frontend_assets",
+        "frontend_bandwidth",
+    }
+    providers = {item["id"]: item for item in data["provider_billing"]}
+    assert providers["railway"]["plan"] == "Free"
+    assert providers["railway"]["subscription_fee_usd"] == 0.0
+    assert providers["railway"]["included_credit_usd"] == 1.0
+    assert providers["railway"]["current_usage_usd"] == 0.42
+    assert providers["railway"]["current_amount_due_usd"] == 0.0
+    assert providers["railway"]["projected_amount_due_usd"] == 0.0
+    assert providers["railway"]["next_charge_at"] is None
+    assert "No $5 is currently owed" in providers["railway"]["detail"]
+    drivers = {item["id"]: item for item in data["cost_drivers"]}
+    assert drivers["neon_compute"]["used"] == 65.53
+    assert drivers["neon_compute"]["remaining"] == 34.47
+    assert drivers["neon_network"]["used"] == 4.26
+    assert drivers["r2_class_a"]["used"] == 125.0
+    assert drivers["r2_class_b"]["used"] == 810.0
+    assert drivers["resend_monthly_emails"]["included"] == 3000.0
     assert data["refresh_after_seconds"] == 30
 
 
@@ -2062,8 +2096,12 @@ def test_infrastructure_cost_total_keeps_accrued_retired_azure_charges(
     from app.services import infrastructure
 
     monkeypatch.setenv("AZURE_COST_MANAGEMENT_ENABLED", "true")
+    monkeypatch.setenv("RAILWAY_SUBSCRIPTION_PLAN", "Free")
+    monkeypatch.setenv("RAILWAY_SUBSCRIPTION_FEE_USD", "0")
+    monkeypatch.setenv("RAILWAY_INCLUDED_USAGE_USD", "1")
+    monkeypatch.setenv("RAILWAY_CURRENT_USAGE_USD", "0.42")
+    # Prove the retired legacy estimate cannot create a present-day invoice.
     monkeypatch.setenv("RAILWAY_MONTHLY_COST_USD", "5")
-    monkeypatch.setenv("NEON_MONTHLY_COST_USD", "0")
     monkeypatch.setenv("FRONTEND_MONTHLY_COST_USD", "0")
     monkeypatch.setenv("INFRA_CURRENT_MONTH_PAID_USD", "0")
     monkeypatch.setattr(
@@ -2085,8 +2123,8 @@ def test_infrastructure_cost_total_keeps_accrued_retired_azure_charges(
 
     assert response.status_code == 200
     costs = response.json()["costs"]
-    assert costs["current_month_cost_usd"] == 5.18
-    assert costs["current_outstanding_usd"] == 5.18
+    assert costs["current_month_cost_usd"] == 0.18
+    assert costs["current_outstanding_usd"] == 0.18
     assert costs["history"][-1]["provider_costs"]["Microsoft Azure"] == 0.18
     frontend = next(
         item for item in costs["items"] if item["id"] == "azure_static_web_apps"
@@ -2096,8 +2134,129 @@ def test_infrastructure_cost_total_keeps_accrued_retired_azure_charges(
         "r2",
         "railway",
         "neon",
+        "resend",
         "azure_static_web_apps",
     }
+
+
+def test_infrastructure_provider_collectors_parse_live_usage(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.schemas import InfrastructureStorageMetric
+    from app.services import infrastructure
+
+    monkeypatch.setenv("NEON_API_KEY", "test-neon-token")
+    monkeypatch.setenv("NEON_PROJECT_ID", "test-neon-project")
+
+    def fake_get(url: str, **_kwargs):
+        if url.endswith("/branches/count"):
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", url),
+                json={"count": 2},
+            )
+        if "console.neon.tech" in url:
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", url),
+                json={
+                    "project": {
+                        "cpu_used_sec": 65.53 * 3600,
+                        "data_storage_bytes_hour": 0,
+                        "written_data_bytes": 0,
+                        "data_transfer_bytes": 4.26 * 1024**3,
+                        "consumption_period_start": "2026-08-01T00:00:00Z",
+                        "consumption_period_end": "2026-09-01T00:00:00Z",
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", url),
+            headers={
+                "x-resend-monthly-quota": "147",
+                "x-resend-daily-quota": "12",
+            },
+            json={"data": []},
+        )
+
+    monkeypatch.setattr(infrastructure.httpx, "get", fake_get)
+    database_metric = InfrastructureStorageMetric(
+        id="database",
+        name="Database storage",
+        provider="Neon",
+        used_bytes=int(0.04 * 1024**3),
+        total_bytes=int(0.5 * 1024**3),
+        status="healthy",
+        source="test",
+        detail="test",
+    )
+    neon = infrastructure._neon_usage(database_metric, force_refresh=True)
+    assert neon["compute_cu_hours"] == 65.53
+    assert neon["storage_gb"] == 0.04
+    assert neon["history_gb"] == 0.0
+    assert neon["network_gb"] == 4.26
+    assert neon["branch_count"] == 2.0
+    assert neon["configured"] is True
+
+    monkeypatch.setenv("RESEND_API_KEY", "test-resend-token")
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        resend = infrastructure._resend_usage(db, force_refresh=True)
+    finally:
+        override.close()
+    assert resend["monthly_used"] == 147.0
+    assert resend["daily_used"] == 12.0
+    assert resend["configured"] is True
+
+
+def test_r2_analytics_groups_operations_and_rounds_billing_units(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import infrastructure
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token")
+    monkeypatch.setenv("R2_ACCOUNT_ID", "test-account")
+    monkeypatch.setenv("R2_BUCKET_NAME", "test-bucket")
+
+    def fake_post(url: str, **_kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "data": {
+                    "viewer": {
+                        "accounts": [
+                            {
+                                "r2OperationsAdaptiveGroups": [
+                                    {
+                                        "sum": {"requests": 101},
+                                        "dimensions": {"actionType": "PutObject"},
+                                    },
+                                    {
+                                        "sum": {"requests": 909},
+                                        "dimensions": {"actionType": "GetObject"},
+                                    },
+                                    {
+                                        "sum": {"requests": 33},
+                                        "dimensions": {"actionType": "DeleteObject"},
+                                    },
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+        )
+
+    monkeypatch.setattr(infrastructure.httpx, "post", fake_post)
+    usage = infrastructure._r2_operation_usage(force_refresh=True)
+    assert usage["class_a"] == 101.0
+    assert usage["class_b"] == 909.0
+    assert usage["configured"] is True
+    assert infrastructure._r2_standard_cost(10.1, 1_000_001, 10_000_001) == 4.88
 
 
 def test_keyword_rank_list_aggregates_each_unique_keyword_across_urls(client: TestClient):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
@@ -53,7 +53,9 @@ def seo_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_a
         base = canonical_site_url()
         pagespeed = measure_pagespeed(base)
         gsc_status = {
-            "connected": bool(get_setting(db, "gsc_last_sync") or os.getenv("GSC_SITE_URL")),
+            "connected": bool(
+                get_setting(db, "gsc_last_sync") or os.getenv("GSC_SITE_URL")
+            ),
             "last_sync": get_setting(db, "gsc_last_sync"),
             "period_start": get_setting(db, "gsc_period_start"),
             "period_end": get_setting(db, "gsc_period_end"),
@@ -91,7 +93,9 @@ def seo_dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_a
         return SEODashboard(**data)
     except Exception:
         logger.exception("seo_dashboard failed")
-        raise HTTPException(status_code=500, detail="Failed to load SEO dashboard") from None
+        raise HTTPException(
+            status_code=500, detail="Failed to load SEO dashboard"
+        ) from None
 
 
 @router.post("/admin/seo/gsc/sync")
@@ -142,7 +146,9 @@ def public_social(db: Session = Depends(get_db)):
 
 
 @router.get("/admin/seo/backlinks")
-def admin_backlinks(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+def admin_backlinks(
+    db: Session = Depends(get_db), _: User = Depends(get_current_admin)
+):
     return list_backlinks(db)
 
 
@@ -167,7 +173,9 @@ def create_backlink(
 
 
 @router.post("/admin/seo/backlinks/discover")
-def discover_backlinks(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+def discover_backlinks(
+    db: Session = Depends(get_db), _: User = Depends(get_current_admin)
+):
     return discover_backlinks_basic(db)
 
 
@@ -207,9 +215,28 @@ def public_seo(entity_type: str, entity_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/admin/seo", response_model=list[SEOMetaOut])
-def list_seo(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+def list_seo(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
     try:
-        rows = db.execute(select(SEOMeta).order_by(SEOMeta.updated_at.desc())).scalars().all()
+        total = db.execute(select(func.count()).select_from(SEOMeta)).scalar() or 0
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        rows = (
+            db.execute(
+                select(SEOMeta)
+                .order_by(SEOMeta.updated_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+            .scalars()
+            .all()
+        )
         return [SEOMetaOut.model_validate(r) for r in rows]
     except Exception:
         logger.exception("list_seo failed")

@@ -141,18 +141,28 @@ def _lookup_public_ip(ip: str) -> tuple[str | None, str | None, str | None]:
         cfg("analytics", "geolocation_url", default="https://ipwho.is/{ip}")
         or "https://ipwho.is/{ip}"
     )
-    fallback = str(cfg("analytics", "geolocation_fallback_url", default="") or "").strip()
+    fallback = str(
+        cfg("analytics", "geolocation_fallback_url", default="") or ""
+    ).strip()
     templates = list(dict.fromkeys(value for value in (primary, fallback) if value))
     timeout = float(cfg("analytics", "geolocation_timeout_seconds", default=4) or 4)
     for template in templates:
         try:
-            response = httpx.get(template.format(ip=quote(ip, safe="")), timeout=timeout)
+            response = httpx.get(
+                template.format(ip=quote(ip, safe="")), timeout=timeout
+            )
             response.raise_for_status()
             data = response.json()
-            if not isinstance(data, dict) or data.get("success") is False or data.get("error") is True:
+            if (
+                not isinstance(data, dict)
+                or data.get("success") is False
+                or data.get("error") is True
+            ):
                 continue
             country = _clean_country(
-                data.get("country_code") or data.get("country") or data.get("country_name")
+                data.get("country_code")
+                or data.get("country")
+                or data.get("country_name")
             )
             if not country:
                 continue
@@ -163,7 +173,10 @@ def _lookup_public_ip(ip: str) -> tuple[str | None, str | None, str | None]:
             )
             ttl = max(
                 60.0,
-                float(cfg("analytics", "geolocation_cache_seconds", default=86400) or 86400),
+                float(
+                    cfg("analytics", "geolocation_cache_seconds", default=86400)
+                    or 86400
+                ),
             )
             with _LOCATION_CACHE_LOCK:
                 _LOCATION_CACHE[ip] = (now + ttl, resolved)
@@ -216,14 +229,14 @@ def _latest_verified_location(
     visitor_hash: str,
 ) -> tuple[str, str | None, str | None] | None:
     row = db.execute(
-        select(AnalyticsVisit)
+        select(AnalyticsVisit.country, AnalyticsVisit.region, AnalyticsVisit.city)
         .where(
             AnalyticsVisit.visitor_hash == visitor_hash,
             AnalyticsVisit.location_verified.is_(True),
         )
         .order_by(AnalyticsVisit.visited_at.desc())
         .limit(1)
-    ).scalar_one_or_none()
+    ).first()
     if not row or not _clean_country(row.country):
         return None
     return (
@@ -242,13 +255,18 @@ def _verified_locations_by_visitor(
     hashes = list(visitor_hashes)
     for start in range(0, len(hashes), 500):
         rows = db.execute(
-            select(AnalyticsVisit)
+            select(
+                AnalyticsVisit.visitor_hash,
+                AnalyticsVisit.country,
+                AnalyticsVisit.region,
+                AnalyticsVisit.city,
+            )
             .where(
                 AnalyticsVisit.visitor_hash.in_(hashes[start : start + 500]),
                 AnalyticsVisit.location_verified.is_(True),
             )
             .order_by(AnalyticsVisit.visited_at.desc())
-        ).scalars().all()
+        ).all()
         for row in rows:
             country = _clean_country(row.country)
             if row.visitor_hash not in resolved and country:
@@ -287,7 +305,9 @@ def _location_identity(
 
 
 @router.post("/analytics/visit", status_code=201)
-def record_visit(payload: AnalyticsVisitIn, request: Request, db: Session = Depends(get_db)):
+def record_visit(
+    payload: AnalyticsVisitIn, request: Request, db: Session = Depends(get_db)
+):
     if BOT_PATTERN.search(request.headers.get("user-agent") or ""):
         return {"ok": True}
     visitor_hash = hmac.new(
@@ -352,10 +372,18 @@ def realtime_analytics(
     now = datetime.utcnow()
     cutoff = now - timedelta(minutes=window_minutes)
     rows = db.execute(
-        select(AnalyticsVisit)
+        select(
+            AnalyticsVisit.visitor_hash,
+            AnalyticsVisit.path,
+            AnalyticsVisit.country,
+            AnalyticsVisit.region,
+            AnalyticsVisit.city,
+            AnalyticsVisit.location_verified,
+            AnalyticsVisit.visited_at,
+        )
         .where(AnalyticsVisit.visited_at >= cutoff)
         .order_by(AnalyticsVisit.visited_at.desc())
-    ).scalars().all()
+    ).all()
 
     active_visitors = {row.visitor_hash for row in rows}
     verified_locations = _verified_locations_by_visitor(
@@ -426,11 +454,17 @@ def realtime_analytics(
 
 def _month_bounds(value: str | None) -> tuple[str, datetime, datetime]:
     try:
-        start = datetime.strptime(value, "%Y-%m") if value else datetime.utcnow().replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
+        start = (
+            datetime.strptime(value, "%Y-%m")
+            if value
+            else datetime.utcnow().replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
         )
     except ValueError:
-        raise HTTPException(status_code=400, detail="month must use YYYY-MM format") from None
+        raise HTTPException(
+            status_code=400, detail="month must use YYYY-MM format"
+        ) from None
     start = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     days = monthrange(start.year, start.month)[1]
     return start.strftime("%Y-%m"), start, start + timedelta(days=days)
@@ -444,11 +478,18 @@ def analytics_dashboard(
 ):
     label, start, end = _month_bounds(month)
     rows = db.execute(
-        select(AnalyticsVisit).where(
+        select(
+            AnalyticsVisit.visitor_hash,
+            AnalyticsVisit.country,
+            AnalyticsVisit.region,
+            AnalyticsVisit.city,
+            AnalyticsVisit.location_verified,
+            AnalyticsVisit.visited_at,
+        ).where(
             AnalyticsVisit.visited_at >= start,
             AnalyticsVisit.visited_at < end,
         )
-    ).scalars().all()
+    ).all()
 
     daily: dict[str, dict[str, set[str] | int]] = {}
     locations: dict[tuple[str, str | None, str | None], dict[str, object]] = {}

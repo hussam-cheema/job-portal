@@ -93,6 +93,16 @@ test("infrastructure analytics only shows active services and the payment-aware 
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
   await expect(page.getByText("Paid", { exact: true })).toBeVisible();
+  await expect(page.getByText(/No \$5 is currently owed/)).toBeVisible();
+  await expect(page.getByText("Compute", { exact: true })).toBeVisible();
+  await expect(page.getByText("65.53 CU-hours", { exact: true })).toBeVisible();
+  await expect(page.getByText("Public network transfer", { exact: true })).toBeVisible();
+  await expect(page.getByText("4.26 GB", { exact: true })).toBeVisible();
+  await expect(page.getByText("Active branches", { exact: true })).toBeVisible();
+  await expect(page.getByText("$0.002", { exact: true })).toBeVisible();
+  await expect(page.getByText("Monthly emails", { exact: true })).toBeVisible();
+  await expect(page.getByText("Class A operations", { exact: true })).toBeVisible();
+  await expect(page.getByText("Every active cost driver", { exact: true })).toBeVisible();
 
   for (const removedLabel of [
     "Connection pool",

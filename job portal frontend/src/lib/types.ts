@@ -470,6 +470,43 @@ export type InfrastructureDashboard = {
     status: string;
     detail: string;
   }>;
+  cost_drivers: Array<{
+    id: string;
+    provider: string;
+    service: string;
+    plan: string;
+    metric: string;
+    used: number | null;
+    included: number | null;
+    remaining: number | null;
+    unit: string;
+    utilization_percent: number | null;
+    projected_month_end: number | null;
+    current_cost_usd: number | null;
+    projected_cost_usd: number | null;
+    next_paid_increment_usd: number | null;
+    status: string;
+    source: string;
+    detail: string;
+  }>;
+  provider_billing: Array<{
+    id: string;
+    provider: string;
+    plan: string;
+    subscription_fee_usd: number;
+    included_credit_usd: number;
+    current_usage_usd: number | null;
+    current_amount_due_usd: number;
+    projected_usage_usd: number | null;
+    projected_amount_due_usd: number | null;
+    billing_period_start: string | null;
+    billing_period_end: string | null;
+    next_charge_at: string | null;
+    configured: boolean;
+    status: string;
+    source: string;
+    detail: string;
+  }>;
   costs: {
     currency: string;
     monthly_budget_usd: number;

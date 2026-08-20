@@ -37,6 +37,10 @@ def test_api_export_replaces_azure_specific_database_and_mount_values():
     assert result["GSC_SERVICE_ACCOUNT_JSON"] == '{"type":"service_account"}'
     assert result["QWEN3_EMBEDDING_REQUIRE_PERSISTENT_STORAGE"] == "false"
     assert result["AZURE_COST_MANAGEMENT_ENABLED"] == "false"
+    assert result["RAILWAY_SUBSCRIPTION_PLAN"] == "Free"
+    assert result["RAILWAY_SUBSCRIPTION_FEE_USD"] == "0"
+    assert result["RAILWAY_INCLUDED_USAGE_USD"] == "1"
+    assert "RAILWAY_MONTHLY_COST_USD" not in result
 
 
 def test_newsletter_export_contains_only_delivery_configuration():

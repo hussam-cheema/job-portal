@@ -9,12 +9,21 @@ from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import canonical_site_url, env, site_url
 from app.logging_config import get_logger
-from app.models import BlogPost, Job, Page, SEOBacklink, SEOKeywordRank, SEOMeta, SiteSetting, TaxonomyTerm
+from app.models import (
+    BlogPost,
+    Job,
+    Page,
+    SEOBacklink,
+    SEOKeywordRank,
+    SEOMeta,
+    SiteSetting,
+    TaxonomyTerm,
+)
 from app.utils import as_list, slugify
 
 logger = get_logger("jobportal.seo_tools")
@@ -107,7 +116,19 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
     ]
     try:
-        jobs = db.execute(select(Job)).scalars().all()
+        jobs = db.execute(
+            select(
+                Job.id,
+                Job.slug,
+                Job.updated_at,
+                Job.published_date,
+                Job.tags,
+                Job.cities,
+                Job.provinces,
+                Job.source,
+                Job.education_required,
+            )
+        ).all()
         job_tags: set[str] = set()
         job_locations: set[str] = set()
         companies: set[str] = set()
@@ -116,12 +137,18 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             urls.append(
                 {
                     "loc": f"{base}/jobs/{job.slug or job.id}",
-                    "lastmod": (job.updated_at or job.published_date or datetime.utcnow()).date().isoformat(),
+                    "lastmod": (
+                        job.updated_at or job.published_date or datetime.utcnow()
+                    )
+                    .date()
+                    .isoformat(),
                     "changefreq": "weekly",
                     "priority": 0.8,
                 }
             )
-            job_tags.update(value.strip() for value in as_list(job.tags) if value and value.strip())
+            job_tags.update(
+                value.strip() for value in as_list(job.tags) if value and value.strip()
+            )
             job_locations.update(
                 value.strip()
                 for value in [*as_list(job.cities), *as_list(job.provinces)]
@@ -131,26 +158,62 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 companies.add(job.source.strip())
             if job.education_required and job.education_required.strip():
                 qualifications.add(job.education_required.strip())
-        categories = db.execute(
-            select(TaxonomyTerm).where(
-                TaxonomyTerm.kind == "category", TaxonomyTerm.is_active.is_(True)
+        categories = (
+            db.execute(
+                select(TaxonomyTerm.slug).where(
+                    TaxonomyTerm.kind == "category", TaxonomyTerm.is_active.is_(True)
+                )
             )
-        ).scalars().all()
-        for term in categories:
-            urls.append({"loc": f"{base}/categories/{term.slug}", "changefreq": "weekly", "priority": 0.6})
+            .scalars()
+            .all()
+        )
+        for term_slug in categories:
+            urls.append(
+                {
+                    "loc": f"{base}/categories/{term_slug}",
+                    "changefreq": "weekly",
+                    "priority": 0.6,
+                }
+            )
         for value in sorted(job_tags):
             if slugify(value):
-                urls.append({"loc": f"{base}/tags/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
+                urls.append(
+                    {
+                        "loc": f"{base}/tags/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.5,
+                    }
+                )
         for value in sorted(job_locations):
             if slugify(value):
-                urls.append({"loc": f"{base}/locations/{slugify(value)}", "changefreq": "weekly", "priority": 0.6})
+                urls.append(
+                    {
+                        "loc": f"{base}/locations/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.6,
+                    }
+                )
         for value in sorted(companies):
             if slugify(value):
-                urls.append({"loc": f"{base}/companies/{slugify(value)}", "changefreq": "weekly", "priority": 0.6})
+                urls.append(
+                    {
+                        "loc": f"{base}/companies/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.6,
+                    }
+                )
         for value in sorted(qualifications):
             if slugify(value):
-                urls.append({"loc": f"{base}/qualifications/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
-        for page in db.execute(select(Page).where(Page.is_published.is_(True))).scalars().all():
+                urls.append(
+                    {
+                        "loc": f"{base}/qualifications/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.5,
+                    }
+                )
+        for page in db.execute(
+            select(Page.slug, Page.updated_at).where(Page.is_published.is_(True))
+        ).all():
             core_slugs = {"about", "contact", "privacy", "disclaimer"}
             path = f"/{page.slug}" if page.slug in core_slugs else f"/p/{page.slug}"
             if page.slug in core_slugs:
@@ -158,38 +221,62 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             urls.append(
                 {
                     "loc": f"{base}{path}",
-                    "lastmod": (page.updated_at or datetime.utcnow()).date().isoformat(),
+                    "lastmod": (page.updated_at or datetime.utcnow())
+                    .date()
+                    .isoformat(),
                     "changefreq": "monthly",
                     "priority": 0.5,
                 }
             )
         now = datetime.utcnow()
         posts = db.execute(
-            select(BlogPost).where(
+            select(
+                BlogPost.slug,
+                BlogPost.updated_at,
+                BlogPost.published_at,
+                BlogPost.category,
+                BlogPost.tags,
+            ).where(
                 BlogPost.is_published.is_(True),
                 (BlogPost.published_at.is_(None) | (BlogPost.published_at <= now)),
             )
-        ).scalars().all()
+        ).all()
         blog_categories: set[str] = set()
         blog_tags: set[str] = set()
         for post in posts:
             urls.append(
                 {
                     "loc": f"{base}/blog/{post.slug}",
-                    "lastmod": (post.updated_at or post.published_at or now).date().isoformat(),
+                    "lastmod": (post.updated_at or post.published_at or now)
+                    .date()
+                    .isoformat(),
                     "changefreq": "weekly",
                     "priority": 0.7,
                 }
             )
             if post.category and post.category.strip():
                 blog_categories.add(post.category.strip())
-            blog_tags.update(value.strip() for value in as_list(post.tags) if value and value.strip())
+            blog_tags.update(
+                value.strip() for value in as_list(post.tags) if value and value.strip()
+            )
         for value in sorted(blog_categories):
             if slugify(value):
-                urls.append({"loc": f"{base}/blog/categories/{slugify(value)}", "changefreq": "weekly", "priority": 0.5})
+                urls.append(
+                    {
+                        "loc": f"{base}/blog/categories/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.5,
+                    }
+                )
         for value in sorted(blog_tags):
             if slugify(value):
-                urls.append({"loc": f"{base}/blog/tags/{slugify(value)}", "changefreq": "weekly", "priority": 0.4})
+                urls.append(
+                    {
+                        "loc": f"{base}/blog/tags/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.4,
+                    }
+                )
     except Exception:
         logger.exception("build_sitemap_urls failed")
     return list({item["loc"]: item for item in urls}.values())
@@ -213,7 +300,9 @@ def _directory_values(values: list[str]) -> list[dict[str, Any]]:
             "slug": slugify(display_by_key[key]),
             "count": counts[key],
         }
-        for key in sorted(display_by_key, key=lambda item: display_by_key[item].casefold())
+        for key in sorted(
+            display_by_key, key=lambda item: display_by_key[item].casefold()
+        )
     ]
 
 
@@ -221,29 +310,47 @@ def build_site_directory(db: Session) -> dict[str, Any]:
     """Build the complete public link inventory used by Browse All and crawl tests."""
     now = datetime.utcnow()
     jobs = db.execute(
-        select(Job).order_by(Job.published_date.desc(), Job.created_at.desc())
-    ).scalars().all()
+        select(
+            Job.id,
+            Job.slug,
+            Job.title,
+            Job.published_date,
+            Job.deadline_date,
+            Job.source,
+            Job.education_required,
+            Job.cities,
+            Job.provinces,
+            Job.tags,
+        ).order_by(Job.published_date.desc(), Job.created_at.desc())
+    ).all()
     posts = db.execute(
-        select(BlogPost)
+        select(
+            BlogPost.id,
+            BlogPost.slug,
+            BlogPost.title,
+            BlogPost.published_at,
+            BlogPost.category,
+            BlogPost.tags,
+        )
         .where(
             BlogPost.is_published.is_(True),
             (BlogPost.published_at.is_(None) | (BlogPost.published_at <= now)),
         )
         .order_by(BlogPost.published_at.desc(), BlogPost.created_at.desc())
-    ).scalars().all()
+    ).all()
     pages = db.execute(
-        select(Page)
+        select(Page.id, Page.slug, Page.title)
         .where(Page.is_published.is_(True))
         .order_by(Page.title.asc())
-    ).scalars().all()
+    ).all()
     category_terms = db.execute(
-        select(TaxonomyTerm)
+        select(TaxonomyTerm.name, TaxonomyTerm.slug)
         .where(
             TaxonomyTerm.kind == "category",
             TaxonomyTerm.is_active.is_(True),
         )
         .order_by(TaxonomyTerm.name.asc())
-    ).scalars().all()
+    ).all()
 
     job_tags = [value for job in jobs for value in as_list(job.tags)]
     cities = [value for job in jobs for value in as_list(job.cities)]
@@ -260,8 +367,12 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                 "id": job.id,
                 "slug": job.slug or job.id,
                 "title": job.title,
-                "published_date": job.published_date.isoformat() if job.published_date else None,
-                "deadline_date": job.deadline_date.isoformat() if job.deadline_date else None,
+                "published_date": job.published_date.isoformat()
+                if job.published_date
+                else None,
+                "deadline_date": job.deadline_date.isoformat()
+                if job.deadline_date
+                else None,
                 "applications_closed": bool(
                     job.deadline_date and job.deadline_date.date() < now.date()
                 ),
@@ -278,7 +389,9 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                 "id": post.id,
                 "slug": post.slug,
                 "title": post.title,
-                "published_at": post.published_at.isoformat() if post.published_at else None,
+                "published_at": post.published_at.isoformat()
+                if post.published_at
+                else None,
                 "category": post.category,
                 "tags": as_list(post.tags),
             }
@@ -335,7 +448,12 @@ def measure_pagespeed(url: str | None = None) -> dict[str, Any]:
     if api_key:
         try:
             endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
-            params = {"url": target, "category": "performance", "strategy": "mobile", "key": api_key}
+            params = {
+                "url": target,
+                "category": "performance",
+                "strategy": "mobile",
+                "key": api_key,
+            }
             with httpx.Client(timeout=60.0) as client:
                 r = client.get(endpoint, params=params)
                 r.raise_for_status()
@@ -348,14 +466,25 @@ def measure_pagespeed(url: str | None = None) -> dict[str, Any]:
                 "score": round(perf, 1),
                 "source": "pagespeed_insights",
                 "url": target,
-                "fcp_ms": (audits.get("first-contentful-paint") or {}).get("numericValue"),
-                "lcp_ms": (audits.get("largest-contentful-paint") or {}).get("numericValue"),
-                "cls": (audits.get("cumulative-layout-shift") or {}).get("numericValue"),
+                "fcp_ms": (audits.get("first-contentful-paint") or {}).get(
+                    "numericValue"
+                ),
+                "lcp_ms": (audits.get("largest-contentful-paint") or {}).get(
+                    "numericValue"
+                ),
+                "cls": (audits.get("cumulative-layout-shift") or {}).get(
+                    "numericValue"
+                ),
                 "tbt_ms": (audits.get("total-blocking-time") or {}).get("numericValue"),
             }
         except Exception as exc:
             logger.exception("pagespeed api failed")
-            return {"score": 0, "source": "pagespeed_error", "error": str(exc), "url": target}
+            return {
+                "score": 0,
+                "source": "pagespeed_error",
+                "error": str(exc),
+                "url": target,
+            }
 
     # Local fallback: measure TTFB (try public URL, then in-network frontend/backend health)
     candidates = [target]
@@ -409,13 +538,19 @@ def measure_pagespeed(url: str | None = None) -> dict[str, Any]:
 def authority_score(db: Session) -> dict[str, Any]:
     """Composite free authority score from on-site SEO signals + backlinks count."""
     try:
-        jobs = db.execute(select(Job)).scalars().all()
-        pages = db.execute(select(Page)).scalars().all()
-        metas = db.execute(select(SEOMeta)).scalars().all()
+        jobs_count = db.execute(select(func.count()).select_from(Job)).scalar() or 0
+        pages_count = db.execute(select(func.count()).select_from(Page)).scalar() or 0
+        seo_scores = (
+            db.execute(select(SEOMeta.seo_score).where(SEOMeta.seo_score.is_not(None)))
+            .scalars()
+            .all()
+        )
+        metas_count = (
+            db.execute(select(func.count()).select_from(SEOMeta)).scalar() or 0
+        )
         bl_count = len(_unique_backlink_rows(db))
-        scores = [m.seo_score for m in metas if m.seo_score is not None]
-        avg_seo = sum(scores) / len(scores) if scores else 40
-        coverage = (len(metas) / max(len(jobs) + len(pages), 1)) * 100
+        avg_seo = sum(seo_scores) / len(seo_scores) if seo_scores else 40
+        coverage = (metas_count / max(jobs_count + pages_count, 1)) * 100
         bl_component = min(30, bl_count * 2)
         score = round(min(100, avg_seo * 0.5 + coverage * 0.3 + bl_component), 1)
         return {
@@ -423,8 +558,8 @@ def authority_score(db: Session) -> dict[str, Any]:
             "avg_onpage_seo": round(avg_seo, 1),
             "seo_coverage_pct": round(coverage, 1),
             "backlinks": bl_count,
-            "jobs": len(jobs),
-            "pages": len(pages),
+            "jobs": jobs_count,
+            "pages": pages_count,
             "method": "composite_onpage_backlinks",
         }
     except Exception:
@@ -457,7 +592,9 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                 "keywords": [],
                 "pages": [],
             }
-        service = build("searchconsole", "v1", credentials=credentials, cache_discovery=False)
+        service = build(
+            "searchconsole", "v1", credentials=credentials, cache_discovery=False
+        )
         # Use an exact 28-day window and avoid today's still-changing data.
         end = datetime.utcnow().date() - timedelta(days=1)
         start = end - timedelta(days=27)
@@ -475,13 +612,18 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
         # keyword/URL rows indefinitely.
         db.execute(delete(SEOKeywordRank))
         keywords_out = []
+        job_ids_by_slug = dict(db.execute(select(Job.slug, Job.id)).all())
+        page_ids_by_slug = dict(db.execute(select(Page.slug, Page.id)).all())
         seen_pairs: set[tuple[str, str]] = set()
         for row in rows:
             keys = row.get("keys") or []
             if len(keys) < 2:
                 continue
             query, page = keys[0], keys[1]
-            pair = (str(query).strip().casefold(), str(page).strip().rstrip("/").casefold())
+            pair = (
+                str(query).strip().casefold(),
+                str(page).strip().rstrip("/").casefold(),
+            )
             if not pair[0] or not pair[1] or pair in seen_pairs:
                 continue
             seen_pairs.add(pair)
@@ -489,7 +631,11 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
             clicks = int(row.get("clicks") or 0)
             imps = int(row.get("impressions") or 0)
             ctr = float(row.get("ctr") or 0)
-            entity_type, entity_id = _match_entity(db, page)
+            entity_type, entity_id = _match_entity_from_maps(
+                page,
+                job_ids_by_slug=job_ids_by_slug,
+                page_ids_by_slug=page_ids_by_slug,
+            )
             db.add(
                 SEOKeywordRank(
                     id=str(uuid4()),
@@ -541,7 +687,12 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
     except Exception as exc:
         db.rollback()
         logger.exception("gsc sync failed")
-        return {"connected": False, "message": f"GSC sync failed: {exc}", "keywords": [], "pages": []}
+        return {
+            "connected": False,
+            "message": f"GSC sync failed: {exc}",
+            "keywords": [],
+            "pages": [],
+        }
 
 
 def _match_entity(db: Session, page_url: str) -> tuple[str | None, str | None]:
@@ -554,11 +705,30 @@ def _match_entity(db: Session, page_url: str) -> tuple[str | None, str | None]:
                 return "job", job.id
         elif path:
             slug = path.split("/")[-1]
-            page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+            page = db.execute(
+                select(Page).where(Page.slug == slug)
+            ).scalar_one_or_none()
             if page:
                 return "page", page.id
     except Exception:
         pass
+    return None, None
+
+
+def _match_entity_from_maps(
+    page_url: str,
+    *,
+    job_ids_by_slug: dict[str, str],
+    page_ids_by_slug: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """Resolve a GSC URL without issuing a query for every search result row."""
+    path = urlparse(page_url).path.strip("/")
+    if path.startswith("jobs/"):
+        job_id = job_ids_by_slug.get(path.split("/", 1)[1])
+        return ("job", job_id) if job_id else (None, None)
+    if path:
+        page_id = page_ids_by_slug.get(path.split("/")[-1])
+        return ("page", page_id) if page_id else (None, None)
     return None, None
 
 
@@ -691,7 +861,9 @@ def _canonical_backlink_url(value: str | None) -> str:
     scheme = parsed.scheme.casefold()
     hostname = (parsed.hostname or "").casefold()
     port = parsed.port
-    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+    if port and not (
+        (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+    ):
         hostname = f"{hostname}:{port}"
     path = parsed.path.rstrip("/") or "/"
     return urlunparse((scheme, hostname, path, "", parsed.query, "")).casefold()
@@ -706,7 +878,11 @@ def _backlink_key(row: SEOBacklink) -> tuple[str, str]:
 
 def _unique_backlink_rows(db: Session) -> list[SEOBacklink]:
     """Return the latest record for each source/target pair."""
-    rows = db.execute(select(SEOBacklink).order_by(SEOBacklink.last_seen.desc())).scalars().all()
+    rows = (
+        db.execute(select(SEOBacklink).order_by(SEOBacklink.last_seen.desc()))
+        .scalars()
+        .all()
+    )
     unique: list[SEOBacklink] = []
     seen: set[tuple[str, str]] = set()
     for row in rows:
@@ -756,7 +932,9 @@ def add_backlink(
         row
         for row in db.execute(
             select(SEOBacklink).order_by(SEOBacklink.last_seen.desc())
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
         if _backlink_key(row) == wanted_key
     ]
     if matches:

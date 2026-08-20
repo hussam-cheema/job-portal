@@ -48,7 +48,9 @@ def resolve_database_url() -> str:
         if env_url.startswith("sqlite"):
             if is_test:
                 return env_url
-            raise RuntimeError("SQLite is not supported; configure the Docker PostgreSQL database")
+            raise RuntimeError(
+                "SQLite is not supported; configure the Docker PostgreSQL database"
+            )
         else:
             return env_url
 
@@ -79,7 +81,17 @@ def build_engine_options(url: str) -> dict:
     if not url.startswith("postgresql"):
         return options
 
-    pool_mode = os.getenv("DB_POOL_MODE", "queue").strip().lower()
+    # Neon pooled connection strings contain ``-pooler``. Default them to
+    # serverless mode so Railway processes do not keep database compute awake
+    # between requests, while dedicated/local Postgres retains QueuePool.
+    configured_pool_mode = os.getenv("DB_POOL_MODE", "auto").strip().lower()
+    pool_mode = (
+        "serverless"
+        if configured_pool_mode == "auto" and "-pooler." in url.lower()
+        else "queue"
+        if configured_pool_mode == "auto"
+        else configured_pool_mode
+    )
     serverless = pool_mode in {"null", "serverless"}
     sslmode = os.getenv("DB_SSLMODE", "").strip()
     if sslmode:
@@ -96,16 +108,27 @@ def build_engine_options(url: str) -> dict:
 
     if serverless:
         options["poolclass"] = NullPool
+        # A freshly-created connection cannot be stale. Avoid SQLAlchemy's
+        # extra SELECT 1 on every request; Neon's pooler performs validation.
+        options["pool_pre_ping"] = False
     else:
         options["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
         options["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "5"))
         options["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "30"))
         options["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
+        # LIFO lets excess connections remain idle long enough to be closed,
+        # which keeps the active database connection footprint small.
+        options["pool_use_lifo"] = True
     return options
 
 
 engine = create_engine(DATABASE_URL, **build_engine_options(DATABASE_URL))
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+    bind=engine,
+)
 
 logger.info(
     "database configured dialect=%s",
@@ -197,20 +220,20 @@ def _reset_app_tables() -> None:
 def _ensure_new_columns() -> None:
     """Add columns/tables introduced after initial deploy (Postgres-safe)."""
     alters = [
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0',
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0',
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP NULL',
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64) NULL',
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP NULL',
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_requested_at TIMESTAMP NULL',
-        'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS focus_keyword VARCHAR(200)',
-        'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS seo_score DOUBLE PRECISION',
-        'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS readability_score DOUBLE PRECISION',
-        'ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS analysis JSON',
-        'ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE',
-        'ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS city VARCHAR(150) NULL',
-        'ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL',
-        'ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL',
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64) NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_requested_at TIMESTAMP NULL",
+        "ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS focus_keyword VARCHAR(200)",
+        "ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS seo_score DOUBLE PRECISION",
+        "ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS readability_score DOUBLE PRECISION",
+        "ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS analysis JSON",
+        "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS city VARCHAR(150) NULL",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL",
+        "ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL",
     ]
     if DATABASE_URL.startswith("sqlite"):
         # SQLite lacks IF NOT EXISTS for columns — ignore errors
@@ -233,7 +256,9 @@ def _ensure_new_columns() -> None:
     try:
         with engine.begin() as conn:
             insp = inspect(engine)
-            if not {"seo_meta", "analytics_visits"}.intersection(insp.get_table_names()):
+            if not {"seo_meta", "analytics_visits"}.intersection(
+                insp.get_table_names()
+            ):
                 return
             for stmt in alters:
                 try:
@@ -250,6 +275,55 @@ def _ensure_new_columns() -> None:
                 )
     except Exception:
         logger.exception("ensure_new_columns failed")
+
+
+def _ensure_performance_indexes() -> None:
+    """Install additive indexes for existing deployments without rebuilding tables."""
+    statements = (
+        "CREATE INDEX IF NOT EXISTS ix_analytics_visitor_path_visited "
+        "ON analytics_visits (visitor_hash, path, visited_at)",
+        "CREATE INDEX IF NOT EXISTS ix_analytics_verified_visitor_visited "
+        "ON analytics_visits (visitor_hash, location_verified, visited_at)",
+        "CREATE INDEX IF NOT EXISTS ix_jobs_published_created "
+        "ON jobs (published_date, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_jobs_type_published "
+        "ON jobs (job_type, published_date)",
+        "CREATE INDEX IF NOT EXISTS ix_job_attachments_job_created "
+        "ON job_attachments (job_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_job_qna_job_created "
+        "ON job_qna (job_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_blog_public_published_created "
+        "ON blog_posts (is_published, published_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_blog_updated ON blog_posts (updated_at)",
+        "CREATE INDEX IF NOT EXISTS ix_contact_messages_created "
+        "ON contact_messages (created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_seo_meta_entity "
+        "ON seo_meta (entity_type, entity_id)",
+        "CREATE INDEX IF NOT EXISTS ix_seo_meta_updated ON seo_meta (updated_at)",
+        "CREATE INDEX IF NOT EXISTS ix_taxonomy_kind_active_name "
+        "ON taxonomy_terms (kind, is_active, name)",
+        "CREATE INDEX IF NOT EXISTS ix_subscribers_active_subscribed "
+        "ON email_subscribers (is_active, subscribed_at)",
+        "CREATE INDEX IF NOT EXISTS ix_deliveries_due "
+        "ON subscription_email_deliveries (status, next_attempt_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_deliveries_job_status "
+        "ON subscription_email_deliveries (job_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_seo_backlinks_last_seen "
+        "ON seo_backlinks (last_seen)",
+        "CREATE INDEX IF NOT EXISTS ix_keyword_ranks_recorded_keyword "
+        "ON seo_keyword_ranks (recorded_at, keyword)",
+    )
+    try:
+        existing_tables = set(inspect(engine).get_table_names())
+        with engine.begin() as conn:
+            for statement in statements:
+                table_name = statement.rsplit(" ON ", 1)[1].split(" ", 1)[0]
+                if table_name in existing_tables:
+                    conn.execute(text(statement))
+        logger.info("performance indexes ensured")
+    except Exception:
+        logger.exception("ensure_performance_indexes failed")
+        raise
 
 
 def init_db() -> None:
@@ -273,6 +347,7 @@ def init_db() -> None:
             )
         Base.metadata.create_all(bind=engine)
         _ensure_new_columns()
+        _ensure_performance_indexes()
         logger.info("tables ensured")
     except Exception:
         logger.exception("init_db failed")
@@ -283,5 +358,10 @@ def configure_engine(url: str) -> None:
     global DATABASE_URL, engine, SessionLocal
     DATABASE_URL = url
     engine = create_engine(url, **build_engine_options(url))
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        bind=engine,
+    )
     logger.info("engine reconfigured url=%s", url)

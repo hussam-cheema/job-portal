@@ -140,6 +140,45 @@ class InfrastructureQuotaMetric(BaseModel):
     detail: str
 
 
+class InfrastructureCostDriver(BaseModel):
+    id: str
+    provider: str
+    service: str
+    plan: str
+    metric: str
+    used: Optional[float] = None
+    included: Optional[float] = None
+    remaining: Optional[float] = None
+    unit: str
+    utilization_percent: Optional[float] = None
+    projected_month_end: Optional[float] = None
+    current_cost_usd: Optional[float] = None
+    projected_cost_usd: Optional[float] = None
+    next_paid_increment_usd: Optional[float] = None
+    status: str
+    source: str
+    detail: str
+
+
+class InfrastructureProviderBilling(BaseModel):
+    id: str
+    provider: str
+    plan: str
+    subscription_fee_usd: float = 0.0
+    included_credit_usd: float = 0.0
+    current_usage_usd: Optional[float] = None
+    current_amount_due_usd: float = 0.0
+    projected_usage_usd: Optional[float] = None
+    projected_amount_due_usd: Optional[float] = None
+    billing_period_start: Optional[datetime] = None
+    billing_period_end: Optional[datetime] = None
+    next_charge_at: Optional[datetime] = None
+    configured: bool = True
+    status: str
+    source: str
+    detail: str
+
+
 class InfrastructureCostItem(BaseModel):
     id: str
     name: str
@@ -194,6 +233,8 @@ class InfrastructureDashboard(BaseModel):
     compute: list[InfrastructureComputeMetric] = Field(default_factory=list)
     database_connections: InfrastructureConnectionMetric
     quotas: list[InfrastructureQuotaMetric] = Field(default_factory=list)
+    cost_drivers: list[InfrastructureCostDriver] = Field(default_factory=list)
+    provider_billing: list[InfrastructureProviderBilling] = Field(default_factory=list)
     costs: InfrastructureCostSummary
     alerts: list[InfrastructureAlert] = Field(default_factory=list)
 
