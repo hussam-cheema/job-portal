@@ -284,6 +284,36 @@ DEFAULT_PAGE_SEO = {
             "government jobs disclaimer, recruitment fraud warning"
         ),
     },
+    "jobs-by-cities": {
+        "focus_keyword": "jobs by city in Pakistan",
+        "meta_title": "Jobs by City in Pakistan | Pakistan Jobs Market",
+        "meta_description": "Browse current Pakistan job opportunities by city, including province-wide and nationwide vacancies.",
+        "meta_keywords": "jobs by city Pakistan, Lahore jobs, Karachi jobs, Islamabad jobs",
+    },
+    "jobs-by-provinces": {
+        "focus_keyword": "jobs by province in Pakistan",
+        "meta_title": "Jobs by Province in Pakistan | Pakistan Jobs Market",
+        "meta_description": "Browse current jobs across every province and territory of Pakistan.",
+        "meta_keywords": "jobs by province Pakistan, Punjab jobs, Sindh jobs, KPK jobs",
+    },
+    "jobs-by-categories": {
+        "focus_keyword": "jobs by category in Pakistan",
+        "meta_title": "Jobs by Category in Pakistan | Pakistan Jobs Market",
+        "meta_description": "Explore current Pakistan vacancies by profession and job category.",
+        "meta_keywords": "jobs by category Pakistan, engineering jobs, teaching jobs, IT jobs",
+    },
+    "jobs-by-organizations": {
+        "focus_keyword": "jobs by organization in Pakistan",
+        "meta_title": "Jobs by Organization in Pakistan | Pakistan Jobs Market",
+        "meta_description": "Find current vacancies grouped by the recruiting organization or department.",
+        "meta_keywords": "organization jobs Pakistan, department jobs, company jobs Pakistan",
+    },
+    "jobs-by-newspapers": {
+        "focus_keyword": "newspaper jobs in Pakistan",
+        "meta_title": "Jobs by Newspaper in Pakistan | Pakistan Jobs Market",
+        "meta_description": "Browse current Pakistan job advertisements by their newspaper source.",
+        "meta_keywords": "newspaper jobs Pakistan, Jang jobs, Dawn jobs, Express jobs",
+    },
 }
 
 DEFAULT_PAGES = [
@@ -304,6 +334,31 @@ DEFAULT_PAGES = [
         "Pakistan Jobs Market does not process job applications.</p>",
     ),
     ("disclaimer", "Disclaimer", DISCLAIMER_HTML),
+    (
+        "jobs-by-cities",
+        "Jobs by Cities",
+        "<p>Choose a city to see local vacancies together with province-wide and nationwide opportunities that also cover that city.</p>",
+    ),
+    (
+        "jobs-by-provinces",
+        "Jobs by Provinces",
+        "<p>Explore vacancies for each province and territory. Results also include jobs assigned to cities inside that region and roles open across Pakistan.</p>",
+    ),
+    (
+        "jobs-by-categories",
+        "Jobs by Category",
+        "<p>Browse current job posts using the categories assigned in the job editor.</p>",
+    ),
+    (
+        "jobs-by-organizations",
+        "Jobs by Organization",
+        "<p>Find opportunities by the source organization or recruiting department named on each job post.</p>",
+    ),
+    (
+        "jobs-by-newspapers",
+        "Jobs by Newspaper",
+        "<p>Find advertisements by the newspaper name recorded on each job post.</p>",
+    ),
 ]
 
 
@@ -340,6 +395,8 @@ def sync_local_core_pages_once(db) -> list[Page]:
 
     changed: list[Page] = []
     for slug, title, content in DEFAULT_PAGES:
+        if slug not in {"about", "privacy", "contact", "disclaimer"}:
+            continue
         page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
         if not page:
             continue

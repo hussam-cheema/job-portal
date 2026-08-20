@@ -210,8 +210,9 @@ export default async function JobDetailPage({ params }: Props) {
             />
             {salary && <Meta label="Salary" value={salary} />}
             {(job.source_name || job.source) && (
-              <Meta label="Source" value={job.source_name || job.source || ""} />
+              <Meta label="Source Organization" value={job.source_name || job.source || ""} />
             )}
+            {job.newspaper && <Meta label="Newspaper" value={job.newspaper} />}
           </div>
           {(referenceUrl || (!applicationsClosed && job.application_url)) && (
             <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">

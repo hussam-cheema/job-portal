@@ -23,9 +23,24 @@ const corePages = [
   { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy policy" },
   { href: "/disclaimer", label: "Disclaimer" },
+  { href: "/jobs-by-cities", label: "Jobs by Cities" },
+  { href: "/jobs-by-provinces", label: "Jobs by Provinces" },
+  { href: "/jobs-by-categories", label: "Jobs by Category" },
+  { href: "/jobs-by-organizations", label: "Jobs by Organization" },
+  { href: "/jobs-by-newspapers", label: "Jobs by Newspaper" },
 ];
 
-const corePageSlugs = new Set(["about", "contact", "privacy", "disclaimer"]);
+const corePageSlugs = new Set([
+  "about",
+  "contact",
+  "privacy",
+  "disclaimer",
+  "jobs-by-cities",
+  "jobs-by-provinces",
+  "jobs-by-categories",
+  "jobs-by-organizations",
+  "jobs-by-newspapers",
+]);
 
 const careerTools = [
   {
@@ -150,6 +165,7 @@ export default async function BrowsePage() {
           ["blogs", "All guides"],
           ["categories", "Categories"],
           ["organizations", "Organizations"],
+          ["newspapers", "Newspapers"],
           ["cities", "Cities"],
           ["provinces", "Provinces"],
           ["job-tags", "Job tags"],
@@ -238,6 +254,7 @@ export default async function BrowsePage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <DirectoryLinks id="categories" title="Job categories" eyebrow="Browse by field" values={directory.taxonomies.job_categories} path="/categories" />
           <DirectoryLinks id="organizations" title="Organizations" eyebrow="Browse by employer" values={directory.taxonomies.organizations} path="/companies" />
+          <DirectoryLinks id="newspapers" title="Newspapers" eyebrow="Browse published adverts" values={directory.taxonomies.newspapers} path="/newspapers" />
           <DirectoryLinks id="cities" title="Cities" eyebrow="Browse locally" values={directory.taxonomies.cities} path="/locations" />
           <DirectoryLinks id="provinces" title="Provinces" eyebrow="Browse regionally" values={directory.taxonomies.provinces} path="/locations" />
           <DirectoryLinks id="job-tags" title="Job tags" eyebrow="Browse by topic" values={directory.taxonomies.job_tags} path="/tags" />

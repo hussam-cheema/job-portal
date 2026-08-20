@@ -16,6 +16,9 @@ from app.constants import (
     DEFAULT_CATEGORIES,
     JOB_TYPES,
     PAKISTAN_CITIES,
+    PAKISTAN_CITIES_BY_PROVINCE,
+    PAKISTAN_NEWSPAPERS,
+    PAKISTAN_PROVINCE_BY_CITY,
     PAKISTAN_PROVINCES,
     SECTORS,
 )
@@ -57,6 +60,7 @@ JOB_SUMMARY_COLUMNS = (
     Job.deadline_date,
     Job.salary_range,
     Job.source,
+    Job.newspaper,
     Job.reference_url,
     Job.application_url,
     Job.experience_required,
@@ -106,6 +110,7 @@ def _to_summary(job: Any) -> JobSummary:
         deadline_date=job.deadline_date,
         salary_range=job.salary_range,
         source=job.source,
+        newspaper=job.newspaper or "",
         reference_url=job.reference_url,
         application_url=job.application_url,
         experience_required=job.experience_required,
@@ -256,7 +261,9 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
     if "salary_range" in data:
         job.salary_range = data["salary_range"]
     if "source" in data:
-        job.source = data["source"]
+        job.source = (data["source"] or "").strip() or None
+    if "newspaper" in data:
+        job.newspaper = (data["newspaper"] or "").strip()
     if "reference_url" in data:
         job.reference_url = data["reference_url"]
     if "application_url" in data:
@@ -298,6 +305,7 @@ def list_jobs(
     city: Optional[str] = Query(None),
     province: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
+    newspaper: Optional[str] = Query(None),
     education: Optional[str] = Query(None),
     employment_type: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
@@ -325,6 +333,7 @@ def list_jobs(
                     Job.title.ilike(like),
                     Job.description.ilike(like),
                     Job.source.ilike(like),
+                    Job.newspaper.ilike(like),
                     Job.keywords.ilike(like),
                     cast(Job.skills, String).ilike(like),
                     cast(Job.tags, String).ilike(like),
@@ -347,13 +356,62 @@ def list_jobs(
             like = f"%{category.strip()}%"
             filters.append(cast(Job.tags, String).ilike(like))
         if city:
-            like = f"%{city.strip()}%"
-            filters.append(cast(Job.cities, String).ilike(like))
+            requested_city = city.strip()
+            canonical_city = next(
+                (
+                    value
+                    for value in PAKISTAN_CITIES
+                    if value.casefold() == requested_city.casefold()
+                ),
+                requested_city,
+            )
+            city_filters = [
+                func.lower(cast(Job.cities, String)).like(
+                    f'%"{canonical_city.casefold()}"%'
+                ),
+                func.lower(cast(Job.cities, String)).like('%"pakistan"%'),
+                func.lower(cast(Job.provinces, String)).like('%"pakistan"%'),
+            ]
+            linked_province = PAKISTAN_PROVINCE_BY_CITY.get(canonical_city)
+            if linked_province:
+                city_filters.append(
+                    func.lower(cast(Job.provinces, String)).like(
+                        f'%"{linked_province.casefold()}"%'
+                    )
+                )
+            filters.append(or_(*city_filters))
         if province:
-            like = f"%{province.strip()}%"
-            filters.append(cast(Job.provinces, String).ilike(like))
+            requested_province = province.strip()
+            canonical_province = next(
+                (
+                    value
+                    for value in PAKISTAN_PROVINCES
+                    if value.casefold() == requested_province.casefold()
+                ),
+                requested_province,
+            )
+            province_filters = [
+                func.lower(cast(Job.provinces, String)).like(
+                    f'%"{canonical_province.casefold()}"%'
+                ),
+                func.lower(cast(Job.provinces, String)).like('%"pakistan"%'),
+                func.lower(cast(Job.cities, String)).like('%"pakistan"%'),
+            ]
+            province_filters.extend(
+                func.lower(cast(Job.cities, String)).like(
+                    f'%"{linked_city.casefold()}"%'
+                )
+                for linked_city in PAKISTAN_CITIES_BY_PROVINCE.get(
+                    canonical_province, []
+                )
+            )
+            filters.append(or_(*province_filters))
         if company:
-            filters.append(Job.source == company)
+            filters.append(func.lower(Job.source) == company.strip().casefold())
+        if newspaper:
+            filters.append(
+                func.lower(Job.newspaper) == newspaper.strip().casefold()
+            )
         if education:
             filters.append(Job.education_required.ilike(f"%{education.strip()}%"))
         if tag:
@@ -636,11 +694,16 @@ def get_filters(db: Session = Depends(get_db)):
             .all()
         }
         companies: list[str] = []
+        newspapers: list[str] = list(PAKISTAN_NEWSPAPERS)
         qualifications: list[str] = []
-        jobs = db.execute(select(Job.source, Job.education_required)).all()
-        for source, education_required in jobs:
+        jobs = db.execute(
+            select(Job.source, Job.newspaper, Job.education_required)
+        ).all()
+        for source, newspaper, education_required in jobs:
             if source:
-                companies.append(source)
+                companies.append(source.strip())
+            if newspaper:
+                newspapers.append(newspaper.strip())
             if education_required:
                 qualifications.append(education_required.strip())
 
@@ -661,7 +724,8 @@ def get_filters(db: Session = Depends(get_db)):
             categories=categories,
             cities=cities,
             provinces=PAKISTAN_PROVINCES,
-            companies=sorted(set(companies)),
+            companies=sorted(set(filter(None, companies)), key=str.casefold),
+            newspapers=sorted(set(filter(None, newspapers)), key=str.casefold),
             employment_types=[],
             # Kept for backwards-compatible clients; tags now represent only
             # the controlled category taxonomy, not cities or free-form skills.

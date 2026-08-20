@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+const mockSiteOrigin = (process.env.MOCK_SITE_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
+
 const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
@@ -85,26 +87,31 @@ const server = createServer((request, response) => {
   }
   if (path === "/api/filters") {
     return json(response, {
-      source_types: [], sectors: ["govt", "private"], categories: ["Software Engineering"],
-      cities: ["Lahore"], provinces: ["Punjab"],
-      companies: [], employment_types: [], tags: ["Software Engineering"], job_types: ["government", "private"],
+      source_types: [], sectors: ["govt", "private"],
+      categories: ["Software Engineering", "Accounting", "Education", "Engineering", "Healthcare", "Marketing"],
+      cities: ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Peshawar", "Quetta"],
+      provinces: ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan", "Islamabad Capital Territory", "Gilgit-Baltistan"],
+      companies: ["FPSC", "NADRA", "PPSC", "NTS", "Pakistan Army", "Ministry of Education"],
+      newspapers: ["Daily Jang", "Dawn", "Express", "Nawa-i-Waqt", "The Nation", "The News"],
+      employment_types: [], tags: ["Software Engineering"], job_types: ["government", "private"],
     });
   }
   if (path === "/api/sitemap-data") {
     return json(response, {
       urls: [
-        { loc: "http://localhost:3000/jobs/closed-role", changefreq: "weekly", priority: 0.8 },
-        { loc: "http://localhost:3000/jobs/multi-location-role", changefreq: "weekly", priority: 0.8 },
-        { loc: "http://localhost:3000/blog/fpsc-preparation-guide", changefreq: "weekly", priority: 0.7 },
-        { loc: "http://localhost:3000/p/custom-seo-page", changefreq: "monthly", priority: 0.5 },
-        { loc: "http://localhost:3000/categories/software-engineering", changefreq: "weekly", priority: 0.6 },
-        { loc: "http://localhost:3000/tags/government", changefreq: "weekly", priority: 0.5 },
-        { loc: "http://localhost:3000/locations/lahore", changefreq: "weekly", priority: 0.6 },
-        { loc: "http://localhost:3000/locations/punjab", changefreq: "weekly", priority: 0.6 },
-        { loc: "http://localhost:3000/companies/fpsc", changefreq: "weekly", priority: 0.6 },
-        { loc: "http://localhost:3000/qualifications/bachelors", changefreq: "weekly", priority: 0.5 },
-        { loc: "http://localhost:3000/blog/categories/career-advice", changefreq: "weekly", priority: 0.5 },
-        { loc: "http://localhost:3000/blog/tags/fpsc", changefreq: "weekly", priority: 0.4 },
+        { loc: `${mockSiteOrigin}/jobs/closed-role`, changefreq: "weekly", priority: 0.8 },
+        { loc: `${mockSiteOrigin}/jobs/multi-location-role`, changefreq: "weekly", priority: 0.8 },
+        { loc: `${mockSiteOrigin}/blog/fpsc-preparation-guide`, changefreq: "weekly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/p/custom-seo-page`, changefreq: "monthly", priority: 0.5 },
+        { loc: `${mockSiteOrigin}/categories/software-engineering`, changefreq: "weekly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/tags/government`, changefreq: "weekly", priority: 0.5 },
+        { loc: `${mockSiteOrigin}/locations/lahore`, changefreq: "weekly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/locations/punjab`, changefreq: "weekly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/companies/fpsc`, changefreq: "weekly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/newspapers/dawn`, changefreq: "weekly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/qualifications/bachelors`, changefreq: "weekly", priority: 0.5 },
+        { loc: `${mockSiteOrigin}/blog/categories/career-advice`, changefreq: "weekly", priority: 0.5 },
+        { loc: `${mockSiteOrigin}/blog/tags/fpsc`, changefreq: "weekly", priority: 0.4 },
       ],
     });
   }
@@ -115,13 +122,13 @@ const server = createServer((request, response) => {
         {
           id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
           published_date: "2026-07-01T00:00:00Z", deadline_date: "2026-07-17T00:00:00Z",
-          applications_closed: true, organization: "FPSC", category: "Government",
+          applications_closed: true, organization: "FPSC", newspaper: "Dawn", category: "Government",
           cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
         },
         {
           id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
           published_date: "2026-07-02T00:00:00Z", deadline_date: null,
-          applications_closed: false, organization: "FPSC", category: "Software Engineering",
+          applications_closed: false, organization: "FPSC", newspaper: "", category: "Software Engineering",
           cities: ["Karachi", "Lahore"], provinces: ["Punjab", "Sindh"], tags: ["Software Engineering"],
         },
       ],
@@ -143,6 +150,7 @@ const server = createServer((request, response) => {
         cities: [{ name: "Lahore", slug: "lahore", count: 2 }],
         provinces: [{ name: "Punjab", slug: "punjab", count: 1 }],
         organizations: [{ name: "FPSC", slug: "fpsc", count: 2 }],
+        newspapers: [{ name: "Dawn", slug: "dawn", count: 1 }],
         qualifications: [{ name: "Bachelors", slug: "bachelors", count: 1 }],
         blog_categories: [{ name: "Career Advice", slug: "career-advice", count: 1 }],
         blog_tags: [{ name: "FPSC", slug: "fpsc", count: 1 }],
@@ -197,7 +205,7 @@ const server = createServer((request, response) => {
       // deliberately represents the previous UTC day to guard the Pakistan
       // timezone regression reported in production.
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
-      salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
+      salary_range: null, source: "FPSC", newspaper: "Dawn", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: "Two years", education_required: "Bachelor's degree", skills: ["Python", "SQL"], job_type: "government",
       cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
@@ -206,7 +214,7 @@ const server = createServer((request, response) => {
     }, {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
       description: "A role available in more than one city.", published_date: "2026-07-02T00:00:00Z",
-      deadline_date: null, application_deadline: null, salary_range: null, source: "FPSC",
+      deadline_date: null, application_deadline: null, salary_range: null, source: "FPSC", newspaper: "",
       reference_url: null, application_url: null, experience_required: null,
       education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
@@ -252,7 +260,7 @@ const server = createServer((request, response) => {
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>Candidate&amp;#39;s experience matters.</p><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">', published_date: "2026-07-01T00:00:00Z",
       deadline_date: "2026-07-17T00:00:00", application_deadline: "2026-07-16T19:00:00Z",
-      salary_range: null, source: "FPSC", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
+      salary_range: null, source: "FPSC", newspaper: "Dawn", reference_url: "https://fpsc.gov.pk/advertisement", application_url: "https://fpsc.gov.pk/apply",
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"], keywords: null, created_at: "2026-07-01T00:00:00Z",
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
@@ -276,7 +284,7 @@ const server = createServer((request, response) => {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
       description: '<h2><span style="background-color:rgb(255,255,255);color:rgb(0,0,0)">Role overview</span></h2><p>Candidate&amp;#39;s experience matters.</p><p>https://example.com/this-is-a-deliberately-long-reference-that-must-wrap-inside-the-job-description-on-small-screens</p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Build resilient pipelines</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Monitor platform performance</li></ol><ul><li>Standard HTML bullet</li></ul><table><tbody><tr><td><strong>Job ID</strong></td><td><strong>Position</strong></td></tr><tr><td>PDA-J0149</td><td>Recruitment Manager</td></tr><tr><td>PDA-J0150</td><td>AI Associate</td></tr></tbody></table><img alt="R2 job image" src="https://files.pakistanjobsmarket.com/job-portal/closed-role/images/notice.png">',
       published_date: "2026-07-01T00:00:00Z", deadline_date: null, application_deadline: null,
-      salary_range: null, source: "FPSC", reference_url: null, application_url: null,
+      salary_range: null, source: "FPSC", newspaper: "", reference_url: null, application_url: null,
       experience_required: null, education_required: null, skills: [], job_type: "government",
       cities: ["Karachi", "Lahore"], provinces: ["Sindh"], tags: ["Government"],
       keywords: null, created_at: "2026-07-01T00:00:00Z", company: "FPSC",
@@ -312,7 +320,17 @@ const server = createServer((request, response) => {
       { id: "contact", slug: "contact", title: "Contact Us", content: "<p>Contact</p>", is_published: true },
       { id: "privacy", slug: "privacy", title: "Privacy Policy", content: "<p>Privacy</p>", is_published: true },
       { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", is_published: true },
+      { id: "jobs-by-cities", slug: "jobs-by-cities", title: "Jobs by Cities", content: "<p>Browse jobs by city.</p>", is_published: true },
+      { id: "jobs-by-provinces", slug: "jobs-by-provinces", title: "Jobs by Provinces", content: "<p>Browse jobs by province.</p>", is_published: true },
+      { id: "jobs-by-categories", slug: "jobs-by-categories", title: "Jobs by Category", content: "<p>Browse jobs by category.</p>", is_published: true },
+      { id: "jobs-by-organizations", slug: "jobs-by-organizations", title: "Jobs by Organization", content: "<p>Browse jobs by organization.</p>", is_published: true },
+      { id: "jobs-by-newspapers", slug: "jobs-by-newspapers", title: "Jobs by Newspaper", content: "<p>Browse jobs by newspaper.</p>", is_published: true },
     ]);
+  }
+  if (path.startsWith("/api/pages/jobs-by-")) {
+    const slug = path.split("/").pop();
+    const title = slug.split("-").slice(2).join(" ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return json(response, { id: slug, slug, title: `Jobs by ${title}`, content: `<p>Browse jobs by ${title.toLowerCase()}.</p>`, is_published: true });
   }
   if (path === "/api/pages/custom-seo-page") {
     return json(response, {

@@ -7,6 +7,7 @@ export type JobSummary = {
   deadline_date: string | null;
   salary_range: string | null;
   source: string | null;
+  newspaper: string;
   reference_url: string | null;
   application_url: string | null;
   experience_required: string | null;
@@ -141,6 +142,7 @@ export type FiltersResponse = {
   cities: string[];
   provinces: string[];
   companies: string[];
+  newspapers: string[];
   employment_types: string[];
   tags: string[];
   job_types?: string[];
@@ -165,6 +167,7 @@ export type JobQuery = {
   city?: string;
   province?: string;
   company?: string;
+  newspaper?: string;
   education?: string;
   employment_type?: string;
   tag?: string;
@@ -183,6 +186,7 @@ export type JobFormData = {
   deadline_date?: string | null;
   salary_range?: string | null;
   source?: string | null;
+  newspaper?: string;
   reference_url?: string | null;
   application_url?: string | null;
   experience_required?: string | null;
@@ -261,6 +265,7 @@ export type SiteDirectory = {
     deadline_date: string | null;
     applications_closed: boolean;
     organization: string | null;
+    newspaper: string;
     category: string | null;
     cities: string[];
     provinces: string[];
@@ -286,6 +291,7 @@ export type SiteDirectory = {
     cities: DirectoryValue[];
     provinces: DirectoryValue[];
     organizations: DirectoryValue[];
+    newspapers: DirectoryValue[];
     qualifications: DirectoryValue[];
     blog_categories: DirectoryValue[];
     blog_tags: DirectoryValue[];

@@ -24,6 +24,13 @@ from app.models import (
     SiteSetting,
     TaxonomyTerm,
 )
+from app.constants import (
+    PAKISTAN_CITIES,
+    PAKISTAN_CITIES_BY_PROVINCE,
+    PAKISTAN_NEWSPAPERS,
+    PAKISTAN_PROVINCE_BY_CITY,
+    PAKISTAN_PROVINCES,
+)
 from app.utils import as_list, slugify
 
 logger = get_logger("jobportal.seo_tools")
@@ -114,6 +121,11 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
         {"loc": f"{base}/resume-builder", "changefreq": "monthly", "priority": 0.6},
         {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
+        {"loc": f"{base}/jobs-by-cities", "changefreq": "weekly", "priority": 0.7},
+        {"loc": f"{base}/jobs-by-provinces", "changefreq": "weekly", "priority": 0.7},
+        {"loc": f"{base}/jobs-by-categories", "changefreq": "weekly", "priority": 0.7},
+        {"loc": f"{base}/jobs-by-organizations", "changefreq": "weekly", "priority": 0.7},
+        {"loc": f"{base}/jobs-by-newspapers", "changefreq": "weekly", "priority": 0.7},
     ]
     try:
         jobs = db.execute(
@@ -126,12 +138,14 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 Job.cities,
                 Job.provinces,
                 Job.source,
+                Job.newspaper,
                 Job.education_required,
             )
         ).all()
         job_tags: set[str] = set()
-        job_locations: set[str] = set()
+        job_locations: set[str] = set(PAKISTAN_CITIES + PAKISTAN_PROVINCES)
         companies: set[str] = set()
+        newspapers: set[str] = set(PAKISTAN_NEWSPAPERS)
         qualifications: set[str] = set()
         for job in jobs:
             urls.append(
@@ -156,6 +170,8 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             )
             if job.source and job.source.strip():
                 companies.add(job.source.strip())
+            if job.newspaper and job.newspaper.strip():
+                newspapers.add(job.newspaper.strip())
             if job.education_required and job.education_required.strip():
                 qualifications.add(job.education_required.strip())
         categories = (
@@ -202,6 +218,15 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                         "priority": 0.6,
                     }
                 )
+        for value in sorted(newspapers):
+            if slugify(value):
+                urls.append(
+                    {
+                        "loc": f"{base}/newspapers/{slugify(value)}",
+                        "changefreq": "weekly",
+                        "priority": 0.6,
+                    }
+                )
         for value in sorted(qualifications):
             if slugify(value):
                 urls.append(
@@ -214,9 +239,13 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         for page in db.execute(
             select(Page.slug, Page.updated_at).where(Page.is_published.is_(True))
         ).all():
-            core_slugs = {"about", "contact", "privacy", "disclaimer"}
-            path = f"/{page.slug}" if page.slug in core_slugs else f"/p/{page.slug}"
-            if page.slug in core_slugs:
+            direct_slugs = {
+                "about", "contact", "privacy", "disclaimer",
+                "jobs-by-cities", "jobs-by-provinces", "jobs-by-categories",
+                "jobs-by-organizations", "jobs-by-newspapers",
+            }
+            path = f"/{page.slug}" if page.slug in direct_slugs else f"/p/{page.slug}"
+            if page.slug in direct_slugs:
                 continue  # already added static
             urls.append(
                 {
@@ -282,10 +311,20 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
     return list({item["loc"]: item for item in urls}.values())
 
 
-def _directory_values(values: list[str]) -> list[dict[str, Any]]:
+def _directory_values(
+    values: list[str], seeds: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Return stable, deduplicated public directory values with link metadata."""
     display_by_key: dict[str, str] = {}
     counts: dict[str, int] = {}
+    for raw_value in seeds or []:
+        value = (raw_value or "").strip()
+        value_slug = slugify(value)
+        if not value or not value_slug:
+            continue
+        key = value.casefold()
+        display_by_key.setdefault(key, value)
+        counts.setdefault(key, 0)
     for raw_value in values:
         value = (raw_value or "").strip()
         value_slug = slugify(value)
@@ -306,6 +345,32 @@ def _directory_values(values: list[str]) -> list[dict[str, Any]]:
     ]
 
 
+def _expanded_job_locations(job: Any) -> tuple[list[str], list[str]]:
+    """Expand city/province assignments using the public directory rules."""
+    selected_cities = set(as_list(job.cities))
+    selected_provinces = set(as_list(job.provinces))
+    lowered = {value.casefold() for value in selected_cities | selected_provinces}
+    nationwide = (
+        "pakistan" in lowered
+        or set(PAKISTAN_CITIES).issubset(selected_cities)
+        or set(PAKISTAN_PROVINCES).issubset(selected_provinces)
+    )
+    if nationwide:
+        return list(PAKISTAN_CITIES), list(PAKISTAN_PROVINCES)
+
+    expanded_cities = set(selected_cities)
+    expanded_provinces = set(selected_provinces)
+    for province in selected_provinces:
+        expanded_cities.update(PAKISTAN_CITIES_BY_PROVINCE.get(province, []))
+    for city in selected_cities:
+        province = PAKISTAN_PROVINCE_BY_CITY.get(city)
+        if province:
+            expanded_provinces.add(province)
+    return sorted(expanded_cities, key=str.casefold), sorted(
+        expanded_provinces, key=str.casefold
+    )
+
+
 def build_site_directory(db: Session) -> dict[str, Any]:
     """Build the complete public link inventory used by Browse All and crawl tests."""
     now = datetime.utcnow()
@@ -317,6 +382,7 @@ def build_site_directory(db: Session) -> dict[str, Any]:
             Job.published_date,
             Job.deadline_date,
             Job.source,
+            Job.newspaper,
             Job.education_required,
             Job.cities,
             Job.provinces,
@@ -352,10 +418,14 @@ def build_site_directory(db: Session) -> dict[str, Any]:
         .order_by(TaxonomyTerm.name.asc())
     ).all()
 
-    job_tags = [value for job in jobs for value in as_list(job.tags)]
-    cities = [value for job in jobs for value in as_list(job.cities)]
-    provinces = [value for job in jobs for value in as_list(job.provinces)]
+    job_tags = [value for job in jobs for value in set(as_list(job.tags))]
+    expanded_locations = [_expanded_job_locations(job) for job in jobs]
+    cities = [value for city_values, _ in expanded_locations for value in city_values]
+    provinces = [
+        value for _, province_values in expanded_locations for value in province_values
+    ]
     organizations = [job.source or "" for job in jobs]
+    newspapers = [job.newspaper or "" for job in jobs]
     qualifications = [job.education_required or "" for job in jobs]
     blog_categories = [post.category or "" for post in posts]
     blog_tags = [value for post in posts for value in as_list(post.tags)]
@@ -377,6 +447,7 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                     job.deadline_date and job.deadline_date.date() < now.date()
                 ),
                 "organization": (job.source or "").strip() or None,
+                "newspaper": (job.newspaper or "").strip(),
                 "category": next(iter(as_list(job.tags)), None),
                 "cities": as_list(job.cities),
                 "provinces": as_list(job.provinces),
@@ -404,21 +475,32 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                 "title": page.title,
                 "path": (
                     f"/{page.slug}"
-                    if page.slug in {"about", "contact", "privacy", "disclaimer"}
+                    if page.slug
+                    in {
+                        "about",
+                        "contact",
+                        "privacy",
+                        "disclaimer",
+                        "jobs-by-cities",
+                        "jobs-by-provinces",
+                        "jobs-by-categories",
+                        "jobs-by-organizations",
+                        "jobs-by-newspapers",
+                    }
                     else f"/p/{page.slug}"
                 ),
             }
             for page in pages
         ],
         "taxonomies": {
-            "job_categories": [
-                {"name": term.name, "slug": term.slug, "count": 0}
-                for term in category_terms
-            ],
+            "job_categories": _directory_values(
+                job_tags, [term.name for term in category_terms]
+            ),
             "job_tags": _directory_values(job_tags),
-            "cities": _directory_values(cities),
-            "provinces": _directory_values(provinces),
+            "cities": _directory_values(cities, PAKISTAN_CITIES),
+            "provinces": _directory_values(provinces, PAKISTAN_PROVINCES),
             "organizations": _directory_values(organizations),
+            "newspapers": _directory_values(newspapers, PAKISTAN_NEWSPAPERS),
             "qualifications": _directory_values(qualifications),
             "blog_categories": _directory_values(blog_categories),
             "blog_tags": _directory_values(blog_tags),

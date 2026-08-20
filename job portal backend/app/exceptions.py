@@ -62,6 +62,7 @@ def empty_filters() -> dict:
         "categories": [],
         "cities": [],
         "companies": [],
+        "newspapers": [],
         "employment_types": [],
         "tags": [],
         "job_types": ["government", "private"],

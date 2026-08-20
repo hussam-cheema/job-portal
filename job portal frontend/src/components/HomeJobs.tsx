@@ -13,6 +13,7 @@ import { JobFilters } from "@/components/JobFilters";
 import { JobStats } from "@/components/JobStats";
 import { Pagination } from "@/components/Pagination";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
+import { JobDiscoverySection } from "@/components/JobDiscoverySection";
 
 type Props = {
   initialJobs: JobListResponse;
@@ -113,6 +114,8 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
           }}
         />
       </section>
+
+      <JobDiscoverySection filters={filters} />
     </div>
   );
 }

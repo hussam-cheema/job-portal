@@ -14,6 +14,12 @@ test("public pages expose self-canonicals and private pages are noindex", async 
     "/jobs/closed-role",
     "/tags/government",
     "/categories/software-engineering",
+    "/jobs-by-cities",
+    "/jobs-by-provinces",
+    "/jobs-by-categories",
+    "/jobs-by-organizations",
+    "/jobs-by-newspapers",
+    "/newspapers/dawn",
   ]) {
     await page.goto(path);
     const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
@@ -64,6 +70,12 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
     'href="/companies/fpsc"',
     'href="/locations/lahore"',
     'href="/locations/punjab"',
+    'href="/newspapers/dawn"',
+    'href="/jobs-by-cities"',
+    'href="/jobs-by-provinces"',
+    'href="/jobs-by-categories"',
+    'href="/jobs-by-organizations"',
+    'href="/jobs-by-newspapers"',
     'href="/p/custom-seo-page"',
     'href="/resume-builder"',
     'href="/cover-letter"',
@@ -72,6 +84,73 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
   }
   expect(html).toContain("max-h-[48rem]");
   expect(html).toContain("max-h-[42rem]");
+});
+
+test("homepage discovery section and every directory link resolve", async ({ page, request }) => {
+  await page.goto("/");
+  const discovery = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Find jobs your way" }),
+  });
+  for (const heading of [
+    "Jobs by Cities",
+    "Jobs by Provinces",
+    "Jobs by Category",
+    "Jobs by Organization",
+    "Jobs by Newspaper",
+  ]) {
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  }
+  for (const label of [
+    "More cities…",
+    "More provinces…",
+    "More categories…",
+    "More organizations…",
+    "More newspapers…",
+  ]) {
+    await expect(page.getByRole("link", { name: label })).toBeVisible();
+  }
+  await expect(discovery.locator("article")).toHaveCount(5);
+  for (const card of await discovery.locator("article").all()) {
+    await expect(card.locator("li > a")).toHaveCount(6);
+  }
+
+  const expectedDirectoryLinks: Record<string, string> = {
+    "/jobs-by-cities": "/locations/lahore",
+    "/jobs-by-provinces": "/locations/punjab",
+    "/jobs-by-categories": "/categories/software-engineering",
+    "/jobs-by-organizations": "/companies/fpsc",
+    "/jobs-by-newspapers": "/newspapers/dawn",
+  };
+  for (const [directoryPath, expectedLink] of Object.entries(expectedDirectoryLinks)) {
+    const response = await request.get(directoryPath);
+    expect(response.status(), directoryPath).toBe(200);
+    expect(await response.text()).toContain(`href="${expectedLink}"`);
+  }
+});
+
+test("all internal links emitted by the new discovery directories avoid 404s", async ({ request }) => {
+  const sourcePages = [
+    "/",
+    "/jobs-by-cities",
+    "/jobs-by-provinces",
+    "/jobs-by-categories",
+    "/jobs-by-organizations",
+    "/jobs-by-newspapers",
+  ];
+  const links = new Set<string>();
+  for (const sourcePath of sourcePages) {
+    const response = await request.get(sourcePath);
+    expect(response.status(), sourcePath).toBe(200);
+    const html = await response.text();
+    for (const match of html.matchAll(/href="([^"#]+)"/g)) {
+      const url = new URL(match[1], "http://localhost:3000");
+      if (url.origin === "http://localhost:3000") links.add(`${url.pathname}${url.search}`);
+    }
+  }
+  for (const href of links) {
+    const response = await request.get(href);
+    expect(response.status(), href).not.toBe(404);
+  }
 });
 
 test("homepage exposes complete job listings in initial HTML without JavaScript", async ({

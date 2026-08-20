@@ -117,6 +117,8 @@ class Job(Base):
     __table_args__ = (
         Index("ix_jobs_published_created", "published_date", "created_at"),
         Index("ix_jobs_type_published", "job_type", "published_date"),
+        Index("ix_jobs_source_published", "source", "published_date"),
+        Index("ix_jobs_newspaper_published", "newspaper", "published_date"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -131,6 +133,9 @@ class Job(Base):
     deadline_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     salary_range: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    newspaper: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="", server_default=""
+    )
     reference_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     application_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     experience_required: Mapped[Optional[str]] = mapped_column(

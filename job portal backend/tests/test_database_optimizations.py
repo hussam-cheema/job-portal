@@ -55,7 +55,12 @@ def test_composite_indexes_are_created_for_hot_query_paths():
                 "ix_analytics_visitor_path_visited",
                 "ix_analytics_verified_visitor_visited",
             },
-            "jobs": {"ix_jobs_published_created", "ix_jobs_type_published"},
+            "jobs": {
+                "ix_jobs_published_created",
+                "ix_jobs_type_published",
+                "ix_jobs_source_published",
+                "ix_jobs_newspaper_published",
+            },
             "job_attachments": {"ix_job_attachments_job_created"},
             "job_qna": {"ix_job_qna_job_created"},
             "subscription_email_deliveries": {
@@ -91,6 +96,7 @@ def test_job_list_uses_two_queries_and_returns_bounded_description_preview():
             city=None,
             province=None,
             company=None,
+            newspaper=None,
             education=None,
             employment_type=None,
             tag=None,

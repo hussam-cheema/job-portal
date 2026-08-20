@@ -30,6 +30,7 @@ os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["R2_ENABLED"] = "false"
 
 from app.database import Base, get_db  # noqa: E402
+from app.constants import PAKISTAN_CITIES  # noqa: E402
 from app.main import app  # noqa: E402
 from app import models  # noqa: E402, F401
 from app.auth import ensure_admin_user  # noqa: E402
@@ -257,6 +258,7 @@ def test_login_and_create_job(client: TestClient):
             "description": job_description,
             "published_date": "2026-07-01T00:00:00",
             "job_type": "private",
+            "newspaper": "Dawn",
             "cities": ["Karachi", "Lahore"],
             "provinces": ["Sindh", "Punjab"],
             "skills": ["Python"],
@@ -272,6 +274,7 @@ def test_login_and_create_job(client: TestClient):
     assert r.json()["description"] == job_description
     assert r.json()["cities"] == ["Karachi", "Lahore"]
     assert r.json()["provinces"] == ["Sindh", "Punjab"]
+    assert r.json()["newspaper"] == "Dawn"
     assert "Karachi" in r.json()["location"]
     assert "Punjab" in r.json()["location"]
     assert "no-store" in r.headers["cache-control"]
@@ -293,6 +296,66 @@ def test_login_and_create_job(client: TestClient):
     assert invalid.status_code == 400
 
 
+def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    jobs = [
+        {
+            "title": "Sindh Province Vacancy",
+            "description": "<p>Open throughout Sindh.</p>",
+            "published_date": "2026-08-10T00:00:00",
+            "source": "Sindh Department",
+            "newspaper": "Dawn",
+            "provinces": ["Sindh"],
+        },
+        {
+            "title": "Lahore City Vacancy",
+            "description": "<p>Open in Lahore.</p>",
+            "published_date": "2026-08-11T00:00:00",
+            "source": "Punjab Department",
+            "newspaper": "Express",
+            "cities": ["Lahore"],
+        },
+        {
+            "title": "Nationwide Vacancy",
+            "description": "<p>Open throughout Pakistan.</p>",
+            "published_date": "2026-08-12T00:00:00",
+            "source": "Federal Department",
+            "cities": list(PAKISTAN_CITIES),
+        },
+    ]
+    for payload in jobs:
+        response = client.post("/api/admin/jobs", headers=headers, json=payload)
+        assert response.status_code == 200, response.text
+
+    karachi_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Karachi").json()["items"]
+    }
+    punjab_titles = {
+        item["title"] for item in client.get("/api/jobs?province=Punjab").json()["items"]
+    }
+    quetta_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Quetta").json()["items"]
+    }
+    dawn_titles = {
+        item["title"] for item in client.get("/api/jobs?newspaper=dawn").json()["items"]
+    }
+
+    assert {"Sindh Province Vacancy", "Nationwide Vacancy"} <= karachi_titles
+    assert {"Lahore City Vacancy", "Nationwide Vacancy"} <= punjab_titles
+    assert "Nationwide Vacancy" in quetta_titles
+    assert dawn_titles == {"Sindh Province Vacancy"}
+
+    directory = client.get("/api/site-directory").json()["taxonomies"]
+    karachi = next(item for item in directory["cities"] if item["slug"] == "karachi")
+    sindh = next(item for item in directory["provinces"] if item["slug"] == "sindh")
+    assert karachi["count"] >= 2
+    assert sindh["count"] >= 2
+    assert any(item["slug"] == "dawn" for item in directory["newspapers"])
+
+
 def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -308,6 +371,7 @@ def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: Te
             "published_date": "2026-08-01T00:00:00",
             "deadline_date": "2026-08-31T00:00:00",
             "source": "Ministry of Defence",
+            "newspaper": "Daily Jang",
             "education_required": "Bachelors",
             "cities": ["Islamabad"],
             "provinces": ["Punjab"],
@@ -333,12 +397,17 @@ def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: Te
     assert any(job["slug"] == original_slug for job in payload["jobs"])
     assert any(item["slug"] == "islamabad" for item in payload["taxonomies"]["cities"])
     assert any(item["slug"] == "ministry-of-defence" for item in payload["taxonomies"]["organizations"])
+    assert any(item["slug"] == "daily-jang" for item in payload["taxonomies"]["newspapers"])
     assert any(item["slug"] == "bachelors" for item in payload["taxonomies"]["qualifications"])
 
     sitemap = client.get("/api/sitemap-data")
     assert sitemap.status_code == 200
     assert any(
         item["loc"].endswith(f"/jobs/{original_slug}")
+        for item in sitemap.json()["urls"]
+    )
+    assert any(
+        item["loc"].endswith("/newspapers/daily-jang")
         for item in sitemap.json()["urls"]
     )
 
@@ -361,7 +430,17 @@ def test_admin_pages_self_heal_core_pages(client: TestClient):
 
     assert response.status_code == 200
     pages = {page["slug"]: page for page in response.json()}
-    assert {"about", "contact", "privacy", "disclaimer"}.issubset(pages)
+    assert {
+        "about",
+        "contact",
+        "privacy",
+        "disclaimer",
+        "jobs-by-cities",
+        "jobs-by-provinces",
+        "jobs-by-categories",
+        "jobs-by-organizations",
+        "jobs-by-newspapers",
+    }.issubset(pages)
     assert "Pakistan Jobs Market" in pages["disclaimer"]["content"]
     assert "Daily Jang" in pages["disclaimer"]["content"]
 
@@ -395,7 +474,11 @@ def test_local_core_pages_receive_production_snapshot_once(monkeypatch: pytest.M
         monkeypatch.setenv("SITE_URL", "http://localhost:3000")
         assert len(sync_local_core_pages_once(session)) == 4
         session.commit()
-        expected = {slug: content for slug, _title, content in DEFAULT_PAGES}
+        core_slugs = {"about", "privacy", "contact", "disclaimer"}
+        expected = {
+            slug: content if slug in core_slugs else "<p>stale local content</p>"
+            for slug, _title, content in DEFAULT_PAGES
+        }
         actual = {row.slug: row.content for row in session.query(Page).all()}
         assert actual == expected
         assert sync_local_core_pages_once(session) == []

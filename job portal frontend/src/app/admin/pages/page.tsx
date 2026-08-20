@@ -9,6 +9,18 @@ import { useAdminAuth } from "@/lib/adminAuth";
 import type { PageItem } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 
+const directPageSlugs = new Set([
+  "about",
+  "contact",
+  "privacy",
+  "disclaimer",
+  "jobs-by-cities",
+  "jobs-by-provinces",
+  "jobs-by-categories",
+  "jobs-by-organizations",
+  "jobs-by-newspapers",
+]);
+
 export default function AdminPagesListPage() {
   const { token } = useAdminAuth();
   const [pages, setPages] = useState<PageItem[]>([]);
@@ -90,7 +102,7 @@ export default function AdminPagesListPage() {
               <div className="flex flex-wrap gap-2 shrink-0">
                 <Link
                   href={
-                    ["about", "contact", "privacy", "disclaimer"].includes(p.slug)
+                    directPageSlugs.has(p.slug)
                       ? `/${p.slug}`
                       : `/p/${p.slug}`
                   }

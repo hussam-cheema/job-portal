@@ -46,6 +46,7 @@ const EMPTY_FILTERS: FiltersResponse = {
   cities: [],
   provinces: [],
   companies: [],
+  newspapers: [],
   employment_types: [],
   tags: [],
   job_types: ["government", "private"],
@@ -306,6 +307,7 @@ const EMPTY_SITE_DIRECTORY: SiteDirectory = {
     cities: [],
     provinces: [],
     organizations: [],
+    newspapers: [],
     qualifications: [],
     blog_categories: [],
     blog_tags: [],
@@ -374,6 +376,7 @@ async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
       deadline_date: job.deadline_date,
       applications_closed: Boolean(job.applications_closed),
       organization: job.source,
+      newspaper: job.newspaper || "",
       category: job.category,
       cities: job.cities || [],
       provinces: job.provinces || [],
@@ -393,7 +396,17 @@ async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
         id: page.id,
         slug: page.slug,
         title: page.title,
-        path: ["about", "contact", "privacy", "disclaimer"].includes(page.slug)
+        path: [
+          "about",
+          "contact",
+          "privacy",
+          "disclaimer",
+          "jobs-by-cities",
+          "jobs-by-provinces",
+          "jobs-by-categories",
+          "jobs-by-organizations",
+          "jobs-by-newspapers",
+        ].includes(page.slug)
           ? `/${page.slug}`
           : `/p/${page.slug}`,
       })),
@@ -408,6 +421,10 @@ async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
       organizations: directoryValues(
         jobs.flatMap((job) => (job.source ? [job.source] : [])),
         filters.companies
+      ),
+      newspapers: directoryValues(
+        jobs.flatMap((job) => (job.newspaper ? [job.newspaper] : [])),
+        filters.newspapers || []
       ),
       qualifications: directoryValues(
         jobs.flatMap((job) => (job.education_required ? [job.education_required] : [])),

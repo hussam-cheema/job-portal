@@ -305,6 +305,7 @@ class JobBase(BaseModel):
     deadline_date: Optional[datetime] = None
     salary_range: Optional[str] = None
     source: Optional[str] = None
+    newspaper: str = ""
     reference_url: Optional[str] = None
     application_url: Optional[str] = None
     experience_required: Optional[str] = None
@@ -335,6 +336,7 @@ class JobUpdate(BaseModel):
     deadline_date: Optional[datetime] = None
     salary_range: Optional[str] = None
     source: Optional[str] = None
+    newspaper: Optional[str] = None
     reference_url: Optional[str] = None
     application_url: Optional[str] = None
     experience_required: Optional[str] = None
@@ -359,6 +361,7 @@ class JobSummary(BaseModel):
     deadline_date: Optional[datetime] = None
     salary_range: Optional[str] = None
     source: Optional[str] = None
+    newspaper: str = ""
     reference_url: Optional[str] = None
     application_url: Optional[str] = None
     experience_required: Optional[str] = None
@@ -410,6 +413,7 @@ class FiltersResponse(BaseModel):
     cities: list[str]
     provinces: list[str] = Field(default_factory=list)
     companies: list[str]
+    newspapers: list[str] = Field(default_factory=list)
     employment_types: list[str]
     tags: list[str]
     job_types: list[str] = Field(default_factory=list)

@@ -34,6 +34,7 @@ const empty = {
   deadline_date: "",
   salary_range: "",
   source: "",
+  newspaper: "",
   reference_url: "",
   application_url: "",
   experience_required: "",
@@ -150,6 +151,7 @@ function hasMeaningfulJobDraft(snapshot: JobEditorSnapshot) {
       form.deadline_date ||
       form.salary_range.trim() ||
       form.source.trim() ||
+      form.newspaper.trim() ||
       form.reference_url.trim() ||
       form.application_url.trim() ||
       form.experience_required.trim() ||
@@ -253,6 +255,7 @@ export default function JobFormPage() {
             toDateInputValue(job.deadline_date || job.application_deadline) || "",
           salary_range: asString(job.salary_range),
           source: asString(job.source || job.source_name),
+          newspaper: asString(job.newspaper),
           reference_url: asString(job.reference_url || job.source_url),
           application_url: asString(job.application_url),
           experience_required: asString(job.experience_required).replace(
@@ -436,6 +439,7 @@ export default function JobFormPage() {
         deadline_date: dateInputToApiValue(form.deadline_date),
         salary_range: form.salary_range || null,
         source: form.source || null,
+        newspaper: form.newspaper.trim(),
         reference_url: form.reference_url || null,
         application_url: form.application_url || null,
         experience_required: form.experience_required || null,
@@ -615,7 +619,7 @@ export default function JobFormPage() {
           />
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <label className="field-label">Published date *</label>
             <input
@@ -648,13 +652,25 @@ export default function JobFormPage() {
             />
           </div>
           <div>
-            <label className="field-label">Source</label>
+            <label className="field-label">Source Organization</label>
             <input
               className="input"
               value={form.source}
               onChange={(e) => setField("source", e.target.value)}
               placeholder="Company / department name"
             />
+          </div>
+          <div>
+            <label className="field-label">Newspaper</label>
+            <input
+              className="input"
+              value={form.newspaper}
+              onChange={(e) => setField("newspaper", e.target.value)}
+              placeholder="e.g. Daily Jang, Dawn, Express"
+            />
+            <p className="mt-1.5 text-xs text-[var(--muted)]">
+              Leave empty when the vacancy was not published in a newspaper.
+            </p>
           </div>
         </div>
 

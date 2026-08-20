@@ -45,7 +45,15 @@ test("nationwide expired jobs show Pakistan and Applications Closed on list and 
 test("homepage category selector contains only controlled categories", async ({ page }) => {
   await page.goto("/");
   const categories = page.getByLabel("Category");
-  await expect(categories.locator("option")).toHaveText(["All categories", "Software Engineering"]);
+  await expect(categories.locator("option")).toHaveText([
+    "All categories",
+    "Software Engineering",
+    "Accounting",
+    "Education",
+    "Engineering",
+    "Healthcare",
+    "Marketing",
+  ]);
   await expect(categories.locator('option[value="Lahore"]')).toHaveCount(0);
   await expect(categories.locator('option[value="Government"]')).toHaveCount(0);
   await expect(categories.locator('option[value="Private"]')).toHaveCount(0);

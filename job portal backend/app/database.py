@@ -233,6 +233,7 @@ def _ensure_new_columns() -> None:
         "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS city VARCHAR(150) NULL",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS newspaper VARCHAR(200) NOT NULL DEFAULT ''",
         "ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL",
     ]
     if DATABASE_URL.startswith("sqlite"):
@@ -251,6 +252,7 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE analytics_visits ADD COLUMN location_verified BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE analytics_visits ADD COLUMN city VARCHAR(150)",
             "ALTER TABLE jobs ADD COLUMN provinces JSON",
+            "ALTER TABLE jobs ADD COLUMN newspaper VARCHAR(200) NOT NULL DEFAULT ''",
             "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
         ]
     try:
@@ -288,6 +290,10 @@ def _ensure_performance_indexes() -> None:
         "ON jobs (published_date, created_at)",
         "CREATE INDEX IF NOT EXISTS ix_jobs_type_published "
         "ON jobs (job_type, published_date)",
+        "CREATE INDEX IF NOT EXISTS ix_jobs_source_published "
+        "ON jobs (source, published_date)",
+        "CREATE INDEX IF NOT EXISTS ix_jobs_newspaper_published "
+        "ON jobs (newspaper, published_date)",
         "CREATE INDEX IF NOT EXISTS ix_job_attachments_job_created "
         "ON job_attachments (job_id, created_at)",
         "CREATE INDEX IF NOT EXISTS ix_job_qna_job_created "
