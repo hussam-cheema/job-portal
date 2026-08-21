@@ -646,8 +646,14 @@ def _resend_usage(db: Session, *, force_refresh: bool) -> dict[str, Any]:
         "source": "Application delivery ledger",
         "configured": False,
     }
-    api_key = env("RESEND_API_KEY")
-    if not api_key:
+    sending_api_key = env("RESEND_API_KEY")
+    analytics_api_key = env("RESEND_ANALYTICS_API_KEY")
+    value["configured"] = bool(sending_api_key)
+    if not analytics_api_key:
+        if sending_api_key:
+            value["source"] = (
+                "Application delivery ledger (Resend sending key configured)"
+            )
         return value
     cache_key = "resend:quota"
     cached = _cached_provider_value(cache_key, force_refresh=force_refresh)
@@ -664,7 +670,7 @@ def _resend_usage(db: Session, *, force_refresh: bool) -> dict[str, Any]:
             api_url,
             params={"limit": 1},
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {analytics_api_key}",
                 "Accept": "application/json",
                 "User-Agent": "pakistan-jobs-market-infrastructure/1.0",
             },
@@ -692,10 +698,35 @@ def _resend_usage(db: Session, *, force_refresh: bool) -> dict[str, Any]:
             }
         )
         return _store_provider_value(cache_key, value)
-    except Exception:
-        logger.exception("Resend quota collection failed")
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        if status_code in {401, 403}:
+            logger.warning(
+                "Resend analytics key cannot read usage; using application delivery "
+                "ledger status=%s. Configure RESEND_ANALYTICS_API_KEY with full_access.",
+                status_code,
+            )
+            value["source"] = (
+                "Resend analytics key lacks read access; application delivery "
+                "ledger fallback"
+            )
+        else:
+            logger.warning(
+                "Resend quota collection returned status=%s; using application "
+                "delivery ledger",
+                status_code,
+            )
+            value["source"] = (
+                "Resend API unavailable; application delivery ledger fallback"
+            )
+        return _store_provider_value(cache_key, value)
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Resend quota collection failed; using application delivery ledger: %s",
+            exc,
+        )
         value["source"] = "Resend API unavailable; application delivery ledger fallback"
-        return value
+        return _store_provider_value(cache_key, value)
 
 
 def _r2_operation_usage(*, force_refresh: bool) -> dict[str, Any]:

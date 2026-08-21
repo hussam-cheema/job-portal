@@ -4,6 +4,7 @@ import json
 import os
 import base64
 import io
+import logging
 import re
 import asyncio
 from datetime import datetime
@@ -2651,7 +2652,8 @@ def test_infrastructure_provider_collectors_parse_live_usage(
     assert neon["branch_count"] == 2.0
     assert neon["configured"] is True
 
-    monkeypatch.setenv("RESEND_API_KEY", "test-resend-token")
+    monkeypatch.setenv("RESEND_API_KEY", "test-resend-send-token")
+    monkeypatch.setenv("RESEND_ANALYTICS_API_KEY", "test-resend-analytics-token")
     override = app.dependency_overrides[get_db]()
     db = next(override)
     try:
@@ -2661,6 +2663,57 @@ def test_infrastructure_provider_collectors_parse_live_usage(
     assert resend["monthly_used"] == 147.0
     assert resend["daily_used"] == 12.0
     assert resend["configured"] is True
+
+
+def test_resend_usage_keeps_sending_key_restricted_and_handles_analytics_auth(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    from app.services import infrastructure
+
+    monkeypatch.setenv("RESEND_API_KEY", "test-resend-send-token")
+    monkeypatch.delenv("RESEND_ANALYTICS_API_KEY", raising=False)
+
+    def unexpected_get(*_args, **_kwargs):
+        raise AssertionError("A send-only Resend key must not be used to list emails")
+
+    monkeypatch.setattr(infrastructure.httpx, "get", unexpected_get)
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        send_only = infrastructure._resend_usage(db, force_refresh=True)
+    finally:
+        override.close()
+
+    assert send_only["configured"] is True
+    assert send_only["source"] == (
+        "Application delivery ledger (Resend sending key configured)"
+    )
+
+    monkeypatch.setenv("RESEND_ANALYTICS_API_KEY", "restricted-analytics-token")
+
+    def unauthorized_get(url: str, **_kwargs):
+        return httpx.Response(
+            401,
+            request=httpx.Request("GET", url),
+            json={"message": "This API key is restricted to only send emails."},
+        )
+
+    monkeypatch.setattr(infrastructure.httpx, "get", unauthorized_get)
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        fallback = infrastructure._resend_usage(db, force_refresh=True)
+    finally:
+        override.close()
+
+    assert fallback["configured"] is True
+    assert fallback["source"] == (
+        "Resend analytics key lacks read access; application delivery "
+        "ledger fallback"
+    )
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 def test_r2_analytics_groups_operations_and_rounds_billing_units(
