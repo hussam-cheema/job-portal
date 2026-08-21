@@ -12,6 +12,7 @@ from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.constants import PAKISTAN_CITIES, PAKISTAN_NEWSPAPERS, PAKISTAN_PROVINCES
 from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm
+from app.page_types import page_slug_namespace
 from app.services.seo import upsert_job_seo, upsert_page_seo
 from app.services.taxonomy import ensure_default_taxonomy
 from app.utils import as_list, slugify
@@ -434,17 +435,21 @@ def sync_taxonomy_pages_v1(db) -> list[Page]:
         for page in existing_pages
         if page.page_type != "standard" and page.taxonomy_value
     }
-    used_slugs = {page.slug.casefold() for page in existing_pages}
+    used_slugs = {
+        (page_slug_namespace(page.page_type), page.slug.casefold())
+        for page in existing_pages
+    }
     created: list[Page] = []
 
     def available_slug(value: str, page_type: str) -> str:
         base = slugify(value) or page_type
         candidate = base
         suffix = 1
-        while candidate.casefold() in used_slugs:
+        namespace = page_slug_namespace(page_type)
+        while (namespace, candidate.casefold()) in used_slugs:
             suffix += 1
             candidate = f"{base}-{page_type}" if suffix == 2 else f"{base}-{page_type}-{suffix}"
-        used_slugs.add(candidate.casefold())
+        used_slugs.add((namespace, candidate.casefold()))
         return candidate
 
     def page_copy(page_type: str, value: str) -> tuple[str, str, dict[str, str]]:
@@ -492,6 +497,44 @@ def sync_taxonomy_pages_v1(db) -> list[Page]:
 
     db.add(SiteSetting(key=marker_key, value="1", updated_at=datetime.utcnow()))
     return created
+
+
+def sync_directory_page_slugs_v2(db) -> list[Page]:
+    """Remove legacy type suffixes now that slugs are scoped by public route."""
+    marker_key = "directory_page_slugs_v2_complete"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    pages = db.execute(select(Page)).scalars().all()
+    occupied = {
+        (page_slug_namespace(page.page_type), page.slug.casefold()): page.id
+        for page in pages
+    }
+    updated: list[Page] = []
+    for page in pages:
+        if page.page_type == "standard" or not page.taxonomy_value:
+            continue
+        desired = slugify(page.taxonomy_value)
+        namespace = page_slug_namespace(page.page_type)
+        legacy_base = f"{desired}-{page.page_type}"
+        legacy_suffix = page.slug.removeprefix(f"{legacy_base}-")
+        is_generated_legacy_slug = page.slug == legacy_base or (
+            page.slug.startswith(f"{legacy_base}-") and legacy_suffix.isdigit()
+        )
+        if not desired or not is_generated_legacy_slug:
+            continue
+        owner = occupied.get((namespace, desired.casefold()))
+        if owner and owner != page.id:
+            continue
+        occupied.pop((namespace, page.slug.casefold()), None)
+        occupied[(namespace, desired.casefold())] = page.id
+        page.slug = desired
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page)
+        updated.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="1", updated_at=datetime.utcnow()))
+    return updated
 
 
 def sync_local_core_pages_once(db) -> list[Page]:
@@ -719,6 +762,7 @@ def seed_if_empty() -> None:
         db.flush()
         ensure_default_taxonomy(db)
         sync_taxonomy_pages_v1(db)
+        sync_directory_page_slugs_v2(db)
 
         db.commit()
         logger.info("seeded sample jobs count=%s", len(SEED_JOBS))

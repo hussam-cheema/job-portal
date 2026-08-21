@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -191,12 +192,18 @@ class Page(Base):
     __tablename__ = "pages"
     __table_args__ = (
         Index("ix_pages_type_published_title", "page_type", "is_published", "title"),
+        Index("uq_pages_type_slug", "page_type", "slug", unique=True),
+        Index(
+            "uq_pages_location_slug",
+            "slug",
+            unique=True,
+            postgresql_where=text("page_type IN ('city', 'province')"),
+            sqlite_where=text("page_type IN ('city', 'province')"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    slug: Mapped[str] = mapped_column(
-        String(200), unique=True, nullable=False, index=True
-    )
+    slug: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     page_type: Mapped[str] = mapped_column(

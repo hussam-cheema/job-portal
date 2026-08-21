@@ -14,8 +14,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("EMAIL_FROM_EMAIL", "alerts@example.test")
 
 from app.database import Base  # noqa: E402
-from app.models import EmailSubscriber, Job  # noqa: E402
+from app.models import EmailSubscriber, Job, Page, SEOMeta  # noqa: E402
 from app.routers.jobs import list_jobs  # noqa: E402
+from app.seed import sync_directory_page_slugs_v2  # noqa: E402
 from app.services import newsletter  # noqa: E402
 
 
@@ -67,11 +68,77 @@ def test_composite_indexes_are_created_for_hot_query_paths():
                 "ix_deliveries_due",
                 "ix_deliveries_job_status",
             },
+            "pages": {
+                "ix_pages_slug",
+                "uq_pages_type_slug",
+                "uq_pages_location_slug",
+            },
         }
         inspector = inspect(engine)
         for table, names in expected.items():
             actual = {index["name"] for index in inspector.get_indexes(table)}
             assert names <= actual
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_directory_slug_migration_removes_legacy_suffix_without_losing_seo():
+    engine, db = _database()
+    try:
+        organization = Page(
+            id=str(uuid4()),
+            slug="the-nation",
+            title="THE NATION Jobs",
+            content="<p>Organization content</p>",
+            page_type="organization",
+            taxonomy_value="THE NATION",
+            is_published=True,
+        )
+        newspaper = Page(
+            id=str(uuid4()),
+            slug="the-nation-newspaper",
+            title="Jobs in The Nation",
+            content="<p>Newspaper content</p>",
+            page_type="newspaper",
+            taxonomy_value="The Nation",
+            is_published=True,
+        )
+        custom_slug = Page(
+            id=str(uuid4()),
+            slug="analytics-careers",
+            title="Data Science Careers",
+            content="<p>Custom directory page</p>",
+            page_type="category",
+            taxonomy_value="Data Science",
+            is_published=True,
+        )
+        db.add_all([organization, newspaper, custom_slug])
+        db.flush()
+        db.add(
+            SEOMeta(
+                id=str(uuid4()),
+                entity_type="page",
+                entity_id=newspaper.id,
+                slug=newspaper.slug,
+                meta_title="Custom newspaper SEO title",
+                meta_description="Custom newspaper SEO description",
+            )
+        )
+        db.commit()
+
+        changed = sync_directory_page_slugs_v2(db)
+        db.commit()
+
+        assert [page.id for page in changed] == [newspaper.id]
+        assert organization.slug == "the-nation"
+        assert newspaper.slug == "the-nation"
+        assert custom_slug.slug == "analytics-careers"
+        seo = db.query(SEOMeta).filter(SEOMeta.entity_id == newspaper.id).one()
+        assert seo.meta_title == "Custom newspaper SEO title"
+        assert seo.meta_description == "Custom newspaper SEO description"
+        assert seo.canonical_url.endswith("/newspapers/the-nation")
+        assert sync_directory_page_slugs_v2(db) == []
     finally:
         db.close()
         engine.dispose()

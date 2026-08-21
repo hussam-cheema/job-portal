@@ -11,7 +11,7 @@ from app.auth import get_current_admin
 from app.database import get_db
 from app.logging_config import get_logger
 from app.models import Page, User
-from app.page_types import DIRECTORY_PAGE_PATHS, VALID_PAGE_TYPES
+from app.page_types import DIRECTORY_PAGE_PATHS, VALID_PAGE_TYPES, page_slug_namespace
 from app.schemas import DirectoryPageLinkOut, PageIn, PageOut, PageUpdate
 from app.seed import ensure_default_pages, sync_taxonomy_pages_v1
 from app.services.seo import delete_seo, upsert_page_seo
@@ -34,6 +34,10 @@ def _page_identity(page_type: str | None, taxonomy_value: str | None) -> tuple[s
     if normalized_type == "standard":
         normalized_value = None
     return normalized_type, normalized_value
+
+
+def _slug_page_types(page_type: str) -> set[str]:
+    return {"city", "province"} if page_slug_namespace(page_type) == "location" else {page_type}
 
 
 @router.get("/pages", response_model=list[PageOut])
@@ -143,7 +147,12 @@ def create_page(
         page_type, taxonomy_value = _page_identity(
             payload.page_type, payload.taxonomy_value
         )
-        exists = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        exists = db.execute(
+            select(Page).where(
+                Page.slug == slug,
+                Page.page_type.in_(_slug_page_types(page_type)),
+            )
+        ).scalar_one_or_none()
         if exists:
             raise HTTPException(status_code=400, detail="Slug already exists")
         if taxonomy_value:
@@ -216,14 +225,17 @@ def update_page(
                 )
         page.page_type = page_type
         page.taxonomy_value = taxonomy_value
-        if "slug" in data and data["slug"]:
-            candidate = slugify(data["slug"])
-            duplicate = db.execute(
-                select(Page).where(Page.slug == candidate, Page.id != page_id)
-            ).scalar_one_or_none()
-            if duplicate:
-                raise HTTPException(status_code=400, detail="Slug already exists")
-            page.slug = candidate
+        candidate = slugify(data.pop("slug", page.slug))
+        duplicate = db.execute(
+            select(Page).where(
+                Page.slug == candidate,
+                Page.page_type.in_(_slug_page_types(page_type)),
+                Page.id != page_id,
+            )
+        ).scalar_one_or_none()
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Slug already exists")
+        page.slug = candidate
         if "title" in data and data["title"] is not None:
             page.title = data["title"]
         if "content" in data and data["content"] is not None:

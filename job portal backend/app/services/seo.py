@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import canonical_site_url, cfg, site_name
 from app.logging_config import get_logger
 from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric
+from app.page_types import public_page_path
 from app.utils import strip_html
 
 logger = get_logger("jobportal.seo")
@@ -211,17 +212,19 @@ def upsert_page_seo(
         auto_desc = (
             strip_html(page.content or "", 160) or f"{page.title} — {site_name()}"
         )
-        path = (
-            f"/p/{page.slug}"
-            if page.slug not in {"about", "contact", "privacy", "disclaimer"}
-            else f"/{page.slug}"
-        )
-        title = (ov.get("meta_title") or auto_title)[:300]
-        desc = (ov.get("meta_description") or auto_desc)[:500]
-        keywords = (
-            ov.get("meta_keywords") or f"{page.title}, {site_name()}, Pakistan jobs"
-        )
-        focus = (ov.get("focus_keyword") or "").strip() or None
+        path = public_page_path(page.page_type, page.slug)
+        if existing and seo_override is None:
+            title = (existing.meta_title or auto_title)[:300]
+            desc = (existing.meta_description or auto_desc)[:500]
+            keywords = existing.meta_keywords or f"{page.title}, {site_name()}, Pakistan jobs"
+            focus = existing.focus_keyword
+        else:
+            title = (ov.get("meta_title") or auto_title)[:300]
+            desc = (ov.get("meta_description") or auto_desc)[:500]
+            keywords = (
+                ov.get("meta_keywords") or f"{page.title}, {site_name()}, Pakistan jobs"
+            )
+            focus = (ov.get("focus_keyword") or "").strip() or None
         analysis = analyze_yoast(
             title=page.title,
             content_html=page.content or "",
@@ -251,8 +254,10 @@ def upsert_page_seo(
             existing.seo_score = analysis["seo_score"]
             existing.readability_score = analysis["readability_score"]
             existing.analysis = analysis
-            existing.og_title = title
-            existing.og_description = desc
+            existing.og_title = existing.og_title if seo_override is None else title
+            existing.og_description = (
+                existing.og_description if seo_override is None else desc
+            )
             existing.canonical_url = _canonical(path)
             existing.robots = str(cfg("seo", "default_robots", default="index,follow"))
             existing.structured_data = structured

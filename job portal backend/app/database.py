@@ -272,6 +272,10 @@ def _ensure_new_columns() -> None:
                 except Exception:
                     pass
             if not DATABASE_URL.startswith("sqlite"):
+                # Page slugs are unique inside their public route namespace, not
+                # globally: /companies/dawn and /newspapers/dawn are both valid.
+                conn.execute(text("ALTER TABLE pages DROP CONSTRAINT IF EXISTS pages_slug_key"))
+                conn.execute(text("DROP INDEX IF EXISTS ix_pages_slug"))
                 conn.execute(
                     text(
                         "CREATE UNIQUE INDEX IF NOT EXISTS "
@@ -324,6 +328,11 @@ def _ensure_performance_indexes() -> None:
         "ON seo_keyword_ranks (recorded_at, keyword)",
         "CREATE INDEX IF NOT EXISTS ix_pages_type_published_title "
         "ON pages (page_type, is_published, title)",
+        "CREATE INDEX IF NOT EXISTS ix_pages_slug ON pages (slug)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pages_type_slug "
+        "ON pages (page_type, slug)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pages_location_slug "
+        "ON pages (slug) WHERE page_type IN ('city', 'province')",
     )
     try:
         existing_tables = set(inspect(engine).get_table_names())

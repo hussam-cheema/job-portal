@@ -45,6 +45,7 @@ from app.seed import (
     sync_homepage_branding_seo_v1,
     sync_local_core_pages_once,
     sync_taxonomy_pages_v1,
+    sync_directory_page_slugs_v2,
 )
 from app.services.taxonomy import ensure_default_taxonomy
 from app.services.watermark import migrate_legacy_job_watermarks
@@ -188,11 +189,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         db = SessionLocal()
         try:
             taxonomy_pages_created = sync_taxonomy_pages_v1(db)
+            directory_slugs_updated = sync_directory_page_slugs_v2(db)
             db.commit()
             if taxonomy_pages_created:
                 logger.info(
                     "taxonomy CMS pages created count=%s",
                     len(taxonomy_pages_created),
+                )
+            if directory_slugs_updated:
+                logger.info(
+                    "directory CMS page slugs normalized count=%s",
+                    len(directory_slugs_updated),
                 )
         finally:
             db.close()

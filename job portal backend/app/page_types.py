@@ -23,6 +23,11 @@ DIRECTORY_PAGE_PATHS = {
 VALID_PAGE_TYPES = {"standard", *DIRECTORY_PAGE_PATHS}
 
 
+def page_slug_namespace(page_type: str) -> str:
+    """Return the public route namespace that owns a Page slug."""
+    return "location" if page_type in {"city", "province"} else page_type
+
+
 def public_page_path(page_type: str, slug: str) -> str:
     if page_type in DIRECTORY_PAGE_PATHS:
         return f"{DIRECTORY_PAGE_PATHS[page_type]}/{slug}"

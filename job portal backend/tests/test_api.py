@@ -461,6 +461,38 @@ def test_directory_pages_control_title_slug_content_seo_and_deletion(client: Tes
     ]
     assert len(nation_pages) == 1
     nation = nation_pages[0]
+    assert nation["slug"] == "the-nation"
+
+    # Slugs belong to their public route namespace: the same clean slug can
+    # represent an organization and a newspaper without either receiving a suffix.
+    organization = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "The Nation Media Organization Jobs",
+            "slug": "the-nation",
+            "content": "",
+            "page_type": "organization",
+            "taxonomy_value": "The Nation Media Organization",
+        },
+    )
+    assert organization.status_code == 200
+    assert client.get("/api/pages/directory/organization/the-nation").status_code == 200
+    assert client.get("/api/pages/directory/newspaper/the-nation").status_code == 200
+
+    # City and province Pages share /locations, so collisions there remain invalid.
+    location_collision = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Lahore Province Jobs",
+            "slug": "lahore",
+            "content": "",
+            "page_type": "province",
+            "taxonomy_value": "Lahore Province",
+        },
+    )
+    assert location_collision.status_code == 400
 
     duplicate = client.post(
         "/api/admin/pages",
@@ -499,6 +531,7 @@ def test_directory_pages_control_title_slug_content_seo_and_deletion(client: Tes
     seo = client.get(f"/api/seo/page/{nation['id']}")
     assert seo.status_code == 200
     assert seo.json()["meta_title"] == "The Nation Jobs and Advertisements"
+    assert seo.json()["canonical_url"].endswith("/newspapers/nation-jobs")
     assert client.get("/api/pages/directory/newspaper/the-nation").status_code == 404
 
     directory = client.get("/api/site-directory").json()
