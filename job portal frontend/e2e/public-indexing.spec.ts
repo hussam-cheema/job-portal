@@ -185,10 +185,14 @@ test("homepage exposes complete job listings in initial HTML without JavaScript"
   expect(normalizedHtml).not.toContain("h-96 animate-pulse");
 });
 
-test("homepage hover overview is limited to a summary and three optional facts", async ({
+test("homepage hover excludes descriptions and shows four optional facts in order", async ({
   page,
 }) => {
   await page.goto("/");
+
+  await expect(page.locator(".stat-card")).toHaveCount(5);
+  await expect(page.locator(".stat-card").nth(2)).toContainText("1");
+  await expect(page.locator(".stat-card").nth(2)).toContainText("Closed jobs");
 
   const completeCard = page.locator("article.job-card").filter({
     hasText: "Nationwide Closed Role",
@@ -197,13 +201,14 @@ test("homepage hover overview is limited to a summary and three optional facts",
 
   const overview = completeCard.locator(".job-card-expand");
   await expect(overview).toBeVisible();
-  await expect(overview.locator(".job-card-overview-description")).toContainText(
-    "A nationwide job with a passed deadline."
-  );
-  await expect(overview).toContainText("Deadline: Jul 17");
-  await expect(overview).toContainText("Required Education: Bachelor's degree");
-  await expect(overview).toContainText("Required Experience: Two years");
-  await expect(overview.locator(".job-card-overview-detail")).toHaveCount(3);
+  await expect(completeCard.locator(".job-card-overview-description")).toHaveCount(0);
+  await expect(completeCard).not.toContainText("A nationwide job with a passed deadline.");
+  await expect(overview.locator(".job-card-overview-detail")).toHaveText([
+    "Newspaper: Dawn",
+    "Required Education: Bachelor's degree",
+    "Required Experience: Two years",
+    "Deadline: Jul 17",
+  ]);
   await expect(overview).not.toContainText("Published:");
   await expect(overview).not.toContainText("Source:");
   await expect(overview).not.toContainText("Category:");
@@ -211,17 +216,10 @@ test("homepage hover overview is limited to a summary and three optional facts",
   await expect(overview).not.toContainText("Job reference");
   await expect(overview).not.toContainText("Apply here");
 
-  const clamp = await overview.locator(".job-card-overview-description").evaluate((element) =>
-    getComputedStyle(element).getPropertyValue("-webkit-line-clamp")
-  );
-  expect(clamp).toBe("4");
-
   const optionalCard = page.locator("article.job-card").filter({ hasText: "Multi Location Role" });
   await optionalCard.hover();
-  await expect(optionalCard.locator(".job-card-overview-description")).toContainText(
-    "A role available in more than one city."
-  );
-  await expect(optionalCard.locator(".job-card-overview-detail")).toHaveCount(0);
+  await expect(optionalCard).not.toContainText("A role available in more than one city.");
+  await expect(optionalCard.locator(".job-card-expand")).toHaveCount(0);
 });
 
 test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {
@@ -295,13 +293,7 @@ test("JobPosting schema omits intentional blanks and never invents address or sa
   expect(nationwide).not.toHaveProperty("baseSalary");
 });
 
-test("double-encoded entities render as readable text in listings and rich content", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await expect(page.locator("body")).toContainText("Bachelor's qualification required.");
-  await expect(page.locator("body")).not.toContainText("&#39;");
-
+test("double-encoded entities render as readable text in rich content", async ({ page }) => {
   await page.goto("/jobs/closed-role");
   await expect(page.locator(".prose-job")).toContainText("Candidate's experience matters.");
   await expect(page.locator(".prose-job")).not.toContainText("&#39;");

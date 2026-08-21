@@ -8,11 +8,13 @@ export function JobStats({ stats }: { stats: StatsResponse }) {
     (bySource.company || 0) + (bySource.newspaper || 0) ||
     0;
   const openForApply = stats.open_for_apply ?? 0;
+  const closedJobs = Math.max(stats.total_jobs - openForApply, 0);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
       <StatCard label="Total jobs" value={stats.total_jobs} accent />
       <StatCard label="Open to apply" value={openForApply} />
+      <StatCard label="Closed jobs" value={closedJobs} />
       <StatCard label="Govt jobs" value={govt} />
       <StatCard label="Private jobs" value={privateCount} />
     </div>

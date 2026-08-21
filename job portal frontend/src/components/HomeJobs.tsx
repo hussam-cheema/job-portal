@@ -95,7 +95,7 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
         ) : (
           <div className="job-list">
             {data.items.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} homepageOverview />
             ))}
           </div>
         )}

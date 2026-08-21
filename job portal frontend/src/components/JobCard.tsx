@@ -17,9 +17,10 @@ import {
 
 type Props = {
   job: JobSummary;
+  homepageOverview?: boolean;
 };
 
-export function JobCard({ job }: Props) {
+export function JobCard({ job, homepageOverview = false }: Props) {
   const [open, setOpen] = useState(false);
   const salary =
     job.salary_range ||
@@ -45,6 +46,12 @@ export function JobCard({ job }: Props) {
   const deadlineValue = job.deadline_date || job.application_deadline;
   const fullDescription =
     stripHtml(job.description) || "No description is available for this listing yet.";
+  const newspaper = job.newspaper?.trim();
+  const educationRequired = job.education_required?.trim();
+  const experienceRequired = job.experience_required?.trim();
+  const hasHomepageOverview = Boolean(
+    newspaper || educationRequired || experienceRequired || deadlineValue
+  );
 
   return (
     <article
@@ -125,30 +132,62 @@ export function JobCard({ job }: Props) {
               ))}
           </div>
 
-          <div className={`job-card-expand ${open ? "job-card-expand-visible" : ""}`}>
-            <p className="job-card-overview-description mt-3 text-sm leading-relaxed text-[var(--navy-200)]">
-              {fullDescription}
-            </p>
-            <div className="job-card-overview-details mt-3 text-xs text-[var(--muted)]">
-              {deadlineValue && (
-                <div className="job-card-overview-detail font-bold text-red-500">
-                  Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
+          {homepageOverview ? (
+            hasHomepageOverview && (
+              <div className={`job-card-expand ${open ? "job-card-expand-visible" : ""}`}>
+                <div className="job-card-overview-details mt-3 text-xs text-[var(--muted)]">
+                  {newspaper && (
+                    <div className="job-card-overview-detail">
+                      <span className="font-semibold text-[var(--navy-200)]">Newspaper:</span>{" "}
+                      {decodeHtmlEntities(newspaper)}
+                    </div>
+                  )}
+                  {educationRequired && (
+                    <div className="job-card-overview-detail">
+                      <span className="font-semibold text-[var(--navy-200)]">Required Education:</span>{" "}
+                      {decodeHtmlEntities(educationRequired)}
+                    </div>
+                  )}
+                  {experienceRequired && (
+                    <div className="job-card-overview-detail">
+                      <span className="font-semibold text-[var(--navy-200)]">Required Experience:</span>{" "}
+                      {decodeHtmlEntities(experienceRequired)}
+                    </div>
+                  )}
+                  {deadlineValue && (
+                    <div className="job-card-overview-detail font-bold text-red-500">
+                      Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
+                    </div>
+                  )}
                 </div>
-              )}
-              {job.education_required && (
-                <div className="job-card-overview-detail">
-                  <span className="font-semibold text-[var(--navy-200)]">Required Education:</span>{" "}
-                  {decodeHtmlEntities(job.education_required)}
-                </div>
-              )}
-              {job.experience_required && (
-                <div className="job-card-overview-detail">
-                  <span className="font-semibold text-[var(--navy-200)]">Required Experience:</span>{" "}
-                  {decodeHtmlEntities(job.experience_required)}
-                </div>
-              )}
+              </div>
+            )
+          ) : (
+            <div className={`job-card-expand ${open ? "job-card-expand-visible" : ""}`}>
+              <p className="job-card-overview-description mt-3 text-sm leading-relaxed text-[var(--navy-200)]">
+                {fullDescription}
+              </p>
+              <div className="job-card-overview-details mt-3 text-xs text-[var(--muted)]">
+                {deadlineValue && (
+                  <div className="job-card-overview-detail font-bold text-red-500">
+                    Deadline: <time dateTime={deadlineValue}>{formatDateShort(deadlineValue)}</time>
+                  </div>
+                )}
+                {educationRequired && (
+                  <div className="job-card-overview-detail">
+                    <span className="font-semibold text-[var(--navy-200)]">Required Education:</span>{" "}
+                    {decodeHtmlEntities(educationRequired)}
+                  </div>
+                )}
+                {experienceRequired && (
+                  <div className="job-card-overview-detail">
+                    <span className="font-semibold text-[var(--navy-200)]">Required Experience:</span>{" "}
+                    {decodeHtmlEntities(experienceRequired)}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
