@@ -71,7 +71,7 @@ test("site analytics shows full, non-redundant country names", async ({ page }) 
   await expect(realtimeLocations.getByText("US", { exact: true })).toHaveCount(0);
 });
 
-test("infrastructure analytics only shows active services and the payment-aware cost ledger", async ({
+test("infrastructure analytics shows the five focused provider and FinOps sections", async ({
   page,
 }) => {
   await page.goto("/admin/infrastructure");
@@ -79,32 +79,51 @@ test("infrastructure analytics only shows active services and the payment-aware 
     page.getByRole("heading", { name: "Infrastructure analytics", exact: true }),
   ).toBeVisible();
 
-  for (const label of [
+  const sections = page.getByTestId("infrastructure-section");
+  await expect(sections).toHaveCount(5);
+
+  for (const heading of [
+    "Cloudflare R2",
+    "Neon Postgres",
+    "Railway Serverless",
+    "Resend",
+    "FinOps",
+  ]) {
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  }
+
+  const neon = sections.filter({ has: page.getByRole("heading", { name: "Neon Postgres", exact: true }) });
+  await expect(neon.getByText("Public network transfer", { exact: true })).toBeVisible();
+  await expect(neon.getByText("4.26 / 5", { exact: true })).toBeVisible();
+
+  const railway = sections.filter({ has: page.getByRole("heading", { name: "Railway Serverless", exact: true }) });
+  await expect(railway.getByText("Network egress", { exact: true })).toBeVisible();
+  await expect(railway.getByText("2.75 GB", { exact: true })).toBeVisible();
+  await expect(railway.getByText("0.42 / 1", { exact: true })).toBeVisible();
+
+  const resend = sections.filter({ has: page.getByRole("heading", { name: "Resend", exact: true }) });
+  await expect(resend.getByText("Monthly emails", { exact: true })).toBeVisible();
+  await expect(resend.getByText("320 / 3,000", { exact: true })).toBeVisible();
+  await expect(resend.getByText("Daily emails", { exact: true })).toBeVisible();
+  await expect(resend.getByText("12 / 100", { exact: true })).toBeVisible();
+
+  const finops = sections.filter({ has: page.getByRole("heading", { name: "FinOps", exact: true }) });
+  for (const provider of ["Azure — all services", "Cloudflare R2", "Neon", "Railway", "Resend"]) {
+    await expect(finops.getByText(provider, { exact: true })).toBeVisible();
+  }
+  await expect(finops.getByText("$2.35", { exact: true })).toBeVisible();
+  await expect(finops.getByText("$0.18", { exact: true })).toBeVisible();
+  await expect(finops.getByText("$0.42", { exact: true })).toBeVisible();
+  await expect(finops.getByText(/No \$5 is currently owed/)).toBeVisible();
+
+  for (const removedLabel of [
+    "Every active cost driver",
+    "Monthly cost history",
     "Current outstanding",
     "Current billed",
     "Current paid",
     "Recorded total",
     "Total outstanding",
-    "Monthly cost history",
-    "Backend API + newsletter retry",
-    "PostgreSQL database",
-    "Frontend hosting",
-  ]) {
-    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
-  }
-  await expect(page.getByText("Paid", { exact: true })).toBeVisible();
-  await expect(page.getByText(/No \$5 is currently owed/)).toBeVisible();
-  await expect(page.getByText("Compute", { exact: true })).toBeVisible();
-  await expect(page.getByText("65.53 CU-hours", { exact: true })).toBeVisible();
-  await expect(page.getByText("Public network transfer", { exact: true })).toBeVisible();
-  await expect(page.getByText("4.26 GB", { exact: true })).toBeVisible();
-  await expect(page.getByText("Active branches", { exact: true })).toBeVisible();
-  await expect(page.getByText("$0.002", { exact: true })).toBeVisible();
-  await expect(page.getByText("Monthly emails", { exact: true })).toBeVisible();
-  await expect(page.getByText("Class A operations", { exact: true })).toBeVisible();
-  await expect(page.getByText("Every active cost driver", { exact: true })).toBeVisible();
-
-  for (const removedLabel of [
     "Connection pool",
     "Signals",
     "Managed service limits",
