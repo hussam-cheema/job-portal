@@ -492,6 +492,35 @@ def get_job(job_id: str, response: Response, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to load job") from None
 
 
+@router.get("/admin/jobs", response_model=JobListResponse)
+def admin_list_jobs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Return every editable job through a bounded, admin-only listing."""
+    try:
+        total = db.execute(select(func.count()).select_from(Job)).scalar() or 0
+        pages = math.ceil(total / page_size) if total else 0
+        rows = db.execute(
+            select(*JOB_SUMMARY_COLUMNS)
+            .order_by(Job.published_date.desc().nullslast(), Job.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        return JobListResponse(
+            items=[_to_summary(job) for job in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
+    except Exception:
+        logger.exception("admin_list_jobs failed page=%s", page)
+        raise HTTPException(status_code=503, detail="Failed to load job posts") from None
+
+
 @router.post("/admin/jobs", response_model=JobDetail)
 def create_job(
     payload: JobCreate,

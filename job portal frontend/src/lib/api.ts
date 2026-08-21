@@ -977,9 +977,19 @@ export async function adminSeoDashboard(token: string): Promise<SEODashboard | n
   }
 }
 
-export async function adminListJobs(token: string, page = 1): Promise<JobListResponse> {
-  // public list is fine for admin listing
-  return fetchJobs({ page, page_size: 50 });
+export async function adminListJobs(
+  token: string,
+  page = 1,
+  pageSize = 25,
+): Promise<JobListResponse> {
+  return requestJson<JobListResponse>(
+    `/api/admin/jobs${buildQuery({ page, page_size: pageSize })}`,
+    {
+      headers: authHeaders(token),
+      cache: "no-store",
+    },
+    "Job posts could not be loaded",
+  );
 }
 
 export { API_BASE, EMPTY_JOBS, EMPTY_FILTERS, EMPTY_STATS };

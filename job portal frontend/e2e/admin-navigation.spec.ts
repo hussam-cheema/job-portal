@@ -238,6 +238,35 @@ test("core CMS pages are visible in the dashboard", async ({ page }) => {
   await expect(adminContent.getByText("No pages yet. Create your first page.")).toHaveCount(0);
 });
 
+test("job posts exposes the complete editable inventory through pagination", async ({ page }) => {
+  await page.goto("/admin/jobs");
+
+  await expect(page.getByText("53 total job posts", { exact: true })).toBeVisible();
+  await expect(page.getByText("Showing 1–25 of 53", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 of 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 01", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 26", { exact: true })).toHaveCount(0);
+  await expect(page.locator('a[href^="/admin/jobs/admin-job-"]')).toHaveCount(25);
+
+  const secondPageRequest = page.waitForRequest((request) =>
+    request.url().includes("/api/admin/jobs?page=2&page_size=25")
+  );
+  await page.getByRole("button", { name: "Next →" }).click();
+  await secondPageRequest;
+  await expect(page.getByText("Showing 26–50 of 53", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 2 of 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 26", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 50", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 01", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Next →" }).click();
+  await expect(page.getByText("Showing 51–53 of 53", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 3 of 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Editable Job Post 53", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next →" })).toBeDisabled();
+  await expect(page.locator('a[href^="/admin/jobs/admin-job-"]')).toHaveCount(3);
+});
+
 test("directory pages expose editable type, matching value, and public path controls", async ({ page }) => {
   await page.goto("/admin/pages/new");
 

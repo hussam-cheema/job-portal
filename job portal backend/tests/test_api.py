@@ -296,6 +296,43 @@ def test_login_and_create_job(client: TestClient):
     assert invalid.status_code == 400
 
 
+def test_admin_job_list_is_authenticated_and_paginates_every_post(client: TestClient):
+    assert client.get("/api/admin/jobs").status_code == 401
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    created_ids = []
+    for index in range(5):
+        response = client.post(
+            "/api/admin/jobs",
+            headers=headers,
+            json={
+                "title": f"Editable paginated job {index + 1}",
+                "description": "<p>This post must remain editable in Admin.</p>",
+                "published_date": f"2026-08-{index + 1:02d}T00:00:00",
+            },
+        )
+        assert response.status_code == 200
+        created_ids.append(response.json()["id"])
+
+    first = client.get("/api/admin/jobs?page=1&page_size=2", headers=headers)
+    second = client.get("/api/admin/jobs?page=2&page_size=2", headers=headers)
+    third = client.get("/api/admin/jobs?page=3&page_size=2", headers=headers)
+
+    assert first.status_code == second.status_code == third.status_code == 200
+    assert first.json()["total"] == 5
+    assert first.json()["pages"] == 3
+    assert [len(first.json()["items"]), len(second.json()["items"]), len(third.json()["items"])] == [2, 2, 1]
+    listed_ids = {
+        item["id"]
+        for response in (first, second, third)
+        for item in response.json()["items"]
+    }
+    assert listed_ids == set(created_ids)
+
+
 def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}

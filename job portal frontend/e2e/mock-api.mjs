@@ -29,6 +29,27 @@ const directoryPages = Object.entries(directoryPageValues).flatMap(([pageType, v
   }),
 );
 
+const adminJobs = Array.from({ length: 53 }, (_, index) => {
+  const number = index + 1;
+  const suffix = String(number).padStart(2, "0");
+  return {
+    id: `admin-job-${suffix}`,
+    slug: `admin-job-${suffix}`,
+    title: `Editable Job Post ${suffix}`,
+    description: "Admin pagination test job.",
+    published_date: `2026-08-${String(21 - (index % 20)).padStart(2, "0")}T00:00:00Z`,
+    deadline_date: null,
+    job_type: number % 2 ? "government" : "private",
+    source_type: number % 2 ? "govt" : "private",
+    source: "Test Organization",
+    cities: [number % 2 ? "Lahore" : "Karachi"],
+    provinces: [],
+    tags: [],
+    skills: [],
+    applications_closed: false,
+  };
+});
+
 const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
@@ -41,7 +62,8 @@ const json = (response, value, status = 200) => {
 
 const server = createServer((request, response) => {
   if (request.method === "OPTIONS") return json(response, {});
-  const path = new URL(request.url || "/", "http://127.0.0.1:4010").pathname;
+  const requestUrl = new URL(request.url || "/", "http://127.0.0.1:4010");
+  const path = requestUrl.pathname;
   const authorization = request.headers.authorization || "";
   if (path.startsWith("/api/admin/blog") && authorization === "Bearer expired-e2e-token") {
     return json(response, { detail: "Invalid token" }, 401);
@@ -251,6 +273,18 @@ const server = createServer((request, response) => {
       category: "Government", source_type: "govt", source_name: "FPSC",
       nationwide: false, applications_closed: false,
     }], total: 2, page: 1, page_size: 30, pages: 1 });
+  }
+  if (path === "/api/admin/jobs" && request.method === "GET") {
+    const page = Math.max(1, Number(requestUrl.searchParams.get("page") || 1));
+    const pageSize = Math.max(1, Number(requestUrl.searchParams.get("page_size") || 25));
+    const start = (page - 1) * pageSize;
+    return json(response, {
+      items: adminJobs.slice(start, start + pageSize),
+      total: adminJobs.length,
+      page,
+      page_size: pageSize,
+      pages: Math.ceil(adminJobs.length / pageSize),
+    });
   }
   if (path === "/api/stats") {
     return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
