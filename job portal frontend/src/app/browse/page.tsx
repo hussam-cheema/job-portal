@@ -117,7 +117,7 @@ function DirectoryLinks({
 export default async function BrowsePage() {
   const directory = await fetchSiteDirectory();
   const customPages = directory.pages.filter(
-    (page) => !corePageSlugs.has(page.slug)
+    (page) => (!page.page_type || page.page_type === "standard") && !corePageSlugs.has(page.slug)
   );
   const publicPages = [
     ...corePages,

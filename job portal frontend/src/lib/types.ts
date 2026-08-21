@@ -205,14 +205,32 @@ export type JobFormData = {
   };
 };
 
+export type PageType =
+  | "standard"
+  | "city"
+  | "province"
+  | "category"
+  | "organization"
+  | "newspaper";
+
 export type PageItem = {
   id: string;
   slug: string;
   title: string;
   content: string;
+  page_type: PageType;
+  taxonomy_value?: string | null;
   is_published: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+export type DirectoryPageLink = Pick<
+  PageItem,
+  "id" | "slug" | "title" | "page_type"
+> & {
+  page_type: Exclude<PageType, "standard">;
+  taxonomy_value: string;
 };
 
 export type PublicSeoMeta = {
@@ -253,6 +271,8 @@ export type DirectoryValue = {
   name: string;
   slug: string;
   count: number;
+  page_id?: string;
+  taxonomy_value?: string | null;
 };
 
 export type SiteDirectory = {
@@ -284,6 +304,8 @@ export type SiteDirectory = {
     slug: string;
     title: string;
     path: string;
+    page_type?: PageType;
+    taxonomy_value?: string | null;
   }>;
   taxonomies: {
     job_categories: DirectoryValue[];

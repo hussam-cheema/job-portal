@@ -235,6 +235,8 @@ def _ensure_new_columns() -> None:
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS newspaper VARCHAR(200) NOT NULL DEFAULT ''",
         "ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL",
+        "ALTER TABLE pages ADD COLUMN IF NOT EXISTS page_type VARCHAR(30) NOT NULL DEFAULT 'standard'",
+        "ALTER TABLE pages ADD COLUMN IF NOT EXISTS taxonomy_value VARCHAR(300) NULL",
     ]
     if DATABASE_URL.startswith("sqlite"):
         # SQLite lacks IF NOT EXISTS for columns — ignore errors
@@ -254,6 +256,8 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE jobs ADD COLUMN provinces JSON",
             "ALTER TABLE jobs ADD COLUMN newspaper VARCHAR(200) NOT NULL DEFAULT ''",
             "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
+            "ALTER TABLE pages ADD COLUMN page_type VARCHAR(30) NOT NULL DEFAULT 'standard'",
+            "ALTER TABLE pages ADD COLUMN taxonomy_value VARCHAR(300)",
         ]
     try:
         with engine.begin() as conn:
@@ -318,6 +322,8 @@ def _ensure_performance_indexes() -> None:
         "ON seo_backlinks (last_seen)",
         "CREATE INDEX IF NOT EXISTS ix_keyword_ranks_recorded_keyword "
         "ON seo_keyword_ranks (recorded_at, keyword)",
+        "CREATE INDEX IF NOT EXISTS ix_pages_type_published_title "
+        "ON pages (page_type, is_published, title)",
     )
     try:
         existing_tables = set(inspect(engine).get_table_names())

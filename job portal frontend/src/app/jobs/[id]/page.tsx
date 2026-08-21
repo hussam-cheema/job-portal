@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
-import { fetchBlogPosts, fetchBranding, fetchJob, fetchJobs, fetchPublicSeo } from "@/lib/api";
+import { fetchBlogPosts, fetchBranding, fetchDirectoryPages, fetchJob, fetchJobs, fetchPublicSeo } from "@/lib/api";
 import { JobShareButtons } from "@/components/JobShareButtons";
 import {
   decodeHtmlEntities,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/socialMetadata";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
 import { buildJobPostingStructuredData } from "@/lib/jobStructuredData";
+import { findDirectoryPage, publicPagePath } from "@/lib/pagePath";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -101,13 +102,16 @@ export default async function JobDetailPage({ params }: Props) {
   if (job.slug && id !== job.slug) permanentRedirect(`/jobs/${job.slug}`);
 
   const discoveryTerm = job.category || job.tags?.[0] || job.cities?.[0];
-  const [relatedResult, companyResult, articleResult] = await Promise.all([
+  const [relatedResult, companyResult, articleResult, directoryPages] = await Promise.all([
     fetchJobs({ tag: discoveryTerm, page: 1, page_size: 6 }),
     job.source ? fetchJobs({ company: job.source, page: 1, page_size: 6 }) : Promise.resolve({ items: [], total: 0, page: 1, page_size: 6, pages: 0 }),
     fetchBlogPosts({ q: discoveryTerm || job.title.split(" ").slice(0, 2).join(" "), page: 1, page_size: 4 }),
+    fetchDirectoryPages(),
   ]);
   const relatedJobs = relatedResult.items.filter((item) => item.id !== job.id).slice(0, 4);
   const companyJobs = companyResult.items.filter((item) => item.id !== job.id).slice(0, 4);
+  const categoryPage = findDirectoryPage(directoryPages, "category", job.category);
+  const companyPage = findDirectoryPage(directoryPages, "organization", job.source);
 
   const salary =
     job.salary_range ||
@@ -158,14 +162,18 @@ export default async function JobDetailPage({ params }: Props) {
             <span className={`tag ${sourceBadgeClass(job.source_type || job.job_type || "")}`}>
               {labelSource(job.source_type || job.job_type || "private")}
             </span>
-            {job.category && (
+            {job.category && categoryPage ? (
               <Link
-                href={`/categories/${toSeoSlug(job.category)}`}
+                href={publicPagePath(categoryPage)}
                 className={`tag job-tag-link ${tagColorClass(job.category)}`}
               >
                 {decodeHtmlEntities(job.category)}
               </Link>
-            )}
+            ) : job.category ? (
+              <span className={`tag ${tagColorClass(job.category)}`}>
+                {decodeHtmlEntities(job.category)}
+              </span>
+            ) : null}
             {tags
               .filter(
                 (t) =>
@@ -173,19 +181,30 @@ export default async function JobDetailPage({ params }: Props) {
                     labelSource(job.source_type || job.job_type || "").toLowerCase() &&
                   t.toLowerCase() !== (job.category || "").toLowerCase()
               )
-              .map((t) => (
-                <Link
-                  key={t}
-                  href={
-                    [...(job.cities || []), ...(job.provinces || [])].includes(t)
-                      ? `/locations/${toSeoSlug(t)}`
-                      : `/tags/${toSeoSlug(t)}`
-                  }
-                  className={`tag job-tag-link ${tagColorClass(t)}`}
-                >
-                  {decodeHtmlEntities(t)}
-                </Link>
-              ))}
+              .map((t) => {
+                const cityPage = findDirectoryPage(directoryPages, "city", t);
+                const provincePage = findDirectoryPage(directoryPages, "province", t);
+                const locationPage = cityPage || provincePage;
+                const isLocation = [...(job.cities || []), ...(job.provinces || [])].includes(t);
+                const href = isLocation
+                  ? locationPage
+                    ? publicPagePath(locationPage)
+                    : null
+                  : `/tags/${toSeoSlug(t)}`;
+                return href ? (
+                  <Link
+                    key={t}
+                    href={href}
+                    className={`tag job-tag-link ${tagColorClass(t)}`}
+                  >
+                    {decodeHtmlEntities(t)}
+                  </Link>
+                ) : (
+                  <span key={t} className={`tag ${tagColorClass(t)}`}>
+                    {decodeHtmlEntities(t)}
+                  </span>
+                );
+              })}
           </div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--navy-100)] leading-snug">
             {decodeHtmlEntities(job.title)}
@@ -361,7 +380,7 @@ export default async function JobDetailPage({ params }: Props) {
             <h2 id="explore-related" className="text-xl font-semibold text-[var(--navy-100)]">Explore related opportunities</h2>
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
               {relatedJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Related vacancies</h3><ul className="mt-3 space-y-2">{relatedJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul></div>}
-              {companyJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">More from {decodeHtmlEntities(job.source || "")}</h3><ul className="mt-3 space-y-2">{companyJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul>{job.source && <Link href={`/companies/${toSeoSlug(job.source)}`} className="mt-3 inline-flex text-sm text-[var(--muted)] hover:text-[var(--accent)]">View all {decodeHtmlEntities(job.source)} jobs →</Link>}</div>}
+              {companyJobs.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">More from {decodeHtmlEntities(job.source || "")}</h3><ul className="mt-3 space-y-2">{companyJobs.map((item) => <li key={item.id}><Link href={`/jobs/${item.slug || item.id}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul>{job.source && companyPage && <Link href={publicPagePath(companyPage)} className="mt-3 inline-flex text-sm text-[var(--muted)] hover:text-[var(--accent)]">View all {decodeHtmlEntities(job.source)} jobs →</Link>}</div>}
               {articleResult.items.length > 0 && <div><h3 className="font-semibold text-[var(--navy-200)]">Relevant career guides</h3><ul className="mt-3 space-y-2">{articleResult.items.map((post) => <li key={post.id}><Link href={`/blog/${post.slug}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(post.title)}</Link></li>)}</ul></div>}
               <div><h3 className="font-semibold text-[var(--navy-200)]">Application tools</h3><div className="mt-3 flex flex-wrap gap-2"><Link href="/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link><Link href="/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link><Link href="/browse" className="btn btn-ghost">Browse all</Link></div></div>
             </div>

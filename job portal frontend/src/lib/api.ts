@@ -8,6 +8,7 @@ import type {
   JobListResponse,
   JobQuery,
   PageItem,
+  DirectoryPageLink,
   PublicSeoMeta,
   QnAFetchOptions,
   QnAFetchResult,
@@ -24,6 +25,7 @@ import type {
   SiteDirectory,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
+import { publicPagePath } from "./pagePath";
 
 const API_BASE = (
   process.env.INTERNAL_API_URL ||
@@ -345,6 +347,27 @@ function directoryValues(values: string[], seeds: string[] = []): SiteDirectory[
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function directoryPageValues(
+  pages: PageItem[],
+  pageType: PageItem["page_type"],
+  fallback: SiteDirectory["taxonomies"]["cities"],
+) {
+  const counts = new Map(
+    fallback.map((value) => [value.name.toLocaleLowerCase(), value.count]),
+  );
+  const managed = pages
+    .filter((page) => page.page_type === pageType && page.taxonomy_value)
+    .map((page) => ({
+      name: page.title,
+      slug: page.slug,
+      count: counts.get(page.taxonomy_value!.toLocaleLowerCase()) || 0,
+      page_id: page.id,
+      taxonomy_value: page.taxonomy_value,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return managed.length ? managed : fallback;
+}
+
 async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
   const firstJobs = await fetchJobs({ page: 1, page_size: 100 });
   const firstBlogs = await fetchBlogPosts({ page: 1, page_size: 50 });
@@ -396,35 +419,45 @@ async function fetchLegacySiteDirectory(): Promise<SiteDirectory> {
         id: page.id,
         slug: page.slug,
         title: page.title,
-        path: [
-          "about",
-          "contact",
-          "privacy",
-          "disclaimer",
-          "jobs-by-cities",
-          "jobs-by-provinces",
-          "jobs-by-categories",
-          "jobs-by-organizations",
-          "jobs-by-newspapers",
-        ].includes(page.slug)
-          ? `/${page.slug}`
-          : `/p/${page.slug}`,
+        page_type: page.page_type,
+        taxonomy_value: page.taxonomy_value,
+        path: publicPagePath(page),
       })),
     taxonomies: {
-      job_categories: directoryValues(
-        jobs.flatMap((job) => (job.category ? [job.category] : [])),
-        filters.categories
+      job_categories: directoryPageValues(
+        pages,
+        "category",
+        directoryValues(
+          jobs.flatMap((job) => (job.category ? [job.category] : [])),
+          filters.categories,
+        ),
       ),
       job_tags: directoryValues(jobs.flatMap((job) => job.tags || []), filters.tags),
-      cities: directoryValues(jobs.flatMap((job) => job.cities || []), filters.cities),
-      provinces: directoryValues(jobs.flatMap((job) => job.provinces || []), filters.provinces),
-      organizations: directoryValues(
-        jobs.flatMap((job) => (job.source ? [job.source] : [])),
-        filters.companies
+      cities: directoryPageValues(
+        pages,
+        "city",
+        directoryValues(jobs.flatMap((job) => job.cities || []), filters.cities),
       ),
-      newspapers: directoryValues(
-        jobs.flatMap((job) => (job.newspaper ? [job.newspaper] : [])),
-        filters.newspapers || []
+      provinces: directoryPageValues(
+        pages,
+        "province",
+        directoryValues(jobs.flatMap((job) => job.provinces || []), filters.provinces),
+      ),
+      organizations: directoryPageValues(
+        pages,
+        "organization",
+        directoryValues(
+          jobs.flatMap((job) => (job.source ? [job.source] : [])),
+          filters.companies,
+        ),
+      ),
+      newspapers: directoryPageValues(
+        pages,
+        "newspaper",
+        directoryValues(
+          jobs.flatMap((job) => (job.newspaper ? [job.newspaper] : [])),
+          filters.newspapers || [],
+        ),
       ),
       qualifications: directoryValues(
         jobs.flatMap((job) => (job.education_required ? [job.education_required] : [])),
@@ -472,8 +505,22 @@ export async function fetchPage(slug: string): Promise<PageItem | null> {
   return getJson<PageItem | null>(`/api/pages/${slug}`, null);
 }
 
+export async function fetchDirectoryPage(
+  pageType: Exclude<PageItem["page_type"], "standard"> | "location",
+  slug: string,
+): Promise<PageItem | null> {
+  return getJson<PageItem | null>(
+    `/api/pages/directory/${encodeURIComponent(pageType)}/${encodeURIComponent(slug)}`,
+    null,
+  );
+}
+
 export async function fetchPages(): Promise<PageItem[]> {
   return getJson<PageItem[]>("/api/pages?published_only=true", []);
+}
+
+export async function fetchDirectoryPages(): Promise<DirectoryPageLink[]> {
+  return getJson<DirectoryPageLink[]>("/api/pages/directory-links", []);
 }
 
 export async function fetchPublicSeo(
@@ -763,6 +810,8 @@ export async function adminSavePage(
     slug: string;
     title: string;
     content: string;
+    page_type?: PageItem["page_type"];
+    taxonomy_value?: string | null;
     is_published?: boolean;
     seo?: {
       focus_keyword?: string | null;

@@ -238,6 +238,18 @@ test("core CMS pages are visible in the dashboard", async ({ page }) => {
   await expect(adminContent.getByText("No pages yet. Create your first page.")).toHaveCount(0);
 });
 
+test("directory pages expose editable type, matching value, and public path controls", async ({ page }) => {
+  await page.goto("/admin/pages/new");
+
+  await page.getByLabel("Page type").selectOption("newspaper");
+  await page.getByLabel("Title *").fill("Jobs in The Nation");
+  await page.getByLabel("Matching jobs value *").fill("The Nation");
+  await page.getByLabel("Slug * (URL path)").fill("the-nation");
+
+  await expect(page.getByText("/newspapers/", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Change the Title above to control capitalization/)).toBeVisible();
+});
+
 test("job form only offers predefined categories", async ({ page }) => {
   await page.goto("/admin/jobs/new");
   const categories = page.getByLabel("Select tags or categories");

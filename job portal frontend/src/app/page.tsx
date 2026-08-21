@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { HomeJobs } from "@/components/HomeJobs";
-import { fetchBranding, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
+import { fetchBranding, fetchDirectoryPages, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
 import type { JobQuery } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -72,11 +72,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     page,
     page_size: 30,
   };
-  const [jobs, filters, stats, branding] = await Promise.all([
+  const [jobs, filters, stats, branding, pages] = await Promise.all([
     fetchJobs(query),
     fetchFilters(),
     fetchStats(),
     fetchBranding(),
+    fetchDirectoryPages(),
   ]);
 
   return (
@@ -86,6 +87,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       filters={filters}
       stats={stats}
       branding={branding}
+      pages={pages}
     />
   );
 }

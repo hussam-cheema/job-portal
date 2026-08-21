@@ -1,11 +1,14 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { fetchFilters, fetchJobs } from "@/lib/api";
+import { notFound } from "next/navigation";
+import { fetchDirectoryPage, fetchDirectoryPages, fetchFilters, fetchJobs } from "@/lib/api";
 import type { JobListResponse } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { JobFilters } from "@/components/JobFilters";
 import { Pagination } from "@/components/Pagination";
-import { labelFromSlug, toSeoSlug } from "@/lib/slug";
+import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
+import { decodeHtmlEntities } from "@/lib/format";
+import { wrapRichTextTables } from "@/lib/richText";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,21 +25,19 @@ function pick(values: Record<string, string | string[] | undefined>, key: string
 
 export async function generateMetadata({ params }: Props) {
   const { category } = await params;
-  const label = labelFromSlug(category);
-  return {
-    title: `${label} jobs in Pakistan`,
-    description: `Browse current ${label} job openings across Pakistan.`,
-    alternates: { canonical: `/categories/${category}` },
-    robots: { index: true, follow: true },
-  };
+  return directoryPageMetadata("category", category);
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {
   const { category: raw } = await params;
   const values = await searchParams;
-  const filters = await fetchFilters();
-  const category =
-    filters.categories.find((item) => toSeoSlug(item) === raw) || labelFromSlug(raw);
+  const [filters, cmsPage, directoryPages] = await Promise.all([
+    fetchFilters(),
+    fetchDirectoryPage("category", raw),
+    fetchDirectoryPages(),
+  ]);
+  if (!cmsPage?.taxonomy_value) notFound();
+  const category = cmsPage.taxonomy_value;
   const q = pick(values, "q");
   const sector = pick(values, "sector");
   const city = pick(values, "city");
@@ -62,7 +63,15 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
           Category
         </p>
-        <h1 className="text-3xl font-semibold text-[var(--navy-100)]">{category}</h1>
+        <h1 className="text-3xl font-semibold text-[var(--navy-100)]">
+          {decodeHtmlEntities(cmsPage.title)}
+        </h1>
+        {cmsPage.content && (
+          <div
+            className="prose-job mt-4 max-w-3xl text-[var(--navy-200)]"
+            dangerouslySetInnerHTML={{ __html: wrapRichTextTables(cmsPage.content) }}
+          />
+        )}
         <p className="mt-2 text-[var(--muted)]">
           {data.total} related opening{data.total === 1 ? "" : "s"}
         </p>
@@ -77,7 +86,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           <div className="px-5 py-14 text-center text-[var(--muted)]">No jobs in this category yet.</div>
         ) : (
           <div className="job-list">
-            {data.items.map((job) => <JobCard key={job.id} job={job} />)}
+            {data.items.map((job) => <JobCard key={job.id} job={job} directoryPages={directoryPages} />)}
           </div>
         )}
         <Pagination

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { JobDirectoryList } from "@/components/JobDirectoryList";
-import { fetchFilters } from "@/lib/api";
-import { labelFromSlug, toSeoSlug } from "@/lib/slug";
+import { fetchDirectoryPage } from "@/lib/api";
+import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
+import { decodeHtmlEntities } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,31 +15,28 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { location } = await params;
-  const label = labelFromSlug(location);
-  return {
-    title: `${label} Jobs in Pakistan`,
-    description: `Browse current job opportunities in ${label}, Pakistan.`,
-    alternates: { canonical: `/locations/${location}` },
-    robots: { index: true, follow: true },
-  };
+  return directoryPageMetadata("location", location);
 }
 
 export default async function LocationPage({ params, searchParams }: Props) {
   const { location: raw } = await params;
-  const search = await searchParams;
+  const [cmsPage, search] = await Promise.all([
+    fetchDirectoryPage("location", raw),
+    searchParams,
+  ]);
+  if (!cmsPage?.taxonomy_value) notFound();
   const page = Math.max(1, Number(typeof search.page === "string" ? search.page : 1) || 1);
-  const filters = await fetchFilters();
-  const province = filters.provinces.find((value) => toSeoSlug(value) === raw);
-  const city = filters.cities.find((value) => toSeoSlug(value) === raw);
-  const location = province || city || labelFromSlug(raw);
+  const location = cmsPage.taxonomy_value;
+  const isProvince = cmsPage.page_type === "province";
 
   return (
     <JobDirectoryList
-      title={`Jobs in ${location}`}
-      eyebrow={province ? "Province or territory" : "City"}
-      query={province ? { province } : { city: location }}
+      title={decodeHtmlEntities(cmsPage.title)}
+      eyebrow={isProvince ? "Province or territory" : "City"}
+      query={isProvince ? { province: location } : { city: location }}
       page={page}
-      basePath={`/locations/${raw}`}
+      basePath={`/locations/${cmsPage.slug}`}
+      content={cmsPage.content}
     />
   );
 }

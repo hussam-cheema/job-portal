@@ -445,6 +445,93 @@ def test_admin_pages_self_heal_core_pages(client: TestClient):
     assert "Daily Jang" in pages["disclaimer"]["content"]
 
 
+def test_directory_pages_control_title_slug_content_seo_and_deletion(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    seeded_links = client.get("/api/pages/directory-links")
+    assert seeded_links.status_code == 200
+    pages = client.get("/api/admin/pages", headers=auth).json()
+    nation_pages = [
+        page
+        for page in pages
+        if page["page_type"] == "newspaper"
+        and (page.get("taxonomy_value") or "").casefold() == "the nation"
+    ]
+    assert len(nation_pages) == 1
+    nation = nation_pages[0]
+
+    duplicate = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Jobs in THE NATION",
+            "slug": "the-nation-duplicate",
+            "content": "",
+            "page_type": "newspaper",
+            "taxonomy_value": "THE NATION",
+        },
+    )
+    assert duplicate.status_code == 400
+    assert "already exists" in duplicate.json()["detail"].lower()
+
+    updated = client.put(
+        f"/api/admin/pages/{nation['id']}",
+        headers=auth,
+        json={
+            "title": "Jobs in THE NATION",
+            "slug": "nation-jobs",
+            "content": "<p>Custom Nation newspaper landing content.</p>",
+            "seo": {
+                "meta_title": "The Nation Jobs and Advertisements",
+                "meta_description": "Custom newspaper jobs SEO description.",
+            },
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["slug"] == "nation-jobs"
+
+    public_page = client.get("/api/pages/directory/newspaper/nation-jobs")
+    assert public_page.status_code == 200
+    assert public_page.json()["title"] == "Jobs in THE NATION"
+    assert "Custom Nation" in public_page.json()["content"]
+    seo = client.get(f"/api/seo/page/{nation['id']}")
+    assert seo.status_code == 200
+    assert seo.json()["meta_title"] == "The Nation Jobs and Advertisements"
+    assert client.get("/api/pages/directory/newspaper/the-nation").status_code == 404
+
+    directory = client.get("/api/site-directory").json()
+    nation_links = [
+        item
+        for item in directory["taxonomies"]["newspapers"]
+        if (item.get("taxonomy_value") or "").casefold() == "the nation"
+    ]
+    assert nation_links == [
+        {
+            "name": "Jobs in THE NATION",
+            "slug": "nation-jobs",
+            "count": 0,
+            "page_id": nation["id"],
+            "taxonomy_value": "The Nation",
+        }
+    ]
+    assert any(
+        item["loc"].endswith("/newspapers/nation-jobs")
+        for item in client.get("/api/sitemap-data").json()["urls"]
+    )
+
+    deleted = client.delete(f"/api/admin/pages/{nation['id']}", headers=auth)
+    assert deleted.status_code == 200
+    assert client.get("/api/pages/directory/newspaper/nation-jobs").status_code == 404
+    links_after_delete = client.get("/api/pages/directory-links").json()
+    assert not any(page["id"] == nation["id"] for page in links_after_delete)
+    assert not any(
+        item["loc"].endswith("/newspapers/nation-jobs")
+        for item in client.get("/api/sitemap-data").json()["urls"]
+    )
+
+
 def test_local_core_pages_receive_production_snapshot_once(monkeypatch: pytest.MonkeyPatch):
     from datetime import datetime
     from app.models import Page
@@ -1201,6 +1288,19 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     assert created_term.status_code == 200
     public = client.get("/api/taxonomy")
     assert any(term["slug"] == "data-science" for term in public.json())
+    category_page = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Data Science Jobs",
+            "slug": "data-science",
+            "content": "<p>Managed Data Science directory content.</p>",
+            "page_type": "category",
+            "taxonomy_value": "Data Science",
+            "is_published": True,
+        },
+    )
+    assert category_page.status_code == 200
 
     valid = client.post(
         "/api/admin/jobs",
@@ -1245,11 +1345,25 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     assert renamed.status_code == 200
     changed_job = client.get(f"/api/jobs/{valid.json()['id']}").json()
     assert changed_job["tags"] == ["Analytics"]
+    renamed_page = client.put(
+        f"/api/admin/pages/{category_page.json()['id']}",
+        headers=auth,
+        json={
+            "title": "Analytics Jobs",
+            "slug": "analytics",
+            "taxonomy_value": "Analytics",
+            "seo": {
+                "meta_title": "Analytics Careers in Pakistan",
+                "meta_description": "Managed analytics job page.",
+            },
+        },
+    )
+    assert renamed_page.status_code == 200
     directory_categories = client.get("/api/site-directory").json()["taxonomies"][
         "job_categories"
     ]
     assert any(
-        item["name"] == "Analytics" and item["slug"] == "analytics"
+        item["name"] == "Analytics Jobs" and item["slug"] == "analytics"
         for item in directory_categories
     )
     sitemap_urls = {

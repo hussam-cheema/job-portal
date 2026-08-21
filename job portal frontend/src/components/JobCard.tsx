@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { JobSummary } from "@/lib/types";
+import type { DirectoryPageLink, JobSummary } from "@/lib/types";
 import { toSeoSlug } from "@/lib/slug";
 import {
   decodeHtmlEntities,
@@ -14,13 +14,15 @@ import {
   stripHtml,
   tagColorClass,
 } from "@/lib/format";
+import { findDirectoryPage, publicPagePath } from "@/lib/pagePath";
 
 type Props = {
   job: JobSummary;
   homepageOverview?: boolean;
+  directoryPages?: DirectoryPageLink[];
 };
 
-export function JobCard({ job, homepageOverview = false }: Props) {
+export function JobCard({ job, homepageOverview = false, directoryPages = [] }: Props) {
   const [open, setOpen] = useState(false);
   const salary =
     job.salary_range ||
@@ -52,6 +54,7 @@ export function JobCard({ job, homepageOverview = false }: Props) {
   const hasHomepageOverview = Boolean(
     newspaper || educationRequired || experienceRequired || deadlineValue
   );
+  const categoryPage = findDirectoryPage(directoryPages, "category", job.category);
 
   return (
     <article
@@ -103,14 +106,18 @@ export function JobCard({ job, homepageOverview = false }: Props) {
             <span className={`tag ${sourceBadgeClass(job.source_type || job.job_type || "")}`}>
               {labelSource(job.source_type || job.job_type || "private")}
             </span>
-            {job.category && (
+            {job.category && categoryPage ? (
               <Link
-                href={`/categories/${toSeoSlug(job.category)}`}
+                href={publicPagePath(categoryPage)}
                 className={`tag job-tag-link ${tagColorClass(job.category)} hover:brightness-110`}
               >
                 {decodeHtmlEntities(job.category)}
               </Link>
-            )}
+            ) : job.category ? (
+              <span className={`tag ${tagColorClass(job.category)}`}>
+                {decodeHtmlEntities(job.category)}
+              </span>
+            ) : null}
             {tags
               .filter(
                 (t) =>

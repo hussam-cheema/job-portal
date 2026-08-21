@@ -113,6 +113,15 @@ test("homepage discovery section and every directory link resolve", async ({ pag
   for (const card of await discovery.locator("article").all()) {
     await expect(card.locator("li > a")).toHaveCount(6);
   }
+  await expect(
+    discovery.getByRole("link", { name: "Jobs in Lahore", exact: true })
+  ).toHaveAttribute("href", "/locations/lahore");
+  await expect(
+    discovery.getByRole("link", { name: "Jobs in The Nation", exact: true })
+  ).toHaveCount(1);
+  await expect(
+    discovery.getByRole("link", { name: "Jobs in The Nation", exact: true })
+  ).toHaveAttribute("href", "/newspapers/the-nation");
 
   const expectedDirectoryLinks: Record<string, string> = {
     "/jobs-by-cities": "/locations/lahore",
@@ -125,6 +134,15 @@ test("homepage discovery section and every directory link resolve", async ({ pag
     const response = await request.get(directoryPath);
     expect(response.status(), directoryPath).toBe(200);
     expect(await response.text()).toContain(`href="${expectedLink}"`);
+  }
+
+  for (const [path, content] of [
+    ["/locations/lahore", "Managed content for Jobs in Lahore"],
+    ["/newspapers/the-nation", "Managed content for Jobs in The Nation"],
+  ] as const) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    expect(await response.text()).toContain(content);
   }
 });
 

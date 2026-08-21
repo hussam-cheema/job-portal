@@ -10,10 +10,11 @@ from sqlalchemy import func, select
 from app.auth import ensure_admin_user
 from app.database import SessionLocal
 from app.logging_config import get_logger
-from app.models import Job, JobQnA, Page, SiteSetting
+from app.constants import PAKISTAN_CITIES, PAKISTAN_NEWSPAPERS, PAKISTAN_PROVINCES
+from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm
 from app.services.seo import upsert_job_seo, upsert_page_seo
 from app.services.taxonomy import ensure_default_taxonomy
-from app.utils import slugify
+from app.utils import as_list, slugify
 
 logger = get_logger("jobportal.seed")
 
@@ -384,6 +385,115 @@ def ensure_default_pages(db) -> list[Page]:
     return created
 
 
+def sync_taxonomy_pages_v1(db) -> list[Page]:
+    """Create one CMS page per current job-directory entry exactly once.
+
+    The completion marker deliberately prevents deleted or renamed pages from being
+    recreated on later starts. New directory pages can be added from Admin > Pages.
+    """
+    marker_key = "taxonomy_pages_v1_complete"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    jobs = db.execute(
+        select(Job.source, Job.newspaper, Job.tags)
+    ).all()
+    category_terms = db.execute(
+        select(TaxonomyTerm.name).where(
+            TaxonomyTerm.kind == "category",
+            TaxonomyTerm.is_active.is_(True),
+        )
+    ).scalars().all()
+
+    def canonical_values(*groups) -> list[str]:
+        values: dict[str, str] = {}
+        for group in groups:
+            for raw_value in group:
+                value = (raw_value or "").strip()
+                if value and slugify(value):
+                    values.setdefault(value.casefold(), value)
+        return sorted(values.values(), key=str.casefold)
+
+    values_by_type = {
+        "city": canonical_values(PAKISTAN_CITIES),
+        "province": canonical_values(PAKISTAN_PROVINCES),
+        "category": canonical_values(
+            category_terms,
+            [value for job in jobs for value in as_list(job.tags)],
+        ),
+        "organization": canonical_values(job.source for job in jobs),
+        "newspaper": canonical_values(
+            PAKISTAN_NEWSPAPERS,
+            (job.newspaper for job in jobs),
+        ),
+    }
+
+    existing_pages = db.execute(select(Page)).scalars().all()
+    existing_keys = {
+        (page.page_type, (page.taxonomy_value or "").strip().casefold())
+        for page in existing_pages
+        if page.page_type != "standard" and page.taxonomy_value
+    }
+    used_slugs = {page.slug.casefold() for page in existing_pages}
+    created: list[Page] = []
+
+    def available_slug(value: str, page_type: str) -> str:
+        base = slugify(value) or page_type
+        candidate = base
+        suffix = 1
+        while candidate.casefold() in used_slugs:
+            suffix += 1
+            candidate = f"{base}-{page_type}" if suffix == 2 else f"{base}-{page_type}-{suffix}"
+        used_slugs.add(candidate.casefold())
+        return candidate
+
+    def page_copy(page_type: str, value: str) -> tuple[str, str, dict[str, str]]:
+        if page_type in {"city", "province", "newspaper"}:
+            title = f"Jobs in {value}"
+        else:
+            title = f"{value} Jobs"
+        subject = {
+            "city": f"job opportunities in {value}",
+            "province": f"job opportunities across {value}",
+            "category": f"{value} job opportunities in Pakistan",
+            "organization": f"current vacancies from {value}",
+            "newspaper": f"job advertisements published in {value}",
+        }[page_type]
+        content = f"<p>Browse current {subject}.</p>"
+        seo = {
+            "focus_keyword": title,
+            "meta_title": f"{title} | Pakistan Jobs Market",
+            "meta_description": f"Browse current {subject} on Pakistan Jobs Market.",
+            "meta_keywords": f"{title}, Pakistan jobs, latest jobs in Pakistan",
+        }
+        return title, content, seo
+
+    for page_type, values in values_by_type.items():
+        for value in values:
+            key = (page_type, value.casefold())
+            if key in existing_keys:
+                continue
+            title, content, seo = page_copy(page_type, value)
+            page = Page(
+                id=str(uuid4()),
+                slug=available_slug(value, page_type),
+                title=title,
+                content=content,
+                page_type=page_type,
+                taxonomy_value=value,
+                is_published=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(page)
+            upsert_page_seo(db, page, seo_override=seo)
+            created.append(page)
+            existing_keys.add(key)
+
+    db.add(SiteSetting(key=marker_key, value="1", updated_at=datetime.utcnow()))
+    return created
+
+
 def sync_local_core_pages_once(db) -> list[Page]:
     """Apply the current production-page snapshot to the local DB exactly once."""
     site_host = (urlparse(os.getenv("SITE_URL", "http://localhost:3000")).hostname or "").lower()
@@ -608,6 +718,7 @@ def seed_if_empty() -> None:
 
         db.flush()
         ensure_default_taxonomy(db)
+        sync_taxonomy_pages_v1(db)
 
         db.commit()
         logger.info("seeded sample jobs count=%s", len(SEED_JOBS))

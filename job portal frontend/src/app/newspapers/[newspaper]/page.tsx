@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { JobDirectoryList } from "@/components/JobDirectoryList";
-import { fetchFilters } from "@/lib/api";
-import { labelFromSlug, toSeoSlug } from "@/lib/slug";
+import { fetchDirectoryPage } from "@/lib/api";
+import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
+import { decodeHtmlEntities } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,28 +15,25 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { newspaper } = await params;
-  const label = labelFromSlug(newspaper);
-  return {
-    title: `${label} Jobs in Pakistan`,
-    description: `Browse current Pakistan job advertisements published in ${label}.`,
-    alternates: { canonical: `/newspapers/${newspaper}` },
-    robots: { index: true, follow: true },
-  };
+  return directoryPageMetadata("newspaper", newspaper);
 }
 
 export default async function NewspaperPage({ params, searchParams }: Props) {
   const { newspaper: raw } = await params;
-  const [filters, search] = await Promise.all([fetchFilters(), searchParams]);
-  const newspaper =
-    filters.newspapers.find((value) => toSeoSlug(value) === raw) || labelFromSlug(raw);
+  const [cmsPage, search] = await Promise.all([
+    fetchDirectoryPage("newspaper", raw),
+    searchParams,
+  ]);
+  if (!cmsPage?.taxonomy_value) notFound();
   const page = Math.max(1, Number(typeof search.page === "string" ? search.page : 1) || 1);
   return (
     <JobDirectoryList
-      title={`Jobs in ${newspaper}`}
+      title={decodeHtmlEntities(cmsPage.title)}
       eyebrow="Newspaper"
-      query={{ newspaper }}
+      query={{ newspaper: cmsPage.taxonomy_value }}
       page={page}
-      basePath={`/newspapers/${raw}`}
+      basePath={`/newspapers/${cmsPage.slug}`}
+      content={cmsPage.content}
     />
   );
 }

@@ -189,6 +189,9 @@ class JobQnA(Base):
 
 class Page(Base):
     __tablename__ = "pages"
+    __table_args__ = (
+        Index("ix_pages_type_published_title", "page_type", "is_published", "title"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     slug: Mapped[str] = mapped_column(
@@ -196,6 +199,10 @@ class Page(Base):
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    page_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="standard", index=True
+    )
+    taxonomy_value: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

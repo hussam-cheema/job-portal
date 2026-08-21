@@ -8,18 +8,7 @@ import { adminDeletePage, adminListPages } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
 import type { PageItem } from "@/lib/types";
 import { formatDate } from "@/lib/format";
-
-const directPageSlugs = new Set([
-  "about",
-  "contact",
-  "privacy",
-  "disclaimer",
-  "jobs-by-cities",
-  "jobs-by-provinces",
-  "jobs-by-categories",
-  "jobs-by-organizations",
-  "jobs-by-newspapers",
-]);
+import { publicPagePath } from "@/lib/pagePath";
 
 export default function AdminPagesListPage() {
   const { token } = useAdminAuth();
@@ -88,9 +77,15 @@ export default function AdminPagesListPage() {
               <div className="min-w-0">
                 <div className="font-medium text-[var(--navy-100)] break-words">{p.title}</div>
                 <div className="text-xs text-[var(--muted)] mt-1 flex flex-wrap gap-x-2 gap-y-1">
-                  <span>/{p.slug}</span>
+                  <span>{publicPagePath(p)}</span>
                   <span>·</span>
                   <span>{p.is_published ? "Published" : "Draft"}</span>
+                  {p.page_type !== "standard" && (
+                    <>
+                      <span>·</span>
+                      <span className="capitalize">{p.page_type} directory page</span>
+                    </>
+                  )}
                   {p.updated_at && (
                     <>
                       <span>·</span>
@@ -101,11 +96,7 @@ export default function AdminPagesListPage() {
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">
                 <Link
-                  href={
-                    directPageSlugs.has(p.slug)
-                      ? `/${p.slug}`
-                      : `/p/${p.slug}`
-                  }
+                  href={publicPagePath(p)}
                   className="btn btn-ghost"
                 >
                   View

@@ -40,6 +40,7 @@ from app.services.seo_tools import (
     set_social_settings,
     sync_gsc_data,
 )
+from app.seed import sync_taxonomy_pages_v1
 from app.services.yoast import analyze_yoast
 
 router = APIRouter()
@@ -247,6 +248,8 @@ def list_seo(
 def sitemap_data(db: Session = Depends(get_db)):
     """JSON list of sitemap URLs (used by frontend sitemap.xml)."""
     try:
+        if sync_taxonomy_pages_v1(db):
+            db.commit()
         return {"urls": build_sitemap_urls(db)}
     except Exception:
         logger.exception("sitemap_data failed")
@@ -258,6 +261,8 @@ def site_directory(response: Response, db: Session = Depends(get_db)):
     """Complete public inventory for server-rendered navigation and crawl audits."""
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
     try:
+        if sync_taxonomy_pages_v1(db):
+            db.commit()
         return build_site_directory(db)
     except Exception:
         logger.exception("site_directory failed")

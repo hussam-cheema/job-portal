@@ -24,10 +24,10 @@ from app.models import (
     SiteSetting,
     TaxonomyTerm,
 )
+from app.page_types import DIRECT_PAGE_SLUGS, public_page_path
 from app.constants import (
     PAKISTAN_CITIES,
     PAKISTAN_CITIES_BY_PROVINCE,
-    PAKISTAN_NEWSPAPERS,
     PAKISTAN_PROVINCE_BY_CITY,
     PAKISTAN_PROVINCES,
 )
@@ -143,9 +143,6 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             )
         ).all()
         job_tags: set[str] = set()
-        job_locations: set[str] = set(PAKISTAN_CITIES + PAKISTAN_PROVINCES)
-        companies: set[str] = set()
-        newspapers: set[str] = set(PAKISTAN_NEWSPAPERS)
         qualifications: set[str] = set()
         for job in jobs:
             urls.append(
@@ -163,40 +160,8 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             job_tags.update(
                 value.strip() for value in as_list(job.tags) if value and value.strip()
             )
-            job_locations.update(
-                value.strip()
-                for value in [*as_list(job.cities), *as_list(job.provinces)]
-                if value and value.strip()
-            )
-            if job.source and job.source.strip():
-                companies.add(job.source.strip())
-            if job.newspaper and job.newspaper.strip():
-                newspapers.add(job.newspaper.strip())
             if job.education_required and job.education_required.strip():
                 qualifications.add(job.education_required.strip())
-        category_names = (
-            db.execute(
-                select(TaxonomyTerm.name).where(
-                    TaxonomyTerm.kind == "category", TaxonomyTerm.is_active.is_(True)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        # Public category routes resolve a category's display name from the
-        # filters payload. Keep sitemap slugs on that same name-based contract
-        # even when an older taxonomy row has a custom/stale database slug.
-        for category_name in category_names:
-            category_slug = slugify(category_name)
-            if not category_slug:
-                continue
-            urls.append(
-                {
-                    "loc": f"{base}/categories/{category_slug}",
-                    "changefreq": "weekly",
-                    "priority": 0.6,
-                }
-            )
         for value in sorted(job_tags):
             if slugify(value):
                 urls.append(
@@ -204,33 +169,6 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                         "loc": f"{base}/tags/{slugify(value)}",
                         "changefreq": "weekly",
                         "priority": 0.5,
-                    }
-                )
-        for value in sorted(job_locations):
-            if slugify(value):
-                urls.append(
-                    {
-                        "loc": f"{base}/locations/{slugify(value)}",
-                        "changefreq": "weekly",
-                        "priority": 0.6,
-                    }
-                )
-        for value in sorted(companies):
-            if slugify(value):
-                urls.append(
-                    {
-                        "loc": f"{base}/companies/{slugify(value)}",
-                        "changefreq": "weekly",
-                        "priority": 0.6,
-                    }
-                )
-        for value in sorted(newspapers):
-            if slugify(value):
-                urls.append(
-                    {
-                        "loc": f"{base}/newspapers/{slugify(value)}",
-                        "changefreq": "weekly",
-                        "priority": 0.6,
                     }
                 )
         for value in sorted(qualifications):
@@ -243,15 +181,12 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     }
                 )
         for page in db.execute(
-            select(Page.slug, Page.updated_at).where(Page.is_published.is_(True))
+            select(Page.slug, Page.page_type, Page.updated_at).where(
+                Page.is_published.is_(True)
+            )
         ).all():
-            direct_slugs = {
-                "about", "contact", "privacy", "disclaimer",
-                "jobs-by-cities", "jobs-by-provinces", "jobs-by-categories",
-                "jobs-by-organizations", "jobs-by-newspapers",
-            }
-            path = f"/{page.slug}" if page.slug in direct_slugs else f"/p/{page.slug}"
-            if page.slug in direct_slugs:
+            path = public_page_path(page.page_type, page.slug)
+            if page.page_type == "standard" and page.slug in DIRECT_PAGE_SLUGS:
                 continue  # already added static
             urls.append(
                 {
@@ -351,6 +286,27 @@ def _directory_values(
     ]
 
 
+def _directory_page_values(
+    pages: list[Any], page_type: str, raw_values: list[str]
+) -> list[dict[str, Any]]:
+    """Expose only published CMS pages while retaining live job counts."""
+    count_by_value = {
+        value["name"].casefold(): value["count"]
+        for value in _directory_values(raw_values)
+    }
+    return [
+        {
+            "name": page.title,
+            "slug": page.slug,
+            "count": count_by_value.get((page.taxonomy_value or "").casefold(), 0),
+            "page_id": page.id,
+            "taxonomy_value": page.taxonomy_value,
+        }
+        for page in sorted(pages, key=lambda item: item.title.casefold())
+        if page.page_type == page_type and page.taxonomy_value
+    ]
+
+
 def _expanded_job_locations(job: Any) -> tuple[list[str], list[str]]:
     """Expand city/province assignments using the public directory rules."""
     selected_cities = set(as_list(job.cities))
@@ -411,19 +367,17 @@ def build_site_directory(db: Session) -> dict[str, Any]:
         .order_by(BlogPost.published_at.desc(), BlogPost.created_at.desc())
     ).all()
     pages = db.execute(
-        select(Page.id, Page.slug, Page.title)
+        select(
+            Page.id,
+            Page.slug,
+            Page.title,
+            Page.page_type,
+            Page.taxonomy_value,
+            Page.updated_at,
+        )
         .where(Page.is_published.is_(True))
         .order_by(Page.title.asc())
     ).all()
-    category_terms = db.execute(
-        select(TaxonomyTerm.name, TaxonomyTerm.slug)
-        .where(
-            TaxonomyTerm.kind == "category",
-            TaxonomyTerm.is_active.is_(True),
-        )
-        .order_by(TaxonomyTerm.name.asc())
-    ).all()
-
     job_tags = [value for job in jobs for value in set(as_list(job.tags))]
     expanded_locations = [_expanded_job_locations(job) for job in jobs]
     cities = [value for city_values, _ in expanded_locations for value in city_values]
@@ -479,34 +433,21 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                 "id": page.id,
                 "slug": page.slug,
                 "title": page.title,
-                "path": (
-                    f"/{page.slug}"
-                    if page.slug
-                    in {
-                        "about",
-                        "contact",
-                        "privacy",
-                        "disclaimer",
-                        "jobs-by-cities",
-                        "jobs-by-provinces",
-                        "jobs-by-categories",
-                        "jobs-by-organizations",
-                        "jobs-by-newspapers",
-                    }
-                    else f"/p/{page.slug}"
-                ),
+                "page_type": page.page_type,
+                "taxonomy_value": page.taxonomy_value,
+                "path": public_page_path(page.page_type, page.slug),
             }
             for page in pages
         ],
         "taxonomies": {
-            "job_categories": _directory_values(
-                job_tags, [term.name for term in category_terms]
-            ),
+            "job_categories": _directory_page_values(pages, "category", job_tags),
             "job_tags": _directory_values(job_tags),
-            "cities": _directory_values(cities, PAKISTAN_CITIES),
-            "provinces": _directory_values(provinces, PAKISTAN_PROVINCES),
-            "organizations": _directory_values(organizations),
-            "newspapers": _directory_values(newspapers, PAKISTAN_NEWSPAPERS),
+            "cities": _directory_page_values(pages, "city", cities),
+            "provinces": _directory_page_values(pages, "province", provinces),
+            "organizations": _directory_page_values(
+                pages, "organization", organizations
+            ),
+            "newspapers": _directory_page_values(pages, "newspaper", newspapers),
             "qualifications": _directory_values(qualifications),
             "blog_categories": _directory_values(blog_categories),
             "blog_tags": _directory_values(blog_tags),

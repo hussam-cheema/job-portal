@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { fetchFilters, fetchPage, fetchPublicSeo } from "@/lib/api";
+import { fetchDirectoryPages, fetchPage, fetchPublicSeo } from "@/lib/api";
 import { decodeHtmlEntities } from "@/lib/format";
 import { wrapRichTextTables } from "@/lib/richText";
-import { toSeoSlug } from "@/lib/slug";
-import type { FiltersResponse } from "@/lib/types";
+import { publicPagePath } from "@/lib/pagePath";
+import type { PageType } from "@/lib/types";
 
 type DirectoryKind = "cities" | "provinces" | "categories" | "organizations" | "newspapers";
 
@@ -12,54 +12,42 @@ const configurations: Record<DirectoryKind, {
   slug: string;
   fallbackTitle: string;
   eyebrow: string;
-  values: (filters: FiltersResponse) => string[];
-  path: string;
-  linkLabel: (value: string) => string;
+  pageType: Exclude<PageType, "standard">;
   description: string;
 }> = {
   cities: {
     slug: "jobs-by-cities",
     fallbackTitle: "Jobs by Cities",
     eyebrow: "Local job directory",
-    values: (filters) => filters.cities,
-    path: "/locations",
-    linkLabel: (value) => `Jobs in ${value}`,
+    pageType: "city",
     description: "Browse current jobs in every supported city of Pakistan.",
   },
   provinces: {
     slug: "jobs-by-provinces",
     fallbackTitle: "Jobs by Provinces",
     eyebrow: "Regional job directory",
-    values: (filters) => filters.provinces,
-    path: "/locations",
-    linkLabel: (value) => `Jobs in ${value}`,
+    pageType: "province",
     description: "Browse jobs across every province and territory of Pakistan.",
   },
   categories: {
     slug: "jobs-by-categories",
     fallbackTitle: "Jobs by Category",
     eyebrow: "Career field directory",
-    values: (filters) => filters.categories,
-    path: "/categories",
-    linkLabel: (value) => `${value} Jobs`,
+    pageType: "category",
     description: "Browse current Pakistan jobs by profession and category.",
   },
   organizations: {
     slug: "jobs-by-organizations",
     fallbackTitle: "Jobs by Organization",
     eyebrow: "Recruiting organization directory",
-    values: (filters) => filters.companies,
-    path: "/companies",
-    linkLabel: (value) => `${value} Jobs`,
+    pageType: "organization",
     description: "Browse vacancies by recruiting organization and department.",
   },
   newspapers: {
     slug: "jobs-by-newspapers",
     fallbackTitle: "Jobs by Newspaper",
     eyebrow: "Newspaper job directory",
-    values: (filters) => filters.newspapers || [],
-    path: "/newspapers",
-    linkLabel: (value) => `Jobs in ${value}`,
+    pageType: "newspaper",
     description: "Browse current Pakistan job advertisements by newspaper.",
   },
 };
@@ -82,18 +70,13 @@ export async function jobTaxonomyDirectoryMetadata(kind: DirectoryKind): Promise
 
 export async function JobTaxonomyDirectoryPage({ kind }: { kind: DirectoryKind }) {
   const config = configurations[kind];
-  const [filters, cmsPage] = await Promise.all([
-    fetchFilters(),
+  const [pages, cmsPage] = await Promise.all([
+    fetchDirectoryPages(),
     fetchPage(config.slug),
   ]);
-  const values = Array.from(
-    new Map(
-      config
-        .values(filters)
-        .filter(Boolean)
-        .map((value) => [value.toLocaleLowerCase(), value.trim()]),
-    ).values(),
-  ).sort((left, right) => left.localeCompare(right));
+  const values = pages
+    .filter((page) => page.page_type === config.pageType && page.taxonomy_value)
+    .sort((left, right) => left.title.localeCompare(right.title));
   const title = decodeHtmlEntities(cmsPage?.title || config.fallbackTitle);
 
   return (
@@ -125,14 +108,14 @@ export async function JobTaxonomyDirectoryPage({ kind }: { kind: DirectoryKind }
       <section className="mt-7 overflow-hidden rounded-[2rem] border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow)]">
         {values.length ? (
           <ul className="grid gap-px bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-3">
-            {values.map((value) => (
-              <li key={value} className="bg-[var(--card)]">
+            {values.map((page) => (
+              <li key={page.id} className="bg-[var(--card)]">
                 <Link
-                  href={`${config.path}/${toSeoSlug(value)}`}
+                  href={publicPagePath(page)}
                   className="group flex min-h-16 items-center justify-between gap-4 px-5 py-4 transition hover:bg-[var(--blue-soft)] sm:px-6"
                 >
                   <span className="break-words font-medium text-[var(--navy-200)] group-hover:text-[var(--blue)]">
-                    {config.linkLabel(decodeHtmlEntities(value))}
+                    {decodeHtmlEntities(page.title)}
                   </span>
                   <span aria-hidden="true" className="shrink-0 text-[var(--muted)] transition group-hover:translate-x-1 group-hover:text-[var(--blue)]">→</span>
                 </Link>
@@ -142,7 +125,9 @@ export async function JobTaxonomyDirectoryPage({ kind }: { kind: DirectoryKind }
         ) : (
           <div className="px-6 py-14 text-center">
             <p className="font-medium text-[var(--navy-200)]">No entries have been published yet.</p>
-            <p className="mt-2 text-sm text-[var(--muted)]">This directory will update automatically when matching job posts are added.</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Create and publish a matching directory page from Admin → Pages.
+            </p>
           </div>
         )}
       </section>

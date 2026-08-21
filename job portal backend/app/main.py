@@ -44,6 +44,7 @@ from app.seed import (
     sync_core_page_content_v3,
     sync_homepage_branding_seo_v1,
     sync_local_core_pages_once,
+    sync_taxonomy_pages_v1,
 )
 from app.services.taxonomy import ensure_default_taxonomy
 from app.services.watermark import migrate_legacy_job_watermarks
@@ -180,6 +181,23 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             logger.exception("seed failed — continuing")
     else:
         logger.info("seed skipped (SEED_ON_STARTUP=false)")
+
+    try:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            taxonomy_pages_created = sync_taxonomy_pages_v1(db)
+            db.commit()
+            if taxonomy_pages_created:
+                logger.info(
+                    "taxonomy CMS pages created count=%s",
+                    len(taxonomy_pages_created),
+                )
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("taxonomy CMS page migration failed — continuing")
 
     # The embedding model is only needed by the admin Q&A workflow. Warming it
     # asynchronously keeps public traffic from waiting for the Azure Files

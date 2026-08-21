@@ -2,6 +2,33 @@ import { createServer } from "node:http";
 
 const mockSiteOrigin = (process.env.MOCK_SITE_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
 
+const directoryPageValues = {
+  city: ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Peshawar", "Quetta"],
+  province: ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan", "Islamabad Capital Territory", "Gilgit-Baltistan"],
+  category: ["Software Engineering", "Accounting", "Education", "Engineering", "Healthcare", "Marketing"],
+  organization: ["FPSC", "NADRA", "PPSC", "NTS", "Pakistan Army", "Ministry of Education"],
+  newspaper: ["Daily Jang", "Dawn", "Express", "Nawa-i-Waqt", "The Nation", "The News"],
+};
+
+const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const directoryPages = Object.entries(directoryPageValues).flatMap(([pageType, values]) =>
+  values.map((taxonomyValue) => {
+    const slug = slugify(taxonomyValue);
+    const title = ["city", "province", "newspaper"].includes(pageType)
+      ? `Jobs in ${taxonomyValue}`
+      : `${taxonomyValue} Jobs`;
+    return {
+      id: `${pageType}-${slug}`,
+      slug,
+      title,
+      content: `<p>Managed content for ${title}.</p>`,
+      page_type: pageType,
+      taxonomy_value: taxonomyValue,
+      is_published: true,
+    };
+  }),
+);
+
 const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
@@ -316,21 +343,41 @@ const server = createServer((request, response) => {
   if (path === "/api/admin/seo/yoast/analyze") return json(response, { seo_score: 82, readability_score: 78, seo_status: "good", readability_status: "good", word_count: 10, checks: [], snippet: { title: "FPSC Preparation Guide", description: blogPost.excerpt, url: "/blog/fpsc-preparation-guide" } });
   if (path === "/api/admin/pages") {
     return json(response, [
-      { id: "about", slug: "about", title: "About Us", content: "<p>About</p>", is_published: true },
-      { id: "contact", slug: "contact", title: "Contact Us", content: "<p>Contact</p>", is_published: true },
-      { id: "privacy", slug: "privacy", title: "Privacy Policy", content: "<p>Privacy</p>", is_published: true },
-      { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", is_published: true },
-      { id: "jobs-by-cities", slug: "jobs-by-cities", title: "Jobs by Cities", content: "<p>Browse jobs by city.</p>", is_published: true },
-      { id: "jobs-by-provinces", slug: "jobs-by-provinces", title: "Jobs by Provinces", content: "<p>Browse jobs by province.</p>", is_published: true },
-      { id: "jobs-by-categories", slug: "jobs-by-categories", title: "Jobs by Category", content: "<p>Browse jobs by category.</p>", is_published: true },
-      { id: "jobs-by-organizations", slug: "jobs-by-organizations", title: "Jobs by Organization", content: "<p>Browse jobs by organization.</p>", is_published: true },
-      { id: "jobs-by-newspapers", slug: "jobs-by-newspapers", title: "Jobs by Newspaper", content: "<p>Browse jobs by newspaper.</p>", is_published: true },
+      { id: "about", slug: "about", title: "About Us", content: "<p>About</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "contact", slug: "contact", title: "Contact Us", content: "<p>Contact</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "privacy", slug: "privacy", title: "Privacy Policy", content: "<p>Privacy</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "jobs-by-cities", slug: "jobs-by-cities", title: "Jobs by Cities", content: "<p>Browse jobs by city.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "jobs-by-provinces", slug: "jobs-by-provinces", title: "Jobs by Provinces", content: "<p>Browse jobs by province.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "jobs-by-categories", slug: "jobs-by-categories", title: "Jobs by Category", content: "<p>Browse jobs by category.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "jobs-by-organizations", slug: "jobs-by-organizations", title: "Jobs by Organization", content: "<p>Browse jobs by organization.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "jobs-by-newspapers", slug: "jobs-by-newspapers", title: "Jobs by Newspaper", content: "<p>Browse jobs by newspaper.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      ...directoryPages,
     ]);
+  }
+  if (path === "/api/pages/directory-links") {
+    return json(response, directoryPages.map((page) => ({
+      id: page.id,
+      slug: page.slug,
+      title: page.title,
+      page_type: page.page_type,
+      taxonomy_value: page.taxonomy_value,
+    })));
+  }
+  if (path.startsWith("/api/pages/directory/")) {
+    const [, , , , requestedType, requestedSlug] = path.split("/");
+    const page = directoryPages.find((entry) =>
+      entry.slug === requestedSlug &&
+      (requestedType === "location"
+        ? ["city", "province"].includes(entry.page_type)
+        : entry.page_type === requestedType),
+    );
+    return page ? json(response, page) : json(response, { detail: "Directory page not found" }, 404);
   }
   if (path.startsWith("/api/pages/jobs-by-")) {
     const slug = path.split("/").pop();
     const title = slug.split("-").slice(2).join(" ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-    return json(response, { id: slug, slug, title: `Jobs by ${title}`, content: `<p>Browse jobs by ${title.toLowerCase()}.</p>`, is_published: true });
+    return json(response, { id: slug, slug, title: `Jobs by ${title}`, content: `<p>Browse jobs by ${title.toLowerCase()}.</p>`, page_type: "standard", taxonomy_value: null, is_published: true });
   }
   if (path === "/api/pages/custom-seo-page") {
     return json(response, {
@@ -338,6 +385,8 @@ const server = createServer((request, response) => {
       slug: "custom-seo-page",
       title: "Custom public page",
       content: "<p>A published CMS page that is safe for search indexing.</p>",
+      page_type: "standard",
+      taxonomy_value: null,
       is_published: true,
       created_at: "2026-07-28T00:00:00Z",
       updated_at: "2026-07-28T00:00:00Z",

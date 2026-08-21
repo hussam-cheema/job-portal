@@ -1,13 +1,11 @@
 import Link from "next/link";
-import type { FiltersResponse } from "@/lib/types";
-import { toSeoSlug } from "@/lib/slug";
+import type { DirectoryPageLink, PageType } from "@/lib/types";
+import { publicPagePath } from "@/lib/pagePath";
 
 type DiscoveryGroup = {
   title: string;
   eyebrow: string;
-  values: string[];
-  href: (value: string) => string;
-  label: (value: string) => string;
+  pages: DirectoryPageLink[];
   moreHref: string;
   moreLabel: string;
 };
@@ -21,65 +19,57 @@ const featuredCities = [
   "Quetta",
 ];
 
-function featured(values: string[], preferred: string[] = []) {
+function featured(pages: DirectoryPageLink[], pageType: PageType, preferred: string[] = []) {
   const byKey = new Map(
-    values.filter(Boolean).map((value) => [value.toLocaleLowerCase(), value]),
+    pages
+      .filter((page) => page.page_type === pageType && page.taxonomy_value)
+      .map((page) => [page.taxonomy_value!.toLocaleLowerCase(), page]),
   );
-  const result: string[] = [];
+  const result: DirectoryPageLink[] = [];
   for (const value of preferred) {
     const match = byKey.get(value.toLocaleLowerCase());
-    if (match && !result.includes(match)) result.push(match);
+    if (match && !result.some((page) => page.id === match.id)) result.push(match);
   }
-  for (const value of [...values].sort((left, right) => left.localeCompare(right))) {
-    if (!result.includes(value)) result.push(value);
+  for (const page of [...byKey.values()].sort((left, right) => left.title.localeCompare(right.title))) {
+    if (!result.some((entry) => entry.id === page.id)) result.push(page);
   }
   return result.slice(0, 6);
 }
 
-export function JobDiscoverySection({ filters }: { filters: FiltersResponse }) {
+export function JobDiscoverySection({ pages }: { pages: DirectoryPageLink[] }) {
   const groups: DiscoveryGroup[] = [
     {
       title: "Jobs by Cities",
       eyebrow: "Local opportunities",
-      values: featured(filters.cities, featuredCities),
-      href: (value) => `/locations/${toSeoSlug(value)}`,
-      label: (value) => `Jobs in ${value}`,
+      pages: featured(pages, "city", featuredCities),
       moreHref: "/jobs-by-cities",
       moreLabel: "More cities…",
     },
     {
       title: "Jobs by Provinces",
       eyebrow: "Regional coverage",
-      values: featured(filters.provinces),
-      href: (value) => `/locations/${toSeoSlug(value)}`,
-      label: (value) => `Jobs in ${value}`,
+      pages: featured(pages, "province"),
       moreHref: "/jobs-by-provinces",
       moreLabel: "More provinces…",
     },
     {
       title: "Jobs by Category",
       eyebrow: "Career fields",
-      values: featured(filters.categories),
-      href: (value) => `/categories/${toSeoSlug(value)}`,
-      label: (value) => `${value} Jobs`,
+      pages: featured(pages, "category"),
       moreHref: "/jobs-by-categories",
       moreLabel: "More categories…",
     },
     {
       title: "Jobs by Organization",
       eyebrow: "Recruiting bodies",
-      values: featured(filters.companies),
-      href: (value) => `/companies/${toSeoSlug(value)}`,
-      label: (value) => `${value} Jobs`,
+      pages: featured(pages, "organization"),
       moreHref: "/jobs-by-organizations",
       moreLabel: "More organizations…",
     },
     {
       title: "Jobs by Newspaper",
       eyebrow: "Published adverts",
-      values: featured(filters.newspapers || []),
-      href: (value) => `/newspapers/${toSeoSlug(value)}`,
-      label: (value) => `Jobs in ${value}`,
+      pages: featured(pages, "newspaper"),
       moreHref: "/jobs-by-newspapers",
       moreLabel: "More newspapers…",
     },
@@ -110,14 +100,14 @@ export function JobDiscoverySection({ filters }: { filters: FiltersResponse }) {
               {group.title}
             </h3>
             <ul className="mt-3 flex-1 space-y-1">
-              {group.values.map((value) => (
-                <li key={`${group.title}-${value}`}>
+              {group.pages.map((page) => (
+                <li key={page.id}>
                   <Link
-                    href={group.href(value)}
+                    href={publicPagePath(page)}
                     className="group flex min-h-10 items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-medium text-[var(--navy-300)] transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)]"
                   >
                     <span aria-hidden="true" className="text-[var(--muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--blue)]">›</span>
-                    <span className="break-words">{group.label(value)}</span>
+                    <span className="break-words">{page.title}</span>
                   </Link>
                 </li>
               ))}

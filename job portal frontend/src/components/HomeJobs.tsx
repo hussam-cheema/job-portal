@@ -5,6 +5,7 @@ import type {
   JobListResponse,
   JobQuery,
   StatsResponse,
+  DirectoryPageLink,
 } from "@/lib/types";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
 import { buildJobPostingStructuredData } from "@/lib/jobStructuredData";
@@ -21,9 +22,10 @@ type Props = {
   filters: FiltersResponse;
   stats: StatsResponse;
   branding: Branding;
+  pages: DirectoryPageLink[];
 };
 
-export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, branding }: Props) {
+export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, branding, pages }: Props) {
   const data = initialJobs;
   const siteUrl = canonicalSiteUrl();
   const structuredData = {
@@ -95,7 +97,7 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
         ) : (
           <div className="job-list">
             {data.items.map((job) => (
-              <JobCard key={job.id} job={job} homepageOverview />
+              <JobCard key={job.id} job={job} homepageOverview directoryPages={pages} />
             ))}
           </div>
         )}
@@ -115,7 +117,7 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
         />
       </section>
 
-      <JobDiscoverySection filters={filters} />
+      <JobDiscoverySection pages={pages} />
     </div>
   );
 }

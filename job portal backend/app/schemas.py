@@ -434,6 +434,8 @@ class PageIn(BaseModel):
     slug: str
     title: str
     content: str = ""
+    page_type: str = "standard"
+    taxonomy_value: Optional[str] = None
     is_published: bool = True
     seo: Optional[SEOFields] = None
 
@@ -442,6 +444,8 @@ class PageUpdate(BaseModel):
     slug: Optional[str] = None
     title: Optional[str] = None
     content: Optional[str] = None
+    page_type: Optional[str] = None
+    taxonomy_value: Optional[str] = None
     is_published: Optional[bool] = None
     seo: Optional[SEOFields] = None
 
@@ -453,9 +457,19 @@ class PageOut(BaseModel):
     slug: str
     title: str
     content: str
+    page_type: str = "standard"
+    taxonomy_value: Optional[str] = None
     is_published: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class DirectoryPageLinkOut(BaseModel):
+    id: str
+    slug: str
+    title: str
+    page_type: str
+    taxonomy_value: str
 
 
 class BlogPostIn(BaseModel):

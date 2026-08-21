@@ -8,7 +8,8 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
 import { adminListPages, adminSavePage, API_BASE } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuth";
-import type { PageItem } from "@/lib/types";
+import type { PageItem, PageType } from "@/lib/types";
+import { pagePathPrefix } from "@/lib/pagePath";
 
 function slugify(text: string) {
   return text
@@ -31,6 +32,8 @@ export default function AdminPageForm() {
     slug: "",
     title: "",
     content: "",
+    page_type: "standard" as PageType,
+    taxonomy_value: "",
     is_published: true,
   });
   const [seo, setSeo] = useState<YoastSEOValue>({
@@ -65,6 +68,8 @@ export default function AdminPageForm() {
           slug: page.slug,
           title: page.title,
           content: page.content,
+          page_type: page.page_type,
+          taxonomy_value: page.taxonomy_value || "",
           is_published: page.is_published,
         });
         setSlugTouched(true);
@@ -106,6 +111,10 @@ export default function AdminPageForm() {
       setError("Title and slug are required.");
       return;
     }
+    if (form.page_type !== "standard" && !form.taxonomy_value.trim()) {
+      setError("A matching jobs value is required for directory pages.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -115,6 +124,8 @@ export default function AdminPageForm() {
         slug: form.slug.trim(),
         title: form.title.trim(),
         content: form.content,
+        page_type: form.page_type,
+        taxonomy_value: form.page_type === "standard" ? null : form.taxonomy_value.trim(),
         is_published: form.is_published,
         seo: {
           focus_keyword: seo.focus_keyword || null,
@@ -168,8 +179,9 @@ export default function AdminPageForm() {
         {success && <p className="text-sm text-[var(--success)] font-medium">{success}</p>}
 
         <div>
-          <label className="field-label">Title *</label>
+          <label className="field-label" htmlFor="page-title">Title *</label>
           <input
+            id="page-title"
             className="input"
             value={form.title}
             onChange={(e) => onTitleChange(e.target.value)}
@@ -179,10 +191,54 @@ export default function AdminPageForm() {
         </div>
 
         <div>
-          <label className="field-label">Slug * (URL path)</label>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <span className="text-sm text-[var(--muted)] shrink-0">/</span>
+          <label className="field-label" htmlFor="page-type">Page type</label>
+          <select
+            id="page-type"
+            className="input"
+            value={form.page_type}
+            onChange={(e) =>
+              setForm({ ...form, page_type: e.target.value as PageType })
+            }
+          >
+            <option value="standard">Standard CMS page</option>
+            <option value="city">City jobs page</option>
+            <option value="province">Province jobs page</option>
+            <option value="category">Category jobs page</option>
+            <option value="organization">Organization jobs page</option>
+            <option value="newspaper">Newspaper jobs page</option>
+          </select>
+          <p className="mt-1.5 text-xs text-[var(--muted)]">
+            Directory pages publish inside their matching jobs section instead of under /p/.
+          </p>
+        </div>
+
+        {form.page_type !== "standard" && (
+          <div>
+            <label className="field-label" htmlFor="page-taxonomy-value">
+              Matching jobs value *
+            </label>
             <input
+              id="page-taxonomy-value"
+              className="input"
+              value={form.taxonomy_value}
+              onChange={(e) => setForm({ ...form, taxonomy_value: e.target.value })}
+              required
+              placeholder="Exact city, category, organization, or newspaper value"
+            />
+            <p className="mt-1.5 text-xs text-[var(--muted)]">
+              Job filtering uses this exact value. Change the Title above to control capitalization and link text.
+            </p>
+          </div>
+        )}
+
+        <div>
+          <label className="field-label" htmlFor="page-slug">Slug * (URL path)</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span className="text-sm text-[var(--muted)] shrink-0">
+              {pagePathPrefix({ page_type: form.page_type, slug: form.slug })}
+            </span>
+            <input
+              id="page-slug"
               className="input"
               value={form.slug}
               onChange={(e) => {
