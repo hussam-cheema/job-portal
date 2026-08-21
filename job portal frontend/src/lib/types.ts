@@ -286,6 +286,10 @@ export type SiteDirectory = {
     applications_closed: boolean;
     organization: string | null;
     newspaper: string;
+    salary_range: string | null;
+    education_required: string | null;
+    experience_required: string | null;
+    job_type: string | null;
     category: string | null;
     cities: string[];
     provinces: string[];

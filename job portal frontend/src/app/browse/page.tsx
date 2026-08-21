@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JobCard } from "@/components/JobCard";
 import { fetchSiteDirectory } from "@/lib/api";
 import { decodeHtmlEntities } from "@/lib/format";
-import type { DirectoryValue } from "@/lib/types";
+import type {
+  DirectoryPageLink,
+  DirectoryValue,
+  JobSummary,
+  SiteDirectory,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -57,6 +63,45 @@ const careerTools = [
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
+
+function directoryJobSummary(job: SiteDirectory["jobs"][number]): JobSummary {
+  const locations = [...job.provinces, ...job.cities];
+  return {
+    id: job.id,
+    slug: job.slug,
+    title: job.title,
+    description: null,
+    published_date: job.published_date,
+    deadline_date: job.deadline_date,
+    salary_range: job.salary_range,
+    source: job.organization,
+    newspaper: job.newspaper,
+    reference_url: null,
+    application_url: null,
+    experience_required: job.experience_required,
+    education_required: job.education_required,
+    skills: [],
+    job_type: job.job_type,
+    cities: job.cities,
+    provinces: job.provinces,
+    tags: job.tags,
+    keywords: null,
+    created_at: job.published_date,
+    company: job.organization,
+    location: locations.join(", ") || "Pakistan",
+    city: job.cities[0] || null,
+    province: job.provinces[0] || null,
+    employment_type: null,
+    salary_min: null,
+    salary_max: null,
+    currency: "PKR",
+    category: job.category,
+    application_deadline: job.deadline_date,
+    source_type: job.job_type || "private",
+    source_name: job.organization,
+    applications_closed: job.applications_closed,
+  };
 }
 
 function DirectoryLinks({
@@ -116,6 +161,21 @@ function DirectoryLinks({
 
 export default async function BrowsePage() {
   const directory = await fetchSiteDirectory();
+  const directoryPages: DirectoryPageLink[] = directory.pages.flatMap((page) =>
+    page.page_type &&
+    page.page_type !== "standard" &&
+    page.taxonomy_value
+      ? [
+          {
+            id: page.id,
+            slug: page.slug,
+            title: page.title,
+            page_type: page.page_type,
+            taxonomy_value: page.taxonomy_value,
+          },
+        ]
+      : [],
+  );
   const customPages = directory.pages.filter(
     (page) => (!page.page_type || page.page_type === "standard") && !corePageSlugs.has(page.slug)
   );
@@ -190,31 +250,19 @@ export default async function BrowsePage() {
             </span>
           </div>
           {directory.jobs.length ? (
-            <ul
-              className="max-h-[48rem] divide-y divide-[var(--border)] overflow-y-auto overscroll-contain"
+            <div
+              className="job-list max-h-[48rem] overflow-y-auto overscroll-contain"
               tabIndex={0}
               aria-label={`All ${directory.jobs.length} job posts; scroll for more`}
             >
               {directory.jobs.map((job) => (
-                <li key={job.id}>
-                  <Link href={`/jobs/${job.slug}`} className="group grid gap-2 px-5 py-4 transition hover:bg-[var(--blue-soft)] sm:grid-cols-[1fr_auto] sm:items-center sm:px-7">
-                    <span className="min-w-0">
-                      <span className="block break-words font-semibold text-[var(--navy-100)] group-hover:text-[var(--blue)]">{decodeHtmlEntities(job.title)}</span>
-                      <span className="mt-1 block text-sm text-[var(--muted)]">
-                        {decodeHtmlEntities(
-                          [job.organization, ...job.cities, ...job.provinces]
-                            .filter(Boolean)
-                            .join(" · ") || "Pakistan"
-                        )}
-                      </span>
-                    </span>
-                    <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${job.applications_closed ? "bg-[var(--navy-800)] text-[var(--muted)]" : "bg-emerald-500/10 text-emerald-400"}`}>
-                      {job.applications_closed ? "Applications closed" : "Open"}
-                    </span>
-                  </Link>
-                </li>
+                <JobCard
+                  key={job.id}
+                  job={directoryJobSummary(job)}
+                  directoryPages={directoryPages}
+                />
               ))}
-            </ul>
+            </div>
           ) : (
             <p className="px-7 py-10 text-[var(--muted)]">No public jobs are available yet.</p>
           )}

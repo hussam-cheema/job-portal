@@ -409,7 +409,10 @@ def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: Te
             "deadline_date": "2026-08-31T00:00:00",
             "source": "Ministry of Defence",
             "newspaper": "Daily Jang",
+            "salary_range": "PKR 120,000–160,000",
             "education_required": "Bachelors",
+            "experience_required": "3 years",
+            "job_type": "government",
             "cities": ["Islamabad"],
             "provinces": ["Punjab"],
             "tags": ["Software Engineering"],
@@ -431,7 +434,12 @@ def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: Te
     directory = client.get("/api/site-directory")
     assert directory.status_code == 200
     payload = directory.json()
-    assert any(job["slug"] == original_slug for job in payload["jobs"])
+    directory_job = next(job for job in payload["jobs"] if job["slug"] == original_slug)
+    assert directory_job["newspaper"] == "Daily Jang"
+    assert directory_job["salary_range"] == "PKR 120,000–160,000"
+    assert directory_job["education_required"] == "Bachelors"
+    assert directory_job["experience_required"] == "3 years"
+    assert directory_job["job_type"] == "government"
     assert any(item["slug"] == "islamabad" for item in payload["taxonomies"]["cities"])
     assert any(item["slug"] == "ministry-of-defence" for item in payload["taxonomies"]["organizations"])
     assert any(item["slug"] == "daily-jang" for item in payload["taxonomies"]["newspapers"])

@@ -240,6 +240,45 @@ test("homepage hover excludes descriptions and shows four optional facts in orde
   await expect(optionalCard.locator(".job-card-expand")).toHaveCount(0);
 });
 
+test("job listing cards stay metadata-only across every public directory", async ({ page }) => {
+  const listingRoutes = [
+    "/locations/lahore",
+    "/locations/punjab",
+    "/categories/software-engineering",
+    "/tags/software-engineering",
+    "/companies/fpsc",
+    "/newspapers/dawn",
+    "/qualifications/bachelors",
+    "/browse",
+  ];
+
+  for (const route of listingRoutes) {
+    await page.goto(route);
+    const card = page.locator("article.job-card").filter({
+      hasText: "Nationwide Closed Role",
+    });
+    await expect(card, route).toBeVisible();
+    // Move away first because consecutive directory pages place the first card
+    // at the same coordinates; otherwise the browser may not emit mouseenter
+    // for the newly rendered card beneath an unchanged pointer.
+    await page.locator("h1").hover();
+    await card.hover();
+
+    const overview = card.locator(".job-card-expand");
+    await expect(overview, route).toBeVisible();
+    await expect(card, route).not.toContainText(
+      "A nationwide job with a passed deadline.",
+    );
+    await expect(card.locator(".job-card-overview-description"), route).toHaveCount(0);
+    await expect(overview.locator(".job-card-overview-detail"), route).toHaveText([
+      "Newspaper: Dawn",
+      "Required Education: Bachelor's degree",
+      "Required Experience: Two years",
+      "Deadline: Jul 17",
+    ]);
+  }
+});
+
 test("legacy job identifiers permanently resolve to the stable canonical slug", async ({ page }) => {
   const response = await page.goto("/jobs/legacy-closed-role-id");
   expect(response?.status()).toBe(200);
