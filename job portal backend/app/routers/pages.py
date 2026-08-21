@@ -4,13 +4,13 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
 from app.logging_config import get_logger
-from app.models import Page, User
+from app.models import Job, Page, User
 from app.page_types import DIRECTORY_PAGE_PATHS, VALID_PAGE_TYPES, page_slug_namespace
 from app.schemas import DirectoryPageLinkOut, PageIn, PageOut, PageUpdate
 from app.seed import ensure_default_pages, sync_taxonomy_pages_v1
@@ -56,6 +56,18 @@ def list_pages(db: Session = Depends(get_db), published_only: bool = True):
 def list_directory_page_links(db: Session = Depends(get_db)):
     if sync_taxonomy_pages_v1(db):
         db.commit()
+    active_organization = exists(
+        select(1).select_from(Job).where(
+            func.lower(func.trim(Job.source))
+            == func.lower(func.trim(Page.taxonomy_value))
+        )
+    )
+    active_newspaper = exists(
+        select(1).select_from(Job).where(
+            func.lower(func.trim(Job.newspaper))
+            == func.lower(func.trim(Page.taxonomy_value))
+        )
+    )
     rows = db.execute(
         select(
             Page.id,
@@ -68,6 +80,11 @@ def list_directory_page_links(db: Session = Depends(get_db)):
             Page.page_type != "standard",
             Page.taxonomy_value.is_not(None),
             Page.is_published.is_(True),
+            or_(
+                Page.page_type.notin_({"organization", "newspaper"}),
+                and_(Page.page_type == "organization", active_organization),
+                and_(Page.page_type == "newspaper", active_newspaper),
+            ),
         )
         .order_by(Page.page_type.asc(), Page.title.asc())
     ).all()

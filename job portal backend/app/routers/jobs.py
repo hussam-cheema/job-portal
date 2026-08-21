@@ -38,6 +38,7 @@ from app.schemas import (
     QnAFetchResult,
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
+from app.services.directory_pages import ensure_job_directory_pages
 from app.services.newsletter import process_pending_job_alerts, queue_new_job_alert
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.storage import delete_objects
@@ -547,6 +548,7 @@ def create_job(
             seo_ov = seo_ov.model_dump()
         _apply_job_fields(job, data, db, is_create=True)
         db.add(job)
+        ensure_job_directory_pages(db, job)
         upsert_job_seo(
             db, job, seo_override=seo_ov if isinstance(seo_ov, dict) else None
         )
@@ -611,6 +613,9 @@ def update_job(
         # A published job URL is permanent. Editing a title must never mutate
         # the canonical slug and invalidate links already indexed or shared.
         _apply_job_fields(job, data, db, is_create=False)
+        directory_fields = {"source", "newspaper", "tags", "cities", "provinces"}
+        if directory_fields.intersection(data):
+            ensure_job_directory_pages(db, job)
         upsert_job_seo(
             db, job, seo_override=seo_ov if isinstance(seo_ov, dict) else None
         )

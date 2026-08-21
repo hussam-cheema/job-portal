@@ -577,15 +577,9 @@ def test_directory_pages_control_title_slug_content_seo_and_deletion(client: Tes
         for item in directory["taxonomies"]["newspapers"]
         if (item.get("taxonomy_value") or "").casefold() == "the nation"
     ]
-    assert nation_links == [
-        {
-            "name": "Jobs in THE NATION",
-            "slug": "nation-jobs",
-            "count": 0,
-            "page_id": nation["id"],
-            "taxonomy_value": "The Nation",
-        }
-    ]
+    # Empty organization/newspaper Pages stay editable and directly reachable,
+    # but do not occupy homepage/directory links until a job uses the value.
+    assert nation_links == []
     assert any(
         item["loc"].endswith("/newspapers/nation-jobs")
         for item in client.get("/api/sitemap-data").json()["urls"]
@@ -600,6 +594,176 @@ def test_directory_pages_control_title_slug_content_seo_and_deletion(client: Tes
         item["loc"].endswith("/newspapers/nation-jobs")
         for item in client.get("/api/sitemap-data").json()["urls"]
     )
+
+
+def test_job_edits_automatically_sync_organization_and_newspaper_pages(
+    client: TestClient,
+):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Automatic directory synchronization role",
+            "description": "<p>Directory values should follow this job.</p>",
+            "published_date": "2026-08-20T00:00:00",
+            "source": "Original Recruiting Body",
+            "newspaper": "Original Gazette",
+            "tags": ["Accounting"],
+            "cities": ["Lahore"],
+            "provinces": ["Punjab"],
+        },
+    )
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+
+    original_links = client.get("/api/pages/directory-links").json()
+    original_organization = next(
+        page
+        for page in original_links
+        if page["page_type"] == "organization"
+        and page["taxonomy_value"] == "Original Recruiting Body"
+    )
+    original_newspaper = next(
+        page
+        for page in original_links
+        if page["page_type"] == "newspaper"
+        and page["taxonomy_value"] == "Original Gazette"
+    )
+
+    updated = client.put(
+        f"/api/admin/jobs/{job_id}",
+        headers=auth,
+        json={
+            "source": "National Skills Authority",
+            "newspaper": "Business Recorder",
+            "tags": ["AI Engineer"],
+        },
+    )
+    assert updated.status_code == 200
+
+    links = client.get("/api/pages/directory-links").json()
+    assert any(
+        page["page_type"] == "organization"
+        and page["taxonomy_value"] == "National Skills Authority"
+        and page["slug"] == "national-skills-authority"
+        for page in links
+    )
+    assert any(
+        page["page_type"] == "newspaper"
+        and page["taxonomy_value"] == "Business Recorder"
+        and page["slug"] == "business-recorder"
+        for page in links
+    )
+    assert any(
+        page["page_type"] == "category"
+        and page["taxonomy_value"] == "AI Engineer"
+        for page in links
+    )
+    assert not any(page["id"] == original_organization["id"] for page in links)
+    assert not any(page["id"] == original_newspaper["id"] for page in links)
+
+    # Removing a value from its final job hides its discovery link without
+    # deleting the administrator's Page content, slug, or SEO settings.
+    assert (
+        client.get(
+            f"/api/pages/directory/organization/{original_organization['slug']}"
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            f"/api/pages/directory/newspaper/{original_newspaper['slug']}"
+        ).status_code
+        == 200
+    )
+
+    assert client.get("/api/jobs?company=National%20Skills%20Authority").json()[
+        "total"
+    ] == 1
+    assert client.get("/api/jobs?newspaper=Business%20Recorder").json()["total"] == 1
+    directory = client.get("/api/site-directory").json()["taxonomies"]
+    assert any(
+        item["taxonomy_value"] == "National Skills Authority"
+        and item["count"] == 1
+        for item in directory["organizations"]
+    )
+    assert any(
+        item["taxonomy_value"] == "Business Recorder" and item["count"] == 1
+        for item in directory["newspapers"]
+    )
+    assert not any(
+        item["taxonomy_value"] == "Original Recruiting Body"
+        for item in directory["organizations"]
+    )
+    assert not any(
+        item["taxonomy_value"] == "Original Gazette"
+        for item in directory["newspapers"]
+    )
+
+    # A case-only edit reuses the same Page instead of creating a duplicate.
+    case_update = client.put(
+        f"/api/admin/jobs/{job_id}",
+        headers=auth,
+        json={"source": "NATIONAL SKILLS AUTHORITY"},
+    )
+    assert case_update.status_code == 200
+    admin_pages = client.get("/api/admin/pages", headers=auth).json()
+    assert len(
+        [
+            page
+            for page in admin_pages
+            if page["page_type"] == "organization"
+            and (page.get("taxonomy_value") or "").casefold()
+            == "national skills authority"
+        ]
+    ) == 1
+
+
+def test_existing_job_values_are_reconciled_once_for_deployment():
+    from app.models import Page, SiteSetting
+    from app.seed import sync_job_directory_pages_v3
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add(
+            Job(
+                id="pre-sync-job",
+                slug="pre-sync-job",
+                title="Job edited before automatic directory sync",
+                description="<p>Existing production data.</p>",
+                published_date=datetime(2026, 8, 20),
+                source="Existing Production Organization",
+                newspaper="Existing Production Newspaper",
+                tags=[],
+                cities=[],
+                provinces=[],
+            )
+        )
+        session.commit()
+
+        created = sync_job_directory_pages_v3(session)
+        session.commit()
+        created_values = {(page.page_type, page.taxonomy_value) for page in created}
+        assert created_values == {
+            ("organization", "Existing Production Organization"),
+            ("newspaper", "Existing Production Newspaper"),
+        }
+        assert session.get(SiteSetting, "job_directory_pages_v3_complete")
+        assert sync_job_directory_pages_v3(session) == []
+        assert session.query(Page).count() == 2
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
 
 
 def test_local_core_pages_receive_production_snapshot_once(monkeypatch: pytest.MonkeyPatch):

@@ -287,7 +287,11 @@ def _directory_values(
 
 
 def _directory_page_values(
-    pages: list[Any], page_type: str, raw_values: list[str]
+    pages: list[Any],
+    page_type: str,
+    raw_values: list[str],
+    *,
+    include_empty: bool = True,
 ) -> list[dict[str, Any]]:
     """Expose only published CMS pages while retaining live job counts."""
     count_by_value = {
@@ -303,7 +307,12 @@ def _directory_page_values(
             "taxonomy_value": page.taxonomy_value,
         }
         for page in sorted(pages, key=lambda item: item.title.casefold())
-        if page.page_type == page_type and page.taxonomy_value
+        if page.page_type == page_type
+        and page.taxonomy_value
+        and (
+            include_empty
+            or count_by_value.get((page.taxonomy_value or "").casefold(), 0) > 0
+        )
     ]
 
 
@@ -445,9 +454,11 @@ def build_site_directory(db: Session) -> dict[str, Any]:
             "cities": _directory_page_values(pages, "city", cities),
             "provinces": _directory_page_values(pages, "province", provinces),
             "organizations": _directory_page_values(
-                pages, "organization", organizations
+                pages, "organization", organizations, include_empty=False
             ),
-            "newspapers": _directory_page_values(pages, "newspaper", newspapers),
+            "newspapers": _directory_page_values(
+                pages, "newspaper", newspapers, include_empty=False
+            ),
             "qualifications": _directory_values(qualifications),
             "blog_categories": _directory_values(blog_categories),
             "blog_tags": _directory_values(blog_tags),
