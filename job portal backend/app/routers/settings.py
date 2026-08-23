@@ -47,6 +47,8 @@ def _branding_response(db: Session) -> BrandingOut:
         site_name=_setting(db, "site_name") or site_name(),
         site_title=site_title,
         site_title_alignment=_site_title_alignment(db),
+        site_title_header=_setting(db, "site_title_header")
+        or "Pakistan Jobs Market",
         site_header=_setting(db, "site_header")
         or str(
             cfg(

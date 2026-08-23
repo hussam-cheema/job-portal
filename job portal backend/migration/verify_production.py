@@ -367,6 +367,7 @@ def _crud_checks(api: API, checks: list[Check], current: dict[str, Any]) -> None
                     "site_name",
                     "site_title",
                     "site_title_alignment",
+                    "site_title_header",
                     "site_header",
                     "site_description",
                     "footer_copyright",

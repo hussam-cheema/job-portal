@@ -405,6 +405,7 @@ export type Branding = {
   site_name: string;
   site_title: string;
   site_title_alignment: "beside_logo" | "center" | "right";
+  site_title_header: string;
   site_header: string;
   site_description: string;
   footer_copyright: string;

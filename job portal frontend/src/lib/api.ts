@@ -69,6 +69,7 @@ const DEFAULT_BRANDING: Branding = {
   site_name: "Pakistan Jobs Market",
   site_title: "Pakistan Jobs Market",
   site_title_alignment: "center",
+  site_title_header: "Pakistan Jobs Market",
   site_header: "Latest government & private job openings in Pakistan",
   site_description:
     "Discover current government and private jobs across Pakistan, search opportunities by city and category, get instant job alerts, and use practical career tools.",
@@ -691,6 +692,7 @@ export async function adminUpdateBranding(
     | "site_name"
     | "site_title"
     | "site_title_alignment"
+    | "site_title_header"
     | "site_header"
     | "site_description"
     | "footer_copyright"

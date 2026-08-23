@@ -613,6 +613,12 @@ test("website title position is configurable from settings", async ({ page }) =>
   await page.goto("/admin/settings");
   await expect(page.getByRole("radiogroup", { name: "Website title position" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Center" })).toBeChecked();
+  await expect(page.getByLabel("Website title header", { exact: true })).toHaveValue(
+    "Pakistan Jobs Market",
+  );
+  await expect(page.getByLabel("Website header", { exact: true })).toHaveValue(
+    "Latest government & private job openings in Pakistan",
+  );
   await expect(page.getByRole("heading", { name: "Homepage SEO" })).toBeVisible();
   await expect(page.getByLabel("Focus keyphrase")).toHaveValue("jobs in Pakistan");
   await expect(page.getByLabel("SEO title")).toHaveValue(
@@ -640,6 +646,7 @@ test("website title position is configurable from settings", async ({ page }) =>
   expect(payload).toMatchObject({
     site_name: "Pakistan Jobs Market",
     site_title: "Pakistan Jobs Market",
+    site_title_header: "Pakistan Jobs Market",
     homepage_meta_description: "Updated homepage description for request compatibility.",
   });
   await expect(page.getByText("Website text, homepage SEO, and footer updated.")).toBeVisible();

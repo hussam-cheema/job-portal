@@ -23,6 +23,7 @@ logger = get_logger("jobportal.seed")
 HOMEPAGE_BRANDING = {
     "site_name": "Pakistan Jobs Market",
     "site_title": "Pakistan Jobs Market",
+    "site_title_header": "Pakistan Jobs Market",
     "site_header": "Latest government & private job openings in Pakistan",
     "site_description": (
         "Discover current government and private jobs across Pakistan, search opportunities "

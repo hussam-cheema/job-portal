@@ -917,6 +917,7 @@ def test_admin_can_update_public_branding_text(client: TestClient):
         "site_name": "Pakistan Jobs Market",
         "site_title": "Pakistan Jobs Market Careers",
         "site_title_alignment": "right",
+        "site_title_header": "Careers across Pakistan",
         "site_header": "Current jobs across Pakistan",
         "site_description": "A description controlled from the admin dashboard.",
         "footer_copyright": "Copyrights © {year} - Pakistan Jobs Market. All rights reserved.",
@@ -947,6 +948,7 @@ def test_admin_branding_update_accepts_current_frontend_payload_without_site_nam
     payload = {
         "site_title": "Pakistan Jobs Market",
         "site_title_alignment": "beside_logo",
+        "site_title_header": "Pakistan Jobs Market",
         "site_header": "Latest government and private jobs in Pakistan",
         "site_description": "Find jobs, career guides, and application tools.",
         "footer_copyright": "Copyright © {year} Pakistan Jobs Market",
@@ -960,6 +962,7 @@ def test_admin_branding_update_accepts_current_frontend_payload_without_site_nam
 
     assert response.status_code == 200, response.text
     assert response.json()["site_title_alignment"] == "beside_logo"
+    assert response.json()["site_title_header"] == "Pakistan Jobs Market"
     assert response.json()["site_name"]
 
 
@@ -981,6 +984,7 @@ def test_admin_branding_update_is_partial_and_accepts_long_website_copy(
     assert response.status_code == 200, response.text
     assert response.json()["site_description"] == description.strip()
     assert response.json()["site_title"]
+    assert response.json()["site_title_header"] == "Pakistan Jobs Market"
 
 
 def test_watermark_changes_image_and_preserves_format():

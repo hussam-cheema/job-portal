@@ -243,6 +243,7 @@ class BrandingOut(BaseModel):
     site_name: str
     site_title: str
     site_title_alignment: Literal["beside_logo", "center", "right"]
+    site_title_header: str
     site_header: str
     site_description: str
     footer_copyright: str
@@ -262,6 +263,7 @@ class BrandingUpdateIn(BaseModel):
     site_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     site_title: Optional[str] = Field(default=None, min_length=1, max_length=255)
     site_title_alignment: Optional[Literal["beside_logo", "center", "right"]] = None
+    site_title_header: Optional[str] = Field(default=None, min_length=1, max_length=255)
     site_header: Optional[str] = Field(default=None, min_length=1, max_length=1000)
     site_description: Optional[str] = Field(default=None, min_length=1, max_length=4000)
     footer_copyright: Optional[str] = Field(default=None, min_length=1, max_length=1000)

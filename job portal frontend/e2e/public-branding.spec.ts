@@ -38,12 +38,17 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
     tabIcon.evaluate((element: HTMLLinkElement) => new URL(element.href).pathname),
   ]);
   expect(tabIconPath).toBe(headerLogoPath);
-  await expect(page.locator("main h1")).toHaveCSS("text-align", "center");
-  await expect(page.locator("main h1 + p")).toHaveCSS("text-align", "center");
+  const homepageH1 = page.locator("main h1");
+  await expect(homepageH1).toHaveCount(1);
+  await expect(homepageH1).toHaveText("Pakistan Jobs Market");
+  await expect(homepageH1).toHaveCSS("text-align", "center");
+  await expect(page.locator("main h1 + h2")).toHaveCSS("text-align", "center");
+  await expect(page.locator("main h1 + h2 + p")).toHaveCSS("text-align", "center");
   await expect(
     page.getByRole("heading", {
       name: "Latest government & private job openings in Pakistan",
       exact: true,
+      level: 2,
     })
   ).toBeVisible();
   await expect(page.getByText("Pakistan jobs", { exact: true })).toHaveCount(0);

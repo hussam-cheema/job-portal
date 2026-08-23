@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [siteTitleAlignment, setSiteTitleAlignment] = useState<
     "beside_logo" | "center" | "right"
   >("center");
+  const [siteTitleHeader, setSiteTitleHeader] = useState("Pakistan Jobs Market");
   const [siteHeader, setSiteHeader] = useState(
     "Latest government & private job openings in Pakistan"
   );
@@ -57,6 +58,7 @@ export default function SettingsPage() {
       setLogoUrl(branding.logo_url);
       setSiteTitle(branding.site_title);
       setSiteTitleAlignment(branding.site_title_alignment);
+      setSiteTitleHeader(branding.site_title_header);
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
@@ -83,6 +85,7 @@ export default function SettingsPage() {
         site_name: siteTitle.trim(),
         site_title: siteTitle.trim(),
         site_title_alignment: siteTitleAlignment,
+        site_title_header: siteTitleHeader.trim(),
         site_header: siteHeader.trim(),
         site_description: siteDescription.trim(),
         footer_copyright: footerCopyright.trim(),
@@ -93,6 +96,7 @@ export default function SettingsPage() {
       });
       setSiteTitle(branding.site_title);
       setSiteTitleAlignment(branding.site_title_alignment);
+      setSiteTitleHeader(branding.site_title_header);
       setSiteHeader(branding.site_header);
       setSiteDescription(branding.site_description);
       setFooterCopyright(branding.footer_copyright);
@@ -239,6 +243,18 @@ export default function SettingsPage() {
               </div>
             </fieldset>
             <div>
+              <label className="field-label" htmlFor="site-title-header">Website title header</label>
+              <input
+                id="site-title-header"
+                className="input"
+                maxLength={240}
+                required
+                value={siteTitleHeader}
+                onChange={(event) => setSiteTitleHeader(event.target.value)}
+              />
+              <p className="mt-1.5 text-xs text-[var(--muted)]">Displayed as the homepage H1.</p>
+            </div>
+            <div>
               <label className="field-label" htmlFor="site-header">Website header</label>
               <input
                 id="site-header"
@@ -248,6 +264,7 @@ export default function SettingsPage() {
                 value={siteHeader}
                 onChange={(event) => setSiteHeader(event.target.value)}
               />
+              <p className="mt-1.5 text-xs text-[var(--muted)]">Displayed below it as the homepage H2.</p>
             </div>
             <div className="lg:col-span-2">
               <label className="field-label" htmlFor="site-description">Website description</label>
@@ -280,7 +297,7 @@ export default function SettingsPage() {
               </div>
               <YoastSEOPanel
                 title={siteTitle}
-                content={`${siteHeader}\n\n${siteDescription}`}
+                content={`${siteTitleHeader}\n\n${siteHeader}\n\n${siteDescription}`}
                 slug=""
                 value={homepageSeo}
                 onChange={setHomepageSeo}

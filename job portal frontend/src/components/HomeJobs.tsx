@@ -52,9 +52,12 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
         }}
       />
       <section className="mb-8 text-center">
-        <h1 className="mx-auto max-w-3xl text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--navy-100)] leading-[1.15]">
-          {branding.site_header}
+        <h1 className="mx-auto max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight text-[var(--navy-100)] sm:text-5xl">
+          {branding.site_title_header}
         </h1>
+        <h2 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold leading-[1.2] tracking-tight text-[var(--navy-100)] sm:text-3xl">
+          {branding.site_header}
+        </h2>
         <p className="mx-auto mt-4 max-w-2xl text-[var(--muted)] text-base leading-relaxed">
           {branding.site_description}
         </p>
