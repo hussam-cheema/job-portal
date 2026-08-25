@@ -61,6 +61,12 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta
+          {...{
+            name: "impact-site-verification",
+            value: "db9798fc-f9b2-4459-8ec6-570e00181eae",
+          }}
+        />
+        <meta
           name="google-adsense-account"
           content="ca-pub-1209296651546868"
         />

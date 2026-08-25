@@ -28,6 +28,10 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
     "content",
     "ca-pub-1209296651546868"
   );
+  await expect(page.locator('meta[name="impact-site-verification"]')).toHaveAttribute(
+    "value",
+    "db9798fc-f9b2-4459-8ec6-570e00181eae"
+  );
   await expect(page.locator("header").getByText("Pakistan Jobs Market", { exact: true })).toBeVisible();
   const headerLogo = page.locator("header img");
   const tabIcon = page.locator('link[rel="icon"]').first();
