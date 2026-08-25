@@ -83,3 +83,31 @@ test("AdSense ads.txt is published at the site root", async ({ request }) => {
     "google.com, pub-1209296651546868, DIRECT, f08c47fec0942fa0"
   );
 });
+
+test("privacy policy contains required AdSense disclosures without loading the ad tag", async ({ page }) => {
+  await page.goto("/privacy");
+
+  await expect(
+    page.locator(".prose-job p").filter({ hasText: "Effective date:" })
+  ).toContainText("25 August 2026");
+  await expect(page.getByText("Third-party vendors, including Google, use cookies")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Google Ads Settings" })).toHaveAttribute(
+    "href",
+    "https://adssettings.google.com/"
+  );
+  await expect(page.getByRole("link", { name: "YourAdChoices opt-out page" })).toHaveAttribute(
+    "href",
+    "https://www.aboutads.info/choices/"
+  );
+  await expect(page.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
+    "href",
+    "https://policies.google.com/privacy"
+  );
+  await expect(
+    page.locator('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]')
+  ).toHaveCount(0);
+  await expect(page.locator('meta[name="google-adsense-account"]')).toHaveAttribute(
+    "content",
+    "ca-pub-1209296651546868"
+  );
+});

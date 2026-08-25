@@ -9,6 +9,7 @@ import { ClientChunkRecovery } from "@/components/ClientChunkRecovery";
 import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 import { AdminAuthRedirect } from "@/components/AdminAuthRedirect";
 import { UiIcon } from "@/components/UiIcon";
+import { AdSenseScript } from "@/components/AdSenseScript";
 import { fetchBranding } from "@/lib/api";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
@@ -80,11 +81,7 @@ gtag('config', 'G-W6Z1YPL2JY');`,
             __html: `(function(){try{var t=localStorage.getItem('pakjobs-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light');}}catch(e){}})();`,
           }}
         />
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1209296651546868"
-          crossOrigin="anonymous"
-        />
+        <AdSenseScript />
       </head>
       <body className="antialiased font-sans">
         <AdminAuthRedirect />

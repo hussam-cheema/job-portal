@@ -112,6 +112,7 @@ PRIVACY_HTML = """
 <p><strong>Pakistan Jobs Market</strong> respects the privacy of visitors, subscribers and people
 who contact us. This Privacy Policy explains what information may be collected when you use this
 website, why it is used, how it may be protected and the choices available to you.</p>
+<p><strong>Effective date:</strong> 25 August 2026</p>
 
 <h2>Information we may collect</h2>
 <p>You can browse public job listings and career content without creating an account. Depending on
@@ -150,11 +151,38 @@ delivery may not be recalled.</p>
 essential preferences, security, audience measurement and performance. Pakistan Jobs Market may
 use Google services such as Search Console or analytics tools to understand aggregate search and
 website performance.</p>
-<p>If advertising is enabled, third-party advertising providers such as Google AdSense may use
-cookies or similar identifiers to deliver and measure ads in accordance with their own policies.
-Google and its partners may use information about visits to this and other websites to provide
-relevant advertising where permitted. Visitors can manage browser cookies and, where available,
-Google advertising preferences; disabling cookies may affect some features.</p>
+
+<h3>Google advertising cookies and personalized advertising</h3>
+<p>Third-party vendors, including Google, use cookies to serve ads based on a visitor's previous
+visits to Pakistan Jobs Market or other websites. Google's use of advertising cookies enables
+Google and its partners to serve ads based on visits to this website and/or other websites on the
+Internet.</p>
+<p>Visitors can control personalized advertising in the following ways:</p>
+<ul>
+  <li>Visit <a href="https://adssettings.google.com/" rel="noopener noreferrer">Google Ads
+  Settings</a> to manage or opt out of personalized advertising from Google.</li>
+  <li>Visit the <a href="https://www.aboutads.info/choices/" rel="noopener noreferrer">YourAdChoices
+  opt-out page</a> to opt out of some third-party vendors' use of cookies for personalized
+  advertising.</li>
+  <li>Use browser controls to block or delete cookies. Disabling cookies may affect some website
+  features.</li>
+</ul>
+<p>Google and Google-certified advertising vendors may collect, receive or use information as a
+result of ad serving on this website. Learn more about <a
+href="https://policies.google.com/technologies/partner-sites" rel="noopener noreferrer">how Google
+uses information from sites that use its services</a>, <a
+href="https://policies.google.com/technologies/ads" rel="noopener noreferrer">Google advertising
+technologies</a>, and the <a href="https://policies.google.com/privacy"
+rel="noopener noreferrer">Google Privacy Policy</a>. Where other advertising vendors or networks
+are enabled, their identities and privacy choices will be disclosed through the applicable consent
+message or this policy.</p>
+
+<h3>Consent choices for regulated regions</h3>
+<p>For visitors in the European Economic Area, the United Kingdom and Switzerland, Pakistan Jobs
+Market uses Google-certified consent-management controls to request applicable choices for
+advertising cookies, local storage, personalized advertising and related data processing. Visitors
+can change or withdraw a choice through the privacy options made available by that consent
+message.</p>
 
 <h2>Service providers and third-party links</h2>
 <p>We may rely on hosting, database, object-storage, email-delivery, security and analytics
@@ -183,8 +211,8 @@ us for review.</p>
 
 <h2>Policy updates and contact</h2>
 <p>We may update this Privacy Policy when features, providers or legal requirements change. The
-latest published version applies from the date it appears on this page. Questions or privacy
-requests can be sent through the Pakistan Jobs Market Contact Us page.</p>
+latest published version applies from the effective date shown at the beginning of this policy.
+Questions or privacy requests can be sent through the Pakistan Jobs Market Contact Us page.</p>
 """.strip()
 
 DISCLAIMER_HTML = """
@@ -568,6 +596,27 @@ def sync_core_page_content_v3(db) -> list[Page]:
     return changed
 
 
+def sync_privacy_adsense_disclosures_v4(db) -> list[Page]:
+    """Publish Google's required advertising-cookie disclosures exactly once."""
+    marker_key = "privacy_adsense_disclosures_v4"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    page = db.execute(select(Page).where(Page.slug == "privacy")).scalar_one_or_none()
+    changed: list[Page] = []
+    if page:
+        page.title = "Privacy Policy"
+        page.content = PRIVACY_HTML
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO["privacy"])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
 def sync_homepage_branding_seo_v1(db) -> list[str]:
     """Apply the new public brand and homepage SEO once, without overwriting future edits."""
     marker_key = "homepage_branding_seo_v1"
@@ -642,6 +691,7 @@ def seed_if_empty() -> None:
         sync_local_core_pages_once(db)
         sync_core_page_content_v2(db)
         sync_core_page_content_v3(db)
+        sync_privacy_adsense_disclosures_v4(db)
         sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 

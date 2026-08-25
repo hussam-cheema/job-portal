@@ -42,6 +42,7 @@ from app.seed import (
     seed_if_empty,
     sync_core_page_content_v2,
     sync_core_page_content_v3,
+    sync_privacy_adsense_disclosures_v4,
     sync_homepage_branding_seo_v1,
     sync_local_core_pages_once,
     sync_taxonomy_pages_v1,
@@ -140,6 +141,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             locally_synced = sync_local_core_pages_once(db)
             content_synced = sync_core_page_content_v2(db)
             ats_content_synced = sync_core_page_content_v3(db)
+            privacy_adsense_synced = sync_privacy_adsense_disclosures_v4(db)
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             watermarks_upgraded = migrate_legacy_job_watermarks(db)
@@ -157,6 +159,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info("core CMS content and SEO upgraded count=%s", len(content_synced))
             if ats_content_synced:
                 logger.info("ATS Resume Builder disclosures published count=%s", len(ats_content_synced))
+            if privacy_adsense_synced:
+                logger.info(
+                    "AdSense privacy disclosures published count=%s",
+                    len(privacy_adsense_synced),
+                )
             if branding_synced:
                 logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))
             if taxonomy_created:
