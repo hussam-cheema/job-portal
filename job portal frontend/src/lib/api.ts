@@ -934,6 +934,24 @@ export async function adminCreateTaxonomyTerm(
   }, "Create failed");
 }
 
+export async function adminListCities(token: string): Promise<TaxonomyTerm[]> {
+  return requestJson<TaxonomyTerm[]>("/api/admin/cities", {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  }, "Cities load failed");
+}
+
+export async function adminCreateCity(
+  token: string,
+  data: { name: string; slug?: string; is_active?: boolean }
+): Promise<TaxonomyTerm> {
+  return requestJson<TaxonomyTerm>("/api/admin/taxonomy", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ kind: "city", ...data }),
+  }, "Create city failed");
+}
+
 export async function adminUpdateTaxonomyTerm(
   token: string,
   id: string,

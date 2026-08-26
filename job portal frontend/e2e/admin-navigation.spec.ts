@@ -12,6 +12,7 @@ const dashboardLinks = [
   ["SEO monitor", "/admin/seo", "SEO command center"],
   ["Newsletter subscription", "/admin/newsletter", "Newsletter subscription"],
   ["Tags / categories", "/admin/taxonomy", "Tags / categories"],
+  ["Cities", "/admin/cities", "Cities"],
 ] as const;
 
 async function authenticate(page: Page) {
@@ -312,6 +313,22 @@ test("job form only offers predefined categories", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remove Lahore" })).toBeVisible();
   await page.getByLabel("Add province or territory").selectOption("Punjab");
   await expect(page.getByRole("button", { name: "Remove Punjab" })).toBeVisible();
+});
+
+test("administrator-created cities appear dynamically in the job form", async ({ page }) => {
+  await page.goto("/admin/cities");
+  await expect(page.getByRole("heading", { name: "Cities" })).toBeVisible();
+  await expect(page.getByText("Lahore", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Name").fill("Sargodha Test");
+  await page.getByRole("button", { name: "Add city" }).click();
+  await expect(page.getByText("Sargodha Test", { exact: true })).toBeVisible();
+
+  await page.goto("/admin/jobs/new");
+  const cities = page.getByLabel("Add city from predefined list");
+  await expect(cities.locator('option[value="Sargodha Test"]')).toHaveCount(1);
+  await cities.selectOption("Sargodha Test");
+  await expect(page.getByRole("button", { name: "Remove Sargodha Test" })).toBeVisible();
 });
 
 test("existing R2 images load inside the job editor through the media proxy", async ({ page }) => {
@@ -663,7 +680,7 @@ test("modern header and admin workspace keep their responsive layout", async ({ 
   await expect(header).toBeVisible();
   await expect(headerActions).toHaveCSS("display", "flex");
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(14);
+  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(15);
 
   const headerBox = await header.boundingBox();
   const sidebarBox = await sidebar.boundingBox();

@@ -29,6 +29,13 @@ const directoryPages = Object.entries(directoryPageValues).flatMap(([pageType, v
   }),
 );
 
+const taxonomyTerms = [
+  { id: "term-software", kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: true },
+  { id: "term-education", kind: "category", name: "Education", slug: "education", is_active: true },
+  { id: "city-lahore", kind: "city", name: "Lahore", slug: "lahore", is_active: true },
+  { id: "city-karachi", kind: "city", name: "Karachi", slug: "karachi", is_active: true },
+];
+
 const adminJobs = Array.from({ length: 53 }, (_, index) => {
   const number = index + 1;
   const suffix = String(number).padStart(2, "0");
@@ -60,7 +67,13 @@ const json = (response, value, status = 200) => {
   response.end(JSON.stringify(value));
 };
 
-const server = createServer((request, response) => {
+const readJson = async (request) => {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+};
+
+const server = createServer(async (request, response) => {
   if (request.method === "OPTIONS") return json(response, {});
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1:4010");
   const path = requestUrl.pathname;
@@ -212,14 +225,39 @@ const server = createServer((request, response) => {
       },
     });
   }
-  if (path === "/api/taxonomy" || path === "/api/admin/taxonomy") {
-    return json(response, [
-      { id: "term-software", kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: true },
-      { id: "term-education", kind: "category", name: "Education", slug: "education", is_active: true },
-    ]);
+  if (["/api/taxonomy", "/api/admin/taxonomy", "/api/cities", "/api/admin/cities"].includes(path) && request.method === "GET") {
+    const kind = path.endsWith("cities") ? "city" : "category";
+    return json(
+      response,
+      taxonomyTerms.filter((term) => term.kind === kind && (path.startsWith("/api/admin/") || term.is_active)),
+    );
+  }
+  if (path === "/api/admin/taxonomy" && request.method === "POST") {
+    const payload = await readJson(request);
+    const name = String(payload.name || "").trim();
+    const created = {
+      id: `term-${payload.kind || "category"}-${slugify(name)}`,
+      kind: payload.kind || "category",
+      name,
+      slug: slugify(payload.slug || name),
+      is_active: payload.is_active !== false,
+    };
+    taxonomyTerms.push(created);
+    return json(response, created);
   }
   if (path.startsWith("/api/admin/taxonomy/")) {
-    return json(response, { id: path.split("/").pop(), kind: "category", name: "Software Engineering", slug: "software-engineering", is_active: false });
+    const id = path.split("/").pop();
+    const index = taxonomyTerms.findIndex((term) => term.id === id);
+    if (index < 0) return json(response, { detail: "Taxonomy term not found" }, 404);
+    if (request.method === "DELETE") {
+      taxonomyTerms.splice(index, 1);
+      return json(response, { ok: true, id });
+    }
+    if (request.method === "PUT") {
+      const payload = await readJson(request);
+      taxonomyTerms[index] = { ...taxonomyTerms[index], ...payload };
+      return json(response, taxonomyTerms[index]);
+    }
   }
   if (path === "/api/subscriptions") {
     return json(response, { ok: true, status: "subscribed", message: "Your email has been subscribed to new job alerts." });

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
-from app.models import Job, TaxonomyTerm, User
+from app.models import Job, Page, TaxonomyTerm, User
 from app.schemas import TaxonomyTermIn, TaxonomyTermOut, TaxonomyTermUpdate
 from app.services.taxonomy import ensure_default_taxonomy
 from app.utils import as_list, slugify
@@ -35,6 +35,28 @@ def public_taxonomy(db: Session = Depends(get_db)):
 @router.get("/admin/taxonomy", response_model=list[TaxonomyTermOut])
 def admin_taxonomy(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     rows = _rows(db, active_only=False)
+    db.commit()
+    return rows
+
+
+def _city_rows(db: Session, *, active_only: bool) -> list[TaxonomyTerm]:
+    ensure_default_taxonomy(db)
+    stmt = select(TaxonomyTerm).where(TaxonomyTerm.kind == "city")
+    if active_only:
+        stmt = stmt.where(TaxonomyTerm.is_active.is_(True))
+    return db.execute(stmt.order_by(TaxonomyTerm.name.asc())).scalars().all()
+
+
+@router.get("/cities", response_model=list[TaxonomyTermOut])
+def public_cities(db: Session = Depends(get_db)):
+    rows = _city_rows(db, active_only=True)
+    db.commit()
+    return rows
+
+
+@router.get("/admin/cities", response_model=list[TaxonomyTermOut])
+def admin_cities(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+    rows = _city_rows(db, active_only=False)
     db.commit()
     return rows
 
@@ -114,13 +136,31 @@ def update_term(
     if data.get("is_active") is not None:
         row.is_active = data["is_active"]
     if row.name.casefold() != old_name.casefold():
-        for job in db.execute(select(Job)).scalars().all():
-            values = as_list(job.tags)
-            if any(value.casefold() == old_name.casefold() for value in values):
-                job.tags = [
-                    row.name if value.casefold() == old_name.casefold() else value
-                    for value in values
-                ]
+        if row.kind == "city":
+            for job in db.execute(select(Job)).scalars().all():
+                values = as_list(job.cities)
+                if any(value.casefold() == old_name.casefold() for value in values):
+                    job.cities = [
+                        row.name if value.casefold() == old_name.casefold() else value
+                        for value in values
+                    ]
+            pages = (
+                db.execute(select(Page).where(Page.page_type == "city"))
+                .scalars()
+                .all()
+            )
+            for page in pages:
+                if (page.taxonomy_value or "").casefold() == old_name.casefold():
+                    page.taxonomy_value = row.name
+                    page.updated_at = datetime.utcnow()
+        else:
+            for job in db.execute(select(Job)).scalars().all():
+                values = as_list(job.tags)
+                if any(value.casefold() == old_name.casefold() for value in values):
+                    job.tags = [
+                        row.name if value.casefold() == old_name.casefold() else value
+                        for value in values
+                    ]
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
@@ -136,11 +176,22 @@ def delete_term(
     row = db.get(TaxonomyTerm, term_id)
     if not row:
         raise HTTPException(status_code=404, detail="Tag/category not found")
-    in_use = any(
-        row.name.lower() in {value.lower() for value in as_list(job.tags)}
-        for job in db.execute(select(Job)).scalars().all()
-    )
+    if row.kind == "city":
+        in_use = any(
+            row.name.lower() in {value.lower() for value in as_list(job.cities)}
+            for job in db.execute(select(Job)).scalars().all()
+        )
+    else:
+        in_use = any(
+            row.name.lower() in {value.lower() for value in as_list(job.tags)}
+            for job in db.execute(select(Job)).scalars().all()
+        )
     if in_use:
+        if row.kind == "city":
+            raise HTTPException(
+                status_code=409,
+                detail="This city is used by one or more jobs. Deactivate it instead.",
+            )
         raise HTTPException(
             status_code=409,
             detail="This tag/category is used by one or more jobs. Deactivate it instead.",

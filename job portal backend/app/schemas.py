@@ -647,7 +647,7 @@ class UploadOut(BaseModel):
 class TaxonomyTermIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     slug: Optional[str] = Field(default=None, max_length=140)
-    kind: str = Field(default="category", pattern=r"^(category|tag)$")
+    kind: str = Field(default="category", pattern=r"^(category|tag|city)$")
     is_active: bool = True
 
 

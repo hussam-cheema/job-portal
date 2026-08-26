@@ -326,7 +326,7 @@ class SiteSetting(Base):
 
 
 class TaxonomyTerm(Base):
-    """Administrator-managed category/tag available to job posts."""
+    """Administrator-managed category, tag, or city available to job posts."""
 
     __tablename__ = "taxonomy_terms"
     __table_args__ = (

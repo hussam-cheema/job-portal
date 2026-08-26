@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_CATEGORIES, PAKISTAN_CITIES
-from app.models import SiteSetting, TaxonomyTerm
-from app.utils import slugify
+from app.models import Job, SiteSetting, TaxonomyTerm
+from app.utils import as_list, slugify
 
 
 def ensure_default_taxonomy(db: Session) -> list[TaxonomyTerm]:
@@ -70,6 +70,43 @@ def ensure_default_taxonomy(db: Session) -> list[TaxonomyTerm]:
             )
         )
         db.flush()
+
+    # Preserve every location already assigned to a job when moving the editor
+    # from the original hard-coded city list to administrator-managed terms.
+    city_marker_key = "taxonomy_cities_seeded_v1"
+    if db.get(SiteSetting, city_marker_key) is None:
+        existing_job_cities = {
+            city
+            for values in db.execute(select(Job.cities)).scalars().all()
+            for city in as_list(values)
+            if city
+        }
+        for raw in sorted({*PAKISTAN_CITIES, *existing_job_cities}, key=str.casefold):
+            name = str(raw).strip()
+            slug = slugify(name)
+            key = ("city", slug.lower())
+            if not name or not slug or key in known_slugs:
+                continue
+            row = TaxonomyTerm(
+                id=str(uuid4()),
+                kind="city",
+                name=name,
+                slug=slug,
+                is_active=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(row)
+            created.append(row)
+            known_slugs.add(key)
+        db.add(
+            SiteSetting(
+                key=city_marker_key,
+                value="true",
+                updated_at=datetime.utcnow(),
+            )
+        )
+        db.flush()
     return created
 
 
@@ -106,6 +143,41 @@ def canonicalize_job_terms(db: Session, values: list[str]) -> list[str]:
             status_code=400,
             detail=(
                 "Select only predefined tags/categories. Unknown: "
+                + ", ".join(unknown[:10])
+            ),
+        )
+    return result
+
+
+def canonicalize_job_cities(db: Session, values: list[str]) -> list[str]:
+    ensure_default_taxonomy(db)
+    rows = (
+        db.execute(select(TaxonomyTerm).where(TaxonomyTerm.kind == "city"))
+        .scalars()
+        .all()
+    )
+    by_name = {row.name.strip().lower(): row.name for row in rows}
+    by_slug = {row.slug.strip().lower(): row.name for row in rows}
+    result: list[str] = []
+    seen: set[str] = set()
+    unknown: list[str] = []
+    for raw in values:
+        clean = str(raw).strip()
+        if not clean:
+            continue
+        canonical = by_name.get(clean.lower()) or by_slug.get(slugify(clean).lower())
+        if not canonical:
+            unknown.append(clean)
+            continue
+        key = canonical.lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(canonical)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Select only predefined cities. Unknown: "
                 + ", ".join(unknown[:10])
             ),
         )

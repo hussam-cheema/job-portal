@@ -10,6 +10,7 @@ import { YoastSEOPanel, type YoastSEOValue } from "@/components/YoastSEOPanel";
 import {
   adminCreateJob,
   adminFetchQnA,
+  adminListCities,
   adminListTaxonomy,
   adminUpdateJob,
   adminUpload,
@@ -186,7 +187,7 @@ export default function JobFormPage() {
   const jobId: string | null = isNew ? null : String(params.id);
   const { token } = useAdminAuth();
   const [form, setForm] = useState(empty);
-  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [cityOptions, setCityOptions] = useState<TaxonomyTerm[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<string[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<TaxonomyTerm[]>([]);
   const [saving, setSaving] = useState(false);
@@ -220,14 +221,22 @@ export default function JobFormPage() {
     () => ({ form, seo, attachmentCount }),
     [attachmentCount, form, seo]
   );
+  const activeCityOptions = useMemo(
+    () => cityOptions.filter((term) => term.is_active),
+    [cityOptions],
+  );
+  const activeCityNames = useMemo(
+    () => activeCityOptions.map((term) => term.name),
+    [activeCityOptions],
+  );
 
   useEffect(() => {
     fetchFilters().then((f) => {
-      setCityOptions(asStringList(f.cities));
       setProvinceOptions(asStringList(f.provinces));
     });
     if (token) {
       adminListTaxonomy(token).then(setCategoryOptions).catch(() => setCategoryOptions([]));
+      adminListCities(token).then(setCityOptions).catch(() => setCityOptions([]));
     }
   }, [token]);
 
@@ -806,12 +815,12 @@ export default function JobFormPage() {
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="field-label mb-0">City / Cities</label>
-              {cityOptions.length > 0 && (
+              {activeCityOptions.length > 0 && (
                 <div className="flex gap-2">
                   <button
                     type="button"
                     className="text-xs font-medium text-[var(--accent)] underline underline-offset-4"
-                    onClick={() => setField("cities", cityOptions)}
+                    onClick={() => setField("cities", activeCityNames)}
                   >
                     Select all cities
                   </button>
@@ -844,7 +853,7 @@ export default function JobFormPage() {
                 ))}
               </div>
             )}
-            {cityOptions.length > 0 && (
+            {activeCityOptions.length > 0 && (
               <select
                 className="select mt-2"
                 aria-label="Add city from predefined list"
@@ -861,12 +870,20 @@ export default function JobFormPage() {
                 }}
               >
                 <option value="">Add from list…</option>
-                {cityOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                {activeCityOptions
+                  .filter((term) => !form.cities.some((city) => city.toLowerCase() === term.name.toLowerCase()))
+                  .map((term) => (
+                    <option key={term.id} value={term.name}>
+                      {term.name}
+                    </option>
+                  ))}
               </select>
+            )}
+            {activeCityOptions.length === 0 && (
+              <p className="mt-2 text-sm text-[var(--muted)]">Create or activate cities from the Cities dashboard page first.</p>
+            )}
+            {form.cities.length > 0 && cityOptions.some((term) => !term.is_active && form.cities.some((city) => city.toLowerCase() === term.name.toLowerCase())) && (
+              <p className="mt-2 text-xs text-[var(--muted)]">Inactive cities already assigned to this post remain selected until removed.</p>
             )}
           </div>
         </div>

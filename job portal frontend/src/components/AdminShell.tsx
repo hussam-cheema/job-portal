@@ -13,6 +13,7 @@ const LINKS: Array<{ href: string; label: string; icon: UiIconName; group: strin
   { href: "/admin/blog", label: "Blog posts", icon: "blog", group: "Publishing" },
   { href: "/admin/blog/new", label: "Create blog post", icon: "plus", group: "Publishing" },
   { href: "/admin/taxonomy", label: "Tags / categories", icon: "tags", group: "Content" },
+  { href: "/admin/cities", label: "Cities", icon: "tags", group: "Content" },
   { href: "/admin/pages", label: "Pages", icon: "page", group: "Content" },
   { href: "/admin/pages/new", label: "Create page", icon: "plus", group: "Content" },
   { href: "/admin/messages", label: "Messages", icon: "mail", group: "Audience" },

@@ -1643,6 +1643,101 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     assert all(term["slug"] != "legal" for term in client.get("/api/taxonomy").json())
 
 
+def test_taxonomy_controls_job_cities(client: TestClient):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin-password"},
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    default_cities = client.get("/api/admin/cities", headers=auth).json()
+    assert any(term["name"] == "Lahore" for term in default_cities)
+    assert all(term["kind"] == "city" for term in default_cities)
+
+    created_term = client.post(
+        "/api/admin/taxonomy",
+        headers=auth,
+        json={"kind": "city", "name": "Sargodha Test", "slug": "sargodha-test"},
+    )
+    assert created_term.status_code == 200
+    city_id = created_term.json()["id"]
+    public_cities = client.get("/api/cities").json()
+    assert any(term["slug"] == "sargodha-test" for term in public_cities)
+    assert all(term["kind"] == "category" for term in client.get("/api/taxonomy").json())
+    assert "Sargodha Test" in client.get("/api/filters").json()["cities"]
+
+    valid = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Managed City Role",
+            "description": "<p>A vacancy in an administrator-managed city.</p>",
+            "published_date": "2026-08-26T00:00:00",
+            "cities": ["sargodha-test"],
+        },
+    )
+    assert valid.status_code == 200
+    assert valid.json()["cities"] == ["Sargodha Test"]
+
+    invalid = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Unknown City Role",
+            "description": "<p>This city was never added by the administrator.</p>",
+            "published_date": "2026-08-26T00:00:00",
+            "cities": ["Imaginary City"],
+        },
+    )
+    assert invalid.status_code == 400
+    assert "predefined cities" in invalid.json()["detail"].lower()
+
+    created_page = next(
+        page
+        for page in client.get("/api/admin/pages", headers=auth).json()
+        if page["page_type"] == "city"
+        and page["taxonomy_value"] == "Sargodha Test"
+    )
+    assert created_page["slug"] == "sargodha-test"
+
+    renamed = client.put(
+        f"/api/admin/taxonomy/{city_id}",
+        headers=auth,
+        json={"name": "Sargodha New", "slug": "sargodha-new"},
+    )
+    assert renamed.status_code == 200
+    changed_job = client.get(f"/api/jobs/{valid.json()['id']}").json()
+    assert changed_job["cities"] == ["Sargodha New"]
+    renamed_page = next(
+        page
+        for page in client.get("/api/admin/pages", headers=auth).json()
+        if page["id"] == created_page["id"]
+    )
+    assert renamed_page["taxonomy_value"] == "Sargodha New"
+    assert "Sargodha New" in client.get("/api/filters").json()["cities"]
+
+    deactivated = client.put(
+        f"/api/admin/taxonomy/{city_id}",
+        headers=auth,
+        json={"is_active": False},
+    )
+    assert deactivated.status_code == 200
+    assert "Sargodha New" not in client.get("/api/filters").json()["cities"]
+    assert client.delete(
+        f"/api/admin/taxonomy/{city_id}", headers=auth
+    ).status_code == 409
+
+    removable = client.post(
+        "/api/admin/taxonomy",
+        headers=auth,
+        json={"kind": "city", "name": "Temporary City"},
+    )
+    assert removable.status_code == 200
+    assert client.delete(
+        f"/api/admin/taxonomy/{removable.json()['id']}", headers=auth
+    ).status_code == 200
+
+
 def test_subscription_validation_template_and_new_job_alert(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -43,7 +43,11 @@ from app.services.newsletter import process_pending_job_alerts, queue_new_job_al
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.storage import delete_objects
 from app.services.watermark import process_description_images
-from app.services.taxonomy import canonicalize_job_terms, ensure_default_taxonomy
+from app.services.taxonomy import (
+    canonicalize_job_cities,
+    canonicalize_job_terms,
+    ensure_default_taxonomy,
+)
 from app.utils import as_list, experience_label, normalize_job_type, slugify
 
 router = APIRouter()
@@ -278,7 +282,7 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
     if "job_type" in data:
         job.job_type = normalize_job_type(data["job_type"])
     if "cities" in data and data["cities"] is not None:
-        job.cities = as_list(data["cities"])
+        job.cities = canonicalize_job_cities(db, as_list(data["cities"]))
     if "provinces" in data and data["provinces"] is not None:
         selected = as_list(data["provinces"])
         allowed = {value.casefold(): value for value in PAKISTAN_PROVINCES}
@@ -727,6 +731,17 @@ def get_filters(db: Session = Depends(get_db)):
             .scalars()
             .all()
         }
+        city_set: set[str] = {
+            row.name
+            for row in db.execute(
+                select(TaxonomyTerm).where(
+                    TaxonomyTerm.kind == "city",
+                    TaxonomyTerm.is_active.is_(True),
+                )
+            )
+            .scalars()
+            .all()
+        }
         companies: list[str] = []
         newspapers: list[str] = list(PAKISTAN_NEWSPAPERS)
         qualifications: list[str] = []
@@ -751,7 +766,7 @@ def get_filters(db: Session = Depends(get_db)):
                 cat_map[key] = str(c).strip()
         categories = sorted(cat_map.values(), key=str.lower)
 
-        cities = sorted(set(PAKISTAN_CITIES), key=str.lower)
+        cities = sorted(city_set, key=str.casefold)
         return FiltersResponse(
             source_types=["govt", "private"],
             sectors=SECTORS,
