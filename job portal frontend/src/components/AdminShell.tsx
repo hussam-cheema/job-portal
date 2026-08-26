@@ -14,6 +14,7 @@ const LINKS: Array<{ href: string; label: string; icon: UiIconName; group: strin
   { href: "/admin/blog/new", label: "Create blog post", icon: "plus", group: "Publishing" },
   { href: "/admin/taxonomy", label: "Tags / categories", icon: "tags", group: "Content" },
   { href: "/admin/cities", label: "Cities", icon: "tags", group: "Content" },
+  { href: "/admin/tools", label: "Other Tools", icon: "tools", group: "Content" },
   { href: "/admin/pages", label: "Pages", icon: "page", group: "Content" },
   { href: "/admin/pages/new", label: "Create page", icon: "plus", group: "Content" },
   { href: "/admin/messages", label: "Messages", icon: "mail", group: "Audience" },
@@ -54,6 +55,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (href === "/admin/jobs") return pathname === "/admin/jobs";
     if (href === "/admin/pages") return pathname === "/admin/pages";
     if (href === "/admin/blog") return pathname === "/admin/blog";
+    if (href === "/admin/tools") return pathname === "/admin/tools";
     return pathname === href || pathname.startsWith(href + "/");
   }
 

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -211,6 +212,58 @@ class Page(Base):
     )
     taxonomy_value: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class ToolCategory(Base):
+    """Administrator-managed group displayed around the public Tools hub."""
+
+    __tablename__ = "tool_categories"
+    __table_args__ = (
+        Index("ix_tool_categories_public_order", "is_published", "sort_order"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    slug: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    icon_key: Mapped[str] = mapped_column(String(50), nullable=False, default="sparkles")
+    # This monotonically increasing value is never reused. The frontend turns it
+    # into a golden-angle hue, so every newly-created branch receives a new glow.
+    color_index: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class ToolPage(Base):
+    """A CMS-backed tool page, optionally rendering an interactive built-in tool."""
+
+    __tablename__ = "tool_pages"
+    __table_args__ = (
+        Index("ix_tool_pages_category_public_order", "category_id", "is_published", "sort_order"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    category_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tool_categories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    slug: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tool_kind: Mapped[str] = mapped_column(String(50), nullable=False, default="content")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

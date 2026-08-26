@@ -18,6 +18,7 @@ const ACTIONS: Array<{ href: string; label: string; description: string; icon: U
   { href: "/admin/newsletter", label: "Newsletter subscription", description: "Manage job-alert subscribers", icon: "letter" },
   { href: "/admin/taxonomy", label: "Tags / categories", description: "Keep taxonomy consistent", icon: "tags" },
   { href: "/admin/cities", label: "Cities", description: "Manage job city options", icon: "tags" },
+  { href: "/admin/tools", label: "Other Tools", description: "Manage tool categories and pages", icon: "tools" },
   { href: "/admin/settings", label: "Settings", description: "Branding and account options", icon: "settings" },
 ];
 

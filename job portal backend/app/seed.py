@@ -11,10 +11,10 @@ from app.auth import ensure_admin_user
 from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.constants import PAKISTAN_CITIES, PAKISTAN_NEWSPAPERS, PAKISTAN_PROVINCES
-from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm
+from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm, ToolCategory, ToolPage
 from app.page_types import page_slug_namespace
 from app.services.directory_pages import ensure_directory_pages
-from app.services.seo import upsert_job_seo, upsert_page_seo
+from app.services.seo import upsert_job_seo, upsert_page_seo, upsert_tool_seo
 from app.services.taxonomy import ensure_default_taxonomy
 from app.utils import as_list, slugify
 
@@ -44,6 +44,60 @@ HOMEPAGE_BRANDING = {
     ),
     "logo_url": "/pakistan-jobs-market-logo.png",
 }
+
+DEFAULT_TOOL_CATEGORIES = (
+    {
+        "slug": "tax-salary-tools",
+        "title": "Tax & Salary Tools",
+        "icon_key": "coins",
+        "content": "<p>Practical calculators for Pakistan salary and tax planning.</p>",
+        "color_index": 1,
+    },
+    {
+        "slug": "tools-for-students",
+        "title": "Tools for Students",
+        "icon_key": "graduation",
+        "content": "<p>Flexible study and academic planning calculators for students.</p>",
+        "color_index": 2,
+    },
+    {
+        "slug": "image-editing-tools",
+        "title": "Image Editing Tools",
+        "icon_key": "image",
+        "content": "<p>Helpful image utilities will be published here.</p>",
+        "color_index": 3,
+    },
+    {
+        "slug": "document-tools",
+        "title": "Document Tools",
+        "icon_key": "document",
+        "content": "<p>Helpful document utilities will be published here.</p>",
+        "color_index": 4,
+    },
+)
+
+DEFAULT_TOOLS = (
+    {
+        "category_slug": "tax-salary-tools",
+        "slug": "pakistan-tax-calculator",
+        "title": "Pakistan Tax Calculator",
+        "tool_kind": "tax_calculator",
+        "content": (
+            "<p>Estimate monthly and annual income tax for a salaried person in Pakistan "
+            "using the selected tax year's federal salary slabs.</p>"
+        ),
+    },
+    {
+        "category_slug": "tools-for-students",
+        "slug": "cgpa-calculator",
+        "title": "CGPA Calculator",
+        "tool_kind": "cgpa_calculator",
+        "content": (
+            "<p>Add any number of semesters and subjects to calculate semester GPA and "
+            "CGPA on Pakistan's common 4.00 scale.</p>"
+        ),
+    },
+)
 
 ABOUT_HTML = """
 <p><strong>Pakistan Jobs Market</strong> is an independent online job discovery platform created
@@ -394,6 +448,90 @@ DEFAULT_PAGES = [
 ]
 
 
+def ensure_default_tools(db) -> list[object]:
+    """Seed the requested tools once without overwriting later administrator edits."""
+    created: list[object] = []
+    categories: dict[str, ToolCategory] = {}
+    max_color = db.execute(select(func.max(ToolCategory.color_index))).scalar() or 0
+    for order, item in enumerate(DEFAULT_TOOL_CATEGORIES):
+        category = db.execute(
+            select(ToolCategory).where(ToolCategory.slug == item["slug"])
+        ).scalar_one_or_none()
+        if not category:
+            color_index = int(item["color_index"])
+            if db.execute(
+                select(ToolCategory.id).where(ToolCategory.color_index == color_index)
+            ).scalar_one_or_none():
+                max_color += 1
+                color_index = max_color
+            category = ToolCategory(
+                id=str(uuid4()),
+                slug=item["slug"],
+                title=item["title"],
+                content=item["content"],
+                icon_key=item["icon_key"],
+                color_index=color_index,
+                sort_order=order,
+                is_published=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(category)
+            upsert_tool_seo(
+                db,
+                category,
+                entity_type="tool_category",
+                path=f"/tools/categories/{category.slug}",
+            )
+            created.append(category)
+        categories[item["slug"]] = category
+
+    db.flush()
+    for order, item in enumerate(DEFAULT_TOOLS):
+        tool = db.execute(
+            select(ToolPage).where(ToolPage.slug == item["slug"])
+        ).scalar_one_or_none()
+        if tool:
+            continue
+        category = categories[item["category_slug"]]
+        tool = ToolPage(
+            id=str(uuid4()),
+            category_id=category.id,
+            slug=item["slug"],
+            title=item["title"],
+            content=item["content"],
+            tool_kind=item["tool_kind"],
+            sort_order=order,
+            is_published=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(tool)
+        upsert_tool_seo(
+            db,
+            tool,
+            entity_type="tool",
+            path=f"/tools/{tool.slug}",
+        )
+        created.append(tool)
+
+    cursor = db.get(SiteSetting, "tool_category_color_cursor")
+    current_max = db.execute(select(func.max(ToolCategory.color_index))).scalar() or max_color
+    if cursor:
+        cursor.value = str(max(int(cursor.value or 0), int(current_max)))
+        cursor.updated_at = datetime.utcnow()
+    else:
+        db.add(
+            SiteSetting(
+                key="tool_category_color_cursor",
+                value=str(current_max),
+                updated_at=datetime.utcnow(),
+            )
+        )
+    db.flush()
+    return created
+
+
 def ensure_default_pages(db) -> list[Page]:
     """Create missing core CMS pages without overwriting administrator edits."""
     created: list[Page] = []
@@ -688,6 +826,7 @@ def seed_if_empty() -> None:
         ensure_admin_user(db)
 
         ensure_default_pages(db)
+        ensure_default_tools(db)
         sync_local_core_pages_once(db)
         sync_core_page_content_v2(db)
         sync_core_page_content_v3(db)

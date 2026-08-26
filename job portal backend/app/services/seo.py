@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import canonical_site_url, cfg, site_name
 from app.logging_config import get_logger
-from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric
+from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric, ToolCategory, ToolPage
 from app.page_types import public_page_path
 from app.utils import strip_html
 
@@ -301,6 +301,91 @@ def delete_seo(db: Session, entity_type: str, entity_id: str) -> None:
         ).delete()
     except Exception:
         logger.exception("delete_seo failed %s %s", entity_type, entity_id)
+
+
+def upsert_tool_seo(
+    db: Session,
+    entity: ToolCategory | ToolPage,
+    *,
+    entity_type: str,
+    path: str,
+    seo_override: dict | None = None,
+) -> SEOMeta:
+    """Create or update SEO metadata for a tool category or tool page."""
+    if entity_type not in {"tool_category", "tool"}:
+        raise ValueError("Unsupported tool SEO entity type")
+    from app.services.yoast import analyze_yoast
+
+    existing = db.execute(
+        select(SEOMeta).where(
+            SEOMeta.entity_type == entity_type,
+            SEOMeta.entity_id == entity.id,
+        )
+    ).scalar_one_or_none()
+    ov = seo_override or {}
+    auto_title = f"{entity.title} | {site_name()}"
+    auto_desc = strip_html(entity.content or "", 160) or f"Use {entity.title} on {site_name()}."
+    if existing and seo_override is None:
+        title = (existing.meta_title or auto_title)[:300]
+        desc = (existing.meta_description or auto_desc)[:500]
+        keywords = existing.meta_keywords or f"{entity.title}, Pakistan tools, {site_name()}"
+        focus = existing.focus_keyword
+    else:
+        title = (ov.get("meta_title") or auto_title)[:300]
+        desc = (ov.get("meta_description") or auto_desc)[:500]
+        keywords = ov.get("meta_keywords") or f"{entity.title}, Pakistan tools, {site_name()}"
+        focus = (ov.get("focus_keyword") or "").strip() or None
+    analysis = analyze_yoast(
+        title=entity.title,
+        content_html=entity.content or "",
+        meta_title=title,
+        meta_description=desc,
+        focus_keyword=focus,
+        slug=entity.slug,
+    )
+    structured = {
+        "@context": "https://schema.org",
+        "@type": "WebApplication" if entity_type == "tool" else "CollectionPage",
+        "name": entity.title,
+        "description": desc,
+        "url": _canonical(path),
+        "isPartOf": {
+            "@type": "WebSite",
+            "name": site_name(),
+            "url": canonical_site_url(),
+        },
+    }
+    values = {
+        "slug": entity.slug,
+        "meta_title": title,
+        "meta_description": desc,
+        "meta_keywords": keywords,
+        "focus_keyword": focus,
+        "seo_score": analysis["seo_score"],
+        "readability_score": analysis["readability_score"],
+        "analysis": analysis,
+        "og_title": title,
+        "og_description": desc,
+        "canonical_url": _canonical(path),
+        "robots": str(cfg("seo", "default_robots", default="index,follow")),
+        "structured_data": structured,
+        "h1": entity.title[:300],
+        "updated_at": datetime.utcnow(),
+    }
+    if existing:
+        for key, value in values.items():
+            setattr(existing, key, value)
+        db.add(existing)
+        return existing
+    row = SEOMeta(
+        id=str(uuid4()),
+        entity_type=entity_type,
+        entity_id=entity.id,
+        created_at=datetime.utcnow(),
+        **values,
+    )
+    db.add(row)
+    return row
 
 
 def upsert_blog_seo(

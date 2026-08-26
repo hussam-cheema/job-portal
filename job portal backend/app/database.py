@@ -191,6 +191,8 @@ def _reset_app_tables() -> None:
         "job_qna",
         "job_attachments",
         "contact_messages",
+        "tool_pages",
+        "tool_categories",
         "pages",
         "blog_posts",
         "jobs",
@@ -328,6 +330,10 @@ def _ensure_performance_indexes() -> None:
         "ON seo_keyword_ranks (recorded_at, keyword)",
         "CREATE INDEX IF NOT EXISTS ix_pages_type_published_title "
         "ON pages (page_type, is_published, title)",
+        "CREATE INDEX IF NOT EXISTS ix_tool_categories_public_order "
+        "ON tool_categories (is_published, sort_order)",
+        "CREATE INDEX IF NOT EXISTS ix_tool_pages_category_public_order "
+        "ON tool_pages (category_id, is_published, sort_order)",
         "CREATE INDEX IF NOT EXISTS ix_pages_slug ON pages (slug)",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_pages_type_slug "
         "ON pages (page_type, slug)",

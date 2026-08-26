@@ -36,6 +36,23 @@ const taxonomyTerms = [
   { id: "city-karachi", kind: "city", name: "Karachi", slug: "karachi", is_active: true },
 ];
 
+const toolCategories = [
+  {
+    id: "tool-category-tax", slug: "tax-salary-tools", title: "Tax & Salary Tools",
+    content: "<p>Practical calculators for Pakistan salary and tax planning.</p>", icon_key: "coins",
+    color_index: 1, sort_order: 0, is_published: true,
+    tools: [{ id: "tool-tax", category_id: "tool-category-tax", slug: "pakistan-tax-calculator", title: "Pakistan Tax Calculator", content: "<p>Estimate salary tax.</p>", tool_kind: "tax_calculator", sort_order: 0, is_published: true }],
+  },
+  {
+    id: "tool-category-students", slug: "tools-for-students", title: "Tools for Students",
+    content: "<p>Student calculators.</p>", icon_key: "graduation", color_index: 2, sort_order: 1, is_published: true,
+    tools: [{ id: "tool-cgpa", category_id: "tool-category-students", slug: "cgpa-calculator", title: "CGPA Calculator", content: "<p>Calculate CGPA.</p>", tool_kind: "cgpa_calculator", sort_order: 0, is_published: true }],
+  },
+  { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [] },
+  { id: "tool-category-documents", slug: "document-tools", title: "Document Tools", content: "", icon_key: "document", color_index: 4, sort_order: 3, is_published: true, tools: [] },
+];
+const toolPages = toolCategories.flatMap((category) => category.tools);
+
 const adminJobs = Array.from({ length: 53 }, (_, index) => {
   const number = index + 1;
   const suffix = String(number).padStart(2, "0");
@@ -113,6 +130,23 @@ const server = createServer(async (request, response) => {
       homepage_meta_keywords: "jobs in Pakistan, latest jobs in Pakistan, government jobs Pakistan, private jobs Pakistan, newspaper jobs, FPSC jobs, PPSC jobs, jobs by city, Pakistan Jobs Market",
       logo_url: "/pakistan-jobs-market-logo.png",
     });
+  }
+  if (path === "/api/admin/tools") {
+    return json(response, { categories: toolCategories, tools: toolPages });
+  }
+  if (path === "/api/tools") return json(response, toolCategories);
+  if (path.startsWith("/api/tools/categories/")) {
+    const slug = path.split("/").pop();
+    const category = toolCategories.find((item) => item.slug === slug);
+    return category ? json(response, category) : json(response, { detail: "Tool category not found" }, 404);
+  }
+  if (path.startsWith("/api/tools/")) {
+    const slug = path.split("/").pop();
+    const tool = toolPages.find((item) => item.slug === slug);
+    return tool ? json(response, tool) : json(response, { detail: "Tool not found" }, 404);
+  }
+  if (path.startsWith("/api/seo/tool_category/") || path.startsWith("/api/seo/tool/")) {
+    return json(response, { meta_title: null, meta_description: null, meta_keywords: null });
   }
   if (path === "/api/admin/settings/branding" && request.method === "PUT") {
     return json(response, {

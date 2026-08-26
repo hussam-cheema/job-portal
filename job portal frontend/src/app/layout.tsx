@@ -140,6 +140,10 @@ gtag('config', 'G-W6Z1YPL2JY');`,
                   <span className="site-action-icon"><UiIcon name="letter" /></span>
                   <span className="site-action-label"><span className="sm:hidden">Letter</span><span className="hidden sm:inline">Cover Letter</span></span>
                 </Link>
+                <Link href="/tools" className="site-action" title="Explore other tools">
+                  <span className="site-action-icon"><UiIcon name="tools" /></span>
+                  <span className="site-action-label"><span className="sm:hidden">Tools</span><span className="hidden sm:inline">Other Tools</span></span>
+                </Link>
                 <ThemeToggle />
               </nav>
             </div>

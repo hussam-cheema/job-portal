@@ -466,6 +466,84 @@ class PageOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class ToolCategoryIn(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=200)
+    title: str = Field(..., min_length=1, max_length=300)
+    content: str = ""
+    icon_key: str = Field(default="sparkles", max_length=50)
+    sort_order: int = 0
+    is_published: bool = True
+    seo: Optional[SEOFields] = None
+
+
+class ToolCategoryUpdate(BaseModel):
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    content: Optional[str] = None
+    icon_key: Optional[str] = Field(default=None, max_length=50)
+    sort_order: Optional[int] = None
+    is_published: Optional[bool] = None
+    seo: Optional[SEOFields] = None
+
+
+class ToolPageIn(BaseModel):
+    category_id: str
+    slug: str = Field(..., min_length=1, max_length=200)
+    title: str = Field(..., min_length=1, max_length=300)
+    content: str = ""
+    tool_kind: Literal["content", "tax_calculator", "cgpa_calculator"] = "content"
+    sort_order: int = 0
+    is_published: bool = True
+    seo: Optional[SEOFields] = None
+
+
+class ToolPageUpdate(BaseModel):
+    category_id: Optional[str] = None
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    content: Optional[str] = None
+    tool_kind: Optional[Literal["content", "tax_calculator", "cgpa_calculator"]] = None
+    sort_order: Optional[int] = None
+    is_published: Optional[bool] = None
+    seo: Optional[SEOFields] = None
+
+
+class ToolPageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    category_id: str
+    slug: str
+    title: str
+    content: str
+    tool_kind: str
+    sort_order: int
+    is_published: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ToolCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    slug: str
+    title: str
+    content: str
+    icon_key: str
+    color_index: int
+    sort_order: int
+    is_published: bool
+    tools: list[ToolPageOut] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ToolAdminResponse(BaseModel):
+    categories: list[ToolCategoryOut] = Field(default_factory=list)
+    tools: list[ToolPageOut] = Field(default_factory=list)
+
+
 class DirectoryPageLinkOut(BaseModel):
     id: str
     slug: str

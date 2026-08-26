@@ -35,10 +35,12 @@ from app.routers import (
     stats,
     subscriptions,
     taxonomy,
+    tools,
     uploads,
 )
 from app.seed import (
     ensure_default_pages,
+    ensure_default_tools,
     seed_if_empty,
     sync_core_page_content_v2,
     sync_core_page_content_v3,
@@ -138,6 +140,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         db = SessionLocal()
         try:
             created = ensure_default_pages(db)
+            tools_created = ensure_default_tools(db)
             locally_synced = sync_local_core_pages_once(db)
             content_synced = sync_core_page_content_v2(db)
             ats_content_synced = sync_core_page_content_v3(db)
@@ -153,6 +156,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))
+            if tools_created:
+                logger.info("tool categories and pages created count=%s", len(tools_created))
             if locally_synced:
                 logger.info("local CMS pages synchronized count=%s", len(locally_synced))
             if content_synced:
@@ -306,6 +311,7 @@ app.include_router(seo.router, prefix="/api", tags=["seo"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(taxonomy.router, prefix="/api", tags=["taxonomy"])
+app.include_router(tools.router, prefix="/api", tags=["tools"])
 app.include_router(subscriptions.router, prefix="/api", tags=["subscriptions"])
 app.include_router(infrastructure.router, prefix="/api", tags=["infrastructure"])
 

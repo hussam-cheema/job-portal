@@ -680,7 +680,7 @@ test("modern header and admin workspace keep their responsive layout", async ({ 
   await expect(header).toBeVisible();
   await expect(headerActions).toHaveCSS("display", "flex");
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(15);
+  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(16);
 
   const headerBox = await header.boundingBox();
   const sidebarBox = await sidebar.boundingBox();

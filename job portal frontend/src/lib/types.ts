@@ -242,6 +242,47 @@ export type PublicSeoMeta = {
   og_image?: string | null;
 };
 
+export type ToolKind = "content" | "tax_calculator" | "cgpa_calculator";
+
+export type ToolPage = {
+  id: string;
+  category_id: string;
+  slug: string;
+  title: string;
+  content: string;
+  tool_kind: ToolKind;
+  sort_order: number;
+  is_published: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ToolCategory = {
+  id: string;
+  slug: string;
+  title: string;
+  content: string;
+  icon_key: string;
+  color_index: number;
+  sort_order: number;
+  is_published: boolean;
+  tools: ToolPage[];
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ToolAdminResponse = {
+  categories: ToolCategory[];
+  tools: ToolPage[];
+};
+
+export type ToolSEOFields = {
+  focus_keyword?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  meta_keywords?: string | null;
+};
+
 export type BlogPost = {
   id: string;
   slug: string;

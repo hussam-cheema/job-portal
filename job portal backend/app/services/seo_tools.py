@@ -23,6 +23,8 @@ from app.models import (
     SEOMeta,
     SiteSetting,
     TaxonomyTerm,
+    ToolCategory,
+    ToolPage,
 )
 from app.page_types import DIRECT_PAGE_SLUGS, public_page_path
 from app.constants import (
@@ -121,6 +123,7 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
         {"loc": f"{base}/resume-builder", "changefreq": "monthly", "priority": 0.6},
         {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
+        {"loc": f"{base}/tools", "changefreq": "weekly", "priority": 0.8},
         {"loc": f"{base}/jobs-by-cities", "changefreq": "weekly", "priority": 0.7},
         {"loc": f"{base}/jobs-by-provinces", "changefreq": "weekly", "priority": 0.7},
         {"loc": f"{base}/jobs-by-categories", "changefreq": "weekly", "priority": 0.7},
@@ -196,6 +199,32 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     .isoformat(),
                     "changefreq": "monthly",
                     "priority": 0.5,
+                }
+            )
+        for category in db.execute(
+            select(ToolCategory.slug, ToolCategory.updated_at).where(
+                ToolCategory.is_published.is_(True)
+            )
+        ).all():
+            urls.append(
+                {
+                    "loc": f"{base}/tools/categories/{category.slug}",
+                    "lastmod": (category.updated_at or datetime.utcnow()).date().isoformat(),
+                    "changefreq": "monthly",
+                    "priority": 0.6,
+                }
+            )
+        for tool in db.execute(
+            select(ToolPage.slug, ToolPage.updated_at).where(
+                ToolPage.is_published.is_(True)
+            )
+        ).all():
+            urls.append(
+                {
+                    "loc": f"{base}/tools/{tool.slug}",
+                    "lastmod": (tool.updated_at or datetime.utcnow()).date().isoformat(),
+                    "changefreq": "monthly",
+                    "priority": 0.7,
                 }
             )
         now = datetime.utcnow()

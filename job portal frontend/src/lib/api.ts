@@ -23,6 +23,10 @@ import type {
   BlogPost,
   InfrastructureDashboard,
   SiteDirectory,
+  ToolAdminResponse,
+  ToolCategory,
+  ToolPage,
+  ToolSEOFields,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
 import { publicPagePath } from "./pagePath";
@@ -510,6 +514,21 @@ export async function fetchPage(slug: string): Promise<PageItem | null> {
   return getJson<PageItem | null>(`/api/pages/${slug}`, null);
 }
 
+export function fetchTools(): Promise<ToolCategory[]> {
+  return getFreshJson<ToolCategory[]>("/api/tools", []);
+}
+
+export function fetchToolCategory(slug: string): Promise<ToolCategory | null> {
+  return getFreshJson<ToolCategory | null>(
+    `/api/tools/categories/${encodeURIComponent(slug)}`,
+    null,
+  );
+}
+
+export function fetchTool(slug: string): Promise<ToolPage | null> {
+  return getFreshJson<ToolPage | null>(`/api/tools/${encodeURIComponent(slug)}`, null);
+}
+
 export async function fetchDirectoryPage(
   pageType: Exclude<PageItem["page_type"], "standard"> | "location",
   slug: string,
@@ -807,6 +826,70 @@ export async function adminListPages(token: string): Promise<PageItem[]> {
     headers: authHeaders(token),
     cache: "no-store",
   }, "Failed to load pages");
+}
+
+export function adminListTools(token: string): Promise<ToolAdminResponse> {
+  return requestJson<ToolAdminResponse>("/api/admin/tools", {
+    headers: authHeaders(token),
+    cache: "no-store",
+  }, "Failed to load tools");
+}
+
+export function adminSaveToolCategory(
+  token: string,
+  data: {
+    id?: string;
+    slug: string;
+    title: string;
+    content: string;
+    icon_key: string;
+    sort_order: number;
+    is_published: boolean;
+    seo?: ToolSEOFields;
+  },
+): Promise<ToolCategory> {
+  const path = data.id ? `/api/admin/tool-categories/${data.id}` : "/api/admin/tool-categories";
+  return requestJson<ToolCategory>(path, {
+    method: data.id ? "PUT" : "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  }, "Tool category save failed");
+}
+
+export function adminDeleteToolCategory(token: string, id: string) {
+  return requestJson<{ ok: boolean }>(`/api/admin/tool-categories/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  }, "Tool category delete failed");
+}
+
+export function adminSaveToolPage(
+  token: string,
+  data: {
+    id?: string;
+    category_id: string;
+    slug: string;
+    title: string;
+    content: string;
+    tool_kind: ToolPage["tool_kind"];
+    sort_order: number;
+    is_published: boolean;
+    seo?: ToolSEOFields;
+  },
+): Promise<ToolPage> {
+  const path = data.id ? `/api/admin/tool-pages/${data.id}` : "/api/admin/tool-pages";
+  return requestJson<ToolPage>(path, {
+    method: data.id ? "PUT" : "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  }, "Tool page save failed");
+}
+
+export function adminDeleteToolPage(token: string, id: string) {
+  return requestJson<{ ok: boolean }>(`/api/admin/tool-pages/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  }, "Tool page delete failed");
 }
 
 export async function adminSavePage(
