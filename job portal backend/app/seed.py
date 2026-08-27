@@ -97,6 +97,20 @@ DEFAULT_TOOLS = (
             "CGPA on Pakistan's common 4.00 scale.</p>"
         ),
     },
+    {
+        "category_slug": "document-tools",
+        "slug": "docx-pdf-converter",
+        "title": "DOCX and PDF Converter",
+        "tool_kind": "document_converter",
+        "content": (
+            "<p>Convert one DOCX document to PDF or one PDF document to DOCX. "
+            "Files are validated before processing and automatically removed after a short "
+            "download window.</p><p>DOCX-to-PDF conversion preserves the document's print "
+            "layout using LibreOffice. PDF-to-DOCX conversion reconstructs editable content "
+            "as accurately as possible; highly complex or scanned PDFs can require manual "
+            "adjustment because PDF stores fixed page positions rather than document structure.</p>"
+        ),
+    },
 )
 
 ABOUT_HTML = """

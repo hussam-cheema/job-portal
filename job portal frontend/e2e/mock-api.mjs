@@ -49,7 +49,10 @@ const toolCategories = [
     tools: [{ id: "tool-cgpa", category_id: "tool-category-students", slug: "cgpa-calculator", title: "CGPA Calculator", content: "<p>Calculate CGPA.</p>", tool_kind: "cgpa_calculator", sort_order: 0, is_published: true }],
   },
   { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [] },
-  { id: "tool-category-documents", slug: "document-tools", title: "Document Tools", content: "", icon_key: "document", color_index: 4, sort_order: 3, is_published: true, tools: [] },
+  {
+    id: "tool-category-documents", slug: "document-tools", title: "Document Tools", content: "", icon_key: "document", color_index: 4, sort_order: 3, is_published: true,
+    tools: [{ id: "tool-converter", category_id: "tool-category-documents", slug: "docx-pdf-converter", title: "DOCX and PDF Converter", content: "<p>Convert documents.</p>", tool_kind: "document_converter", sort_order: 0, is_published: true }],
+  },
 ];
 const toolPages = toolCategories.flatMap((category) => category.tools);
 
@@ -77,7 +80,7 @@ const adminJobs = Array.from({ length: 53 }, (_, index) => {
 const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Conversion-Token",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Content-Type": "application/json",
   });
@@ -135,6 +138,47 @@ const server = createServer(async (request, response) => {
     return json(response, { categories: toolCategories, tools: toolPages });
   }
   if (path === "/api/tools") return json(response, toolCategories);
+  if (path === "/api/tools/document-converter/jobs" && request.method === "POST") {
+    return json(response, {
+      job_id: "e2e-conversion",
+      access_token: "e2e-conversion-token",
+      status: "queued",
+      progress: 25,
+      stage: "Queued securely",
+      input_format: "pdf",
+      output_format: "docx",
+      output_filename: "sample.docx",
+      estimated_seconds_remaining: 2,
+      error: null,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 900_000).toISOString(),
+    }, 202);
+  }
+  if (path === "/api/tools/document-converter/jobs/e2e-conversion/download") {
+    response.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "X-Conversion-Token",
+      "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": 'attachment; filename="sample.docx"',
+    });
+    response.end(Buffer.from("mock converted document"));
+    return;
+  }
+  if (path === "/api/tools/document-converter/jobs/e2e-conversion") {
+    return json(response, {
+      job_id: "e2e-conversion",
+      status: "completed",
+      progress: 100,
+      stage: "Ready to download",
+      input_format: "pdf",
+      output_format: "docx",
+      output_filename: "sample.docx",
+      estimated_seconds_remaining: 0,
+      error: null,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 900_000).toISOString(),
+    });
+  }
   if (path.startsWith("/api/tools/categories/")) {
     const slug = path.split("/").pop();
     const category = toolCategories.find((item) => item.slug === slug);

@@ -242,7 +242,11 @@ export type PublicSeoMeta = {
   og_image?: string | null;
 };
 
-export type ToolKind = "content" | "tax_calculator" | "cgpa_calculator";
+export type ToolKind =
+  | "content"
+  | "tax_calculator"
+  | "cgpa_calculator"
+  | "document_converter";
 
 export type ToolPage = {
   id: string;
@@ -274,6 +278,31 @@ export type ToolCategory = {
 export type ToolAdminResponse = {
   categories: ToolCategory[];
   tools: ToolPage[];
+};
+
+export type DocumentConversionStatus =
+  | "queued"
+  | "converting"
+  | "verifying"
+  | "completed"
+  | "failed";
+
+export type DocumentConversionJob = {
+  job_id: string;
+  status: DocumentConversionStatus;
+  progress: number;
+  stage: string;
+  input_format: "pdf" | "docx";
+  output_format: "pdf" | "docx";
+  output_filename: string;
+  estimated_seconds_remaining?: number | null;
+  error?: string | null;
+  created_at: string;
+  expires_at: string;
+};
+
+export type DocumentConversionJobCreated = DocumentConversionJob & {
+  access_token: string;
 };
 
 export type ToolSEOFields = {

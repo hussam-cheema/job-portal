@@ -27,6 +27,8 @@ import type {
   ToolCategory,
   ToolPage,
   ToolSEOFields,
+  DocumentConversionJob,
+  DocumentConversionJobCreated,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
 import { publicPagePath } from "./pagePath";
@@ -527,6 +529,52 @@ export function fetchToolCategory(slug: string): Promise<ToolCategory | null> {
 
 export function fetchTool(slug: string): Promise<ToolPage | null> {
   return getFreshJson<ToolPage | null>(`/api/tools/${encodeURIComponent(slug)}`, null);
+}
+
+export function startDocumentConversion(file: File): Promise<DocumentConversionJobCreated> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return requestJson<DocumentConversionJobCreated>(
+    "/api/tools/document-converter/jobs",
+    { method: "POST", body: form },
+    "The document could not be uploaded",
+  );
+}
+
+export function fetchDocumentConversion(
+  jobId: string,
+  token: string,
+): Promise<DocumentConversionJob> {
+  return requestJson<DocumentConversionJob>(
+    `/api/tools/document-converter/jobs/${encodeURIComponent(jobId)}`,
+    { headers: { "X-Conversion-Token": token }, cache: "no-store" },
+    "Conversion status is unavailable",
+  );
+}
+
+export async function downloadDocumentConversion(
+  jobId: string,
+  token: string,
+): Promise<Blob> {
+  const path = `/api/tools/document-converter/jobs/${encodeURIComponent(jobId)}/download`;
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { "X-Conversion-Token": token },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    let body: ApiErrorBody = {};
+    try {
+      body = await response.json() as ApiErrorBody;
+    } catch {
+      // Use the stable fallback below when a proxy returned a non-JSON error.
+    }
+    throw new ApiRequestError(
+      apiErrorMessage(body, "The converted document could not be downloaded"),
+      path,
+      response.status,
+    );
+  }
+  return response.blob();
 }
 
 export async function fetchDirectoryPage(

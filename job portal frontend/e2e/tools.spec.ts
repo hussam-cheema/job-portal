@@ -12,7 +12,7 @@ test("tools admin keeps the directory above the editor at desktop and tablet wid
 
   await expect(page.getByRole("heading", { name: "Other Tools", exact: true })).toBeVisible();
   await expect(page.getByText("4 Categories", { exact: false })).toBeVisible();
-  await expect(page.getByText("2 Tools", { exact: false })).toBeVisible();
+  await expect(page.getByText("3 Tools", { exact: false })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Find a category or tool" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Basic information" })).toBeVisible();
 
@@ -52,7 +52,33 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(page.getByRole("link", { name: "Tax & Salary Tools" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tools for Students" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pakistan Tax Calculator" })).toBeVisible();
-  await expect(page.getByText("Tools coming soon")).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
+  await expect(page.getByText("Tools coming soon")).toHaveCount(1);
+});
+
+test("document converter validates one file, reports progress, downloads, and is tracked by analytics", async ({ page }) => {
+  const analyticsRequest = page.waitForRequest((request) =>
+    request.url().endsWith("/api/analytics/visit")
+      && request.method() === "POST"
+      && request.postData()?.includes("/tools/docx-pdf-converter") === true,
+  );
+  await page.goto("/tools/docx-pdf-converter");
+  await expect(page.getByRole("heading", { name: "DOCX and PDF Converter" })).toBeVisible();
+  await analyticsRequest;
+
+  const input = page.locator("#document-converter-file");
+  await input.setInputFiles({ name: "malware.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") });
+  await expect(page.locator(".document-converter-message[role='alert']")).toContainText("not allowed");
+
+  await input.setInputFiles({ name: "sample.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 mock") });
+  await expect(page.getByLabel("Conversion direction")).toContainText("PDF");
+  await expect(page.getByLabel("Conversion direction")).toContainText("DOCX");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Convert to DOCX" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("sample.docx");
+  await expect(page.getByRole("progressbar", { name: "Conversion progress" })).toHaveAttribute("aria-valuenow", "100");
+  await expect(page.getByText("Ready to download")).toBeVisible();
 });
 
 test("Pakistan salary tax calculator covers current and historic years", async ({ page }) => {

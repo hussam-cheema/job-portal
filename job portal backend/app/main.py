@@ -22,11 +22,13 @@ from app.exceptions import (
     validation_exception_handler,
 )
 from app.logging_config import flush_production_logs, get_logger, setup_logging
+from app.middleware.conversion_upload_guard import ConversionUploadGuardMiddleware
 from app.routers import (
     analytics,
     auth,
     blog,
     contact,
+    document_conversion,
     infrastructure,
     jobs,
     pages,
@@ -238,6 +240,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             stop_event, thread = newsletter_worker
             stop_event.set()
             thread.join(timeout=2)
+        from app.services.document_conversion import conversion_manager
+
+        await conversion_manager.shutdown()
         logger.info("server stopped", extra={"r2_lifecycle": True})
         flush_production_logs()
 
@@ -254,6 +259,7 @@ cors_raw = os.getenv(
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
 )
 origins = [o.strip() for o in cors_raw.split(",") if o.strip()]
+app.add_middleware(ConversionUploadGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins or ["*"],
@@ -306,6 +312,7 @@ app.include_router(stats.router, prefix="/api", tags=["stats"])
 app.include_router(pages.router, prefix="/api", tags=["pages"])
 app.include_router(blog.router, prefix="/api", tags=["blog"])
 app.include_router(contact.router, prefix="/api", tags=["contact"])
+app.include_router(document_conversion.router, prefix="/api", tags=["document-conversion"])
 app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(seo.router, prefix="/api", tags=["seo"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])

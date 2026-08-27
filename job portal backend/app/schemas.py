@@ -90,6 +90,24 @@ class AnalyticsDashboard(BaseModel):
     locations: list[AnalyticsLocation] = Field(default_factory=list)
 
 
+class DocumentConversionJobOut(BaseModel):
+    job_id: str
+    status: Literal["queued", "converting", "verifying", "completed", "failed"]
+    progress: int = Field(ge=0, le=100)
+    stage: str
+    input_format: Literal["pdf", "docx"]
+    output_format: Literal["pdf", "docx"]
+    output_filename: str
+    estimated_seconds_remaining: Optional[int] = None
+    error: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
+
+
+class DocumentConversionJobCreated(DocumentConversionJobOut):
+    access_token: str
+
+
 class InfrastructureStorageMetric(BaseModel):
     id: str
     name: str
@@ -491,7 +509,12 @@ class ToolPageIn(BaseModel):
     slug: str = Field(..., min_length=1, max_length=200)
     title: str = Field(..., min_length=1, max_length=300)
     content: str = ""
-    tool_kind: Literal["content", "tax_calculator", "cgpa_calculator"] = "content"
+    tool_kind: Literal[
+        "content",
+        "tax_calculator",
+        "cgpa_calculator",
+        "document_converter",
+    ] = "content"
     sort_order: int = 0
     is_published: bool = True
     seo: Optional[SEOFields] = None
@@ -502,7 +525,14 @@ class ToolPageUpdate(BaseModel):
     slug: Optional[str] = Field(default=None, min_length=1, max_length=200)
     title: Optional[str] = Field(default=None, min_length=1, max_length=300)
     content: Optional[str] = None
-    tool_kind: Optional[Literal["content", "tax_calculator", "cgpa_calculator"]] = None
+    tool_kind: Optional[
+        Literal[
+            "content",
+            "tax_calculator",
+            "cgpa_calculator",
+            "document_converter",
+        ]
+    ] = None
     sort_order: Optional[int] = None
     is_published: Optional[bool] = None
     seo: Optional[SEOFields] = None

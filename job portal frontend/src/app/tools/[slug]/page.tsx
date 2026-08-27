@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CGPACalculator } from "@/components/CGPACalculator";
 import { PakistanTaxCalculator } from "@/components/PakistanTaxCalculator";
+import { DocumentConverter } from "@/components/DocumentConverter";
 import { fetchPublicSeo, fetchTool, fetchTools } from "@/lib/api";
 import { stripHtml } from "@/lib/format";
 import { wrapRichTextTables } from "@/lib/richText";
@@ -32,7 +33,7 @@ export default async function ToolPage({ params }: Props) {
   return <div className="site-wrap tool-page-wrap py-8 sm:py-12">
     <nav className="tool-breadcrumb" aria-label="Breadcrumb"><Link href="/tools">Tools</Link><span>›</span>{category && <><Link href={`/tools/categories/${category.slug}`}>{category.title}</Link><span>›</span></>}<span>{tool.title}</span></nav>
     <header className="tool-detail-hero"><p className="tool-kicker">Free online tool</p><h1>{tool.title}</h1></header>
-    {tool.tool_kind === "tax_calculator" ? <PakistanTaxCalculator /> : tool.tool_kind === "cgpa_calculator" ? <CGPACalculator /> : <div className="card-panel p-8 text-[var(--muted)]">This tool&apos;s interactive experience is being prepared.</div>}
+    {tool.tool_kind === "tax_calculator" ? <PakistanTaxCalculator /> : tool.tool_kind === "cgpa_calculator" ? <CGPACalculator /> : tool.tool_kind === "document_converter" ? <DocumentConverter /> : <div className="card-panel p-8 text-[var(--muted)]">This tool&apos;s interactive experience is being prepared.</div>}
     {tool.content && <section className="card-panel tool-cms-content"><div className="prose-job" dangerouslySetInnerHTML={{ __html: wrapRichTextTables(tool.content) }} /></section>}
   </div>;
 }
