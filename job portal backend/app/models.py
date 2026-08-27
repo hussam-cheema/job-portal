@@ -72,6 +72,12 @@ class AnalyticsVisit(Base):
             "location_verified",
             "visited_at",
         ),
+        Index(
+            "ix_analytics_visitor_path_last_seen",
+            "visitor_hash",
+            "path",
+            "last_seen_at",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -89,6 +95,9 @@ class AnalyticsVisit(Base):
     )
     visited_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
     )
 
 

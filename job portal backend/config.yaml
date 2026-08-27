@@ -37,6 +37,7 @@ branding:
   max_logo_mb: 2
 
 analytics:
+  timezone: "Asia/Karachi"
   trust_proxy_headers: true
   geolocation_enabled: true
   geolocation_url: "https://ipwho.is/{ip}"

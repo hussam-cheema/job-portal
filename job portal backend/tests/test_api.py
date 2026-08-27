@@ -2311,12 +2311,16 @@ def test_monthly_analytics(client: TestClient):
     data = response.json()
     assert data["unique_visitors"] == 2
     assert data["page_views"] == 2
+    assert data["timezone"] == "Asia/Karachi"
+    assert datetime.fromisoformat(data["generated_at"]).utcoffset().total_seconds() == 0
     assert data["locations"][0]["country"] == "Pakistan"
     assert data["locations"][0]["region"] == "Sindh"
     assert data["locations"][0]["city"] == "Karachi"
 
 
 def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: TestClient):
+    from app.models import AnalyticsVisit
+
     headers = {
         "user-agent": "Mozilla/5.0",
         "cf-ipcountry": "PK",
@@ -2325,7 +2329,24 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     }
     payload = {"visitor_id": "realtime-visitor", "path": "/jobs/live-role"}
     assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        original_visit_time = db.query(AnalyticsVisit).one().visited_at
+    finally:
+        db.close()
+
     assert client.post("/api/analytics/visit", headers=headers, json=payload).status_code == 201
+
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        stored = db.query(AnalyticsVisit).one()
+        assert stored.visited_at == original_visit_time
+        assert stored.last_seen_at >= stored.visited_at
+    finally:
+        db.close()
 
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
@@ -2334,6 +2355,7 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
     live = client.get("/api/admin/analytics/realtime?window_minutes=5", headers=auth)
     assert live.status_code == 200
     assert live.json()["active_visitors"] == 1
+    assert datetime.fromisoformat(live.json()["generated_at"]).utcoffset().total_seconds() == 0
     assert live.json()["pages"][0]["path"] == "/jobs/live-role"
     assert live.json()["locations"] == [
         {
@@ -2347,6 +2369,70 @@ def test_realtime_analytics_and_heartbeat_do_not_duplicate_page_views(client: Te
 
     monthly = client.get("/api/admin/analytics", headers=auth)
     assert monthly.json()["page_views"] == 1
+
+
+def test_daily_analytics_uses_pakistan_day_boundaries(client: TestClient):
+    from app.models import AnalyticsVisit
+    from app.routers import analytics as analytics_router
+
+    label, month_start, month_end = analytics_router._month_bounds("2026-08")
+    assert label == "2026-08"
+    assert month_start == datetime(2026, 7, 31, 19, 0)
+    assert month_end == datetime(2026, 8, 31, 19, 0)
+
+    visits = [
+        ("pkt-day-26", datetime(2026, 8, 26, 18, 59), "/day-26"),
+        ("pkt-day-27-a", datetime(2026, 8, 26, 19, 1), "/day-27-a"),
+        ("pkt-day-27-b", datetime(2026, 8, 27, 18, 59), "/day-27-b"),
+        ("pkt-day-28", datetime(2026, 8, 27, 19, 1), "/day-28"),
+    ]
+    override = app.dependency_overrides[get_db]()
+    db = next(override)
+    try:
+        db.add_all(
+            [
+                AnalyticsVisit(
+                    id=visit_id,
+                    visitor_hash=visit_id,
+                    path=path,
+                    country="Pakistan",
+                    location_verified=True,
+                    visited_at=visited_at,
+                    last_seen_at=visited_at,
+                )
+                for visit_id, visited_at, path in visits
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    response = client.get(
+        "/api/admin/analytics?month=2026-08",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    daily = {point["date"]: point for point in data["daily"]}
+    assert daily["2026-08-26"] == {
+        "date": "2026-08-26",
+        "visitors": 1,
+        "page_views": 1,
+    }
+    assert daily["2026-08-27"] == {
+        "date": "2026-08-27",
+        "visitors": 2,
+        "page_views": 2,
+    }
+    assert daily["2026-08-28"] == {
+        "date": "2026-08-28",
+        "visitors": 1,
+        "page_views": 1,
+    }
 
 
 def test_analytics_uses_full_country_names_and_merges_legacy_code_rows(
@@ -2376,6 +2462,7 @@ def test_analytics_uses_full_country_names_and_merges_legacy_code_rows(
                     city="Lahore",
                     location_verified=True,
                     visited_at=now,
+                    last_seen_at=now,
                 ),
                 AnalyticsVisit(
                     id="full-pakistan-location",
@@ -2386,6 +2473,7 @@ def test_analytics_uses_full_country_names_and_merges_legacy_code_rows(
                     city="lahore",
                     location_verified=True,
                     visited_at=now - timedelta(seconds=1),
+                    last_seen_at=now - timedelta(seconds=1),
                 ),
             ]
         )

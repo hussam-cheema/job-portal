@@ -84,10 +84,12 @@ class AnalyticsRealtime(BaseModel):
 
 class AnalyticsDashboard(BaseModel):
     month: str
+    timezone: str = "Asia/Karachi"
     unique_visitors: int
     page_views: int
     daily: list[AnalyticsDailyPoint] = Field(default_factory=list)
     locations: list[AnalyticsLocation] = Field(default_factory=list)
+    generated_at: datetime
 
 
 class DocumentConversionJobOut(BaseModel):

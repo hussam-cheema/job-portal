@@ -5,7 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -55,6 +55,8 @@ def test_composite_indexes_are_created_for_hot_query_paths():
             "analytics_visits": {
                 "ix_analytics_visitor_path_visited",
                 "ix_analytics_verified_visitor_visited",
+                "ix_analytics_visitor_path_last_seen",
+                "ix_analytics_visits_last_seen_at",
             },
             "jobs": {
                 "ix_jobs_published_created",
@@ -80,6 +82,50 @@ def test_composite_indexes_are_created_for_hot_query_paths():
             assert names <= actual
     finally:
         db.close()
+        engine.dispose()
+
+
+def test_analytics_timestamp_migration_preserves_original_visit_time(monkeypatch):
+    from app import database
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    original_visit_time = "2026-08-27 08:15:00"
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE analytics_visits ("
+                    "id VARCHAR(36) PRIMARY KEY, visited_at DATETIME NOT NULL)"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO analytics_visits (id, visited_at) "
+                    "VALUES ('legacy-visit', :visited_at)"
+                ),
+                {"visited_at": original_visit_time},
+            )
+
+        monkeypatch.setattr(database, "engine", engine)
+        monkeypatch.setattr(database, "DATABASE_URL", "sqlite://")
+        database._ensure_new_columns()
+
+        columns = {column["name"] for column in inspect(engine).get_columns("analytics_visits")}
+        assert "last_seen_at" in columns
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT visited_at, last_seen_at FROM analytics_visits "
+                    "WHERE id = 'legacy-visit'"
+                )
+            ).one()
+        assert str(row.visited_at) == original_visit_time
+        assert str(row.last_seen_at) == original_visit_time
+    finally:
         engine.dispose()
 
 

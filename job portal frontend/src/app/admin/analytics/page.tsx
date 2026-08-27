@@ -7,8 +7,14 @@ import { adminAnalytics, adminRealtimeAnalytics } from "@/lib/api";
 import type { AnalyticsDashboard, AnalyticsRealtime } from "@/lib/types";
 
 function currentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return `${year}-${month}`;
 }
 
 export default function AnalyticsPage() {
@@ -20,21 +26,23 @@ export default function AnalyticsPage() {
   const [realtime, setRealtime] = useState<AnalyticsRealtime | null>(null);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     if (!token) return;
-    setLoading(true);
-    setError(null);
+    if (!background) setLoading(true);
     try {
       setData(await adminAnalytics(token, month));
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analytics could not be loaded");
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [month, token]);
 
   useEffect(() => {
     void load();
+    const interval = window.setInterval(() => void load(true), 60_000);
+    return () => window.clearInterval(interval);
   }, [load]);
 
   useEffect(() => {
@@ -78,7 +86,7 @@ export default function AnalyticsPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-[var(--navy-100)]">Site analytics</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">Monthly visitors, page views, and locations.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Unique browsers, page views, and locations in Pakistan time.</p>
         </div>
         <div>
           <label className="field-label" htmlFor="analytics-month">Month</label>
@@ -102,8 +110,9 @@ export default function AnalyticsPage() {
               <p className="mt-1 text-xs text-[var(--muted)]">Last {realtime?.window_minutes || 5} minutes</p>
             </div>
             <div className="card-panel p-5">
-              <p className="text-xs uppercase text-[var(--muted)]">Unique visitors</p>
+              <p className="text-xs uppercase text-[var(--muted)]">Unique browsers</p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--navy-100)]">{data.unique_visitors.toLocaleString()}</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Selected month • PKT</p>
             </div>
             <div className="card-panel p-5">
               <p className="text-xs uppercase text-[var(--muted)]">Page views</p>
@@ -189,7 +198,10 @@ export default function AnalyticsPage() {
 
           <section className="card-panel mt-5 p-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-[var(--navy-100)]">Daily visitors</h3>
+              <div>
+                <h3 className="font-semibold text-[var(--navy-100)]">Daily unique browsers</h3>
+                <p className="mt-1 text-xs text-[var(--muted)]">Pakistan time (PKT) • refreshes every 60 seconds</p>
+              </div>
               <span className="text-xs text-[var(--muted)]">{data.month}</span>
             </div>
             <div className="mt-6 flex h-56 items-end gap-1 border-b border-[var(--border)]" role="img" aria-label={`Daily unique visitors for ${data.month}`}>
@@ -200,7 +212,7 @@ export default function AnalyticsPage() {
                     style={{ height: `${(point.visitors / maxVisitors) * 100}%` }}
                   />
                   <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-[var(--navy-700)] px-2 py-1 text-[10px] text-white group-hover:block">
-                    Day {index + 1}: {point.visitors} visitors
+                    Day {index + 1}: {point.visitors} unique browsers
                   </span>
                 </div>
               ))}

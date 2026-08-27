@@ -571,6 +571,7 @@ const server = createServer(async (request, response) => {
   if (path === "/api/admin/analytics") {
     return json(response, {
       month: new Date().toISOString().slice(0, 7), unique_visitors: 3,
+      timezone: "Asia/Karachi", generated_at: new Date().toISOString(),
       page_views: 3, daily: [], locations: [
         { country: "Pakistan", region: "Punjab", city: "Lahore", visitors: 2, page_views: 2 },
         { country: "United States", region: "Oregon", city: "Boardman", visitors: 1, page_views: 1 },

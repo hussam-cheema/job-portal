@@ -496,9 +496,16 @@ export function fetchBlogPost(slug: string): Promise<BlogPost | null> {
   return getFreshJson<BlogPost | null>(`/api/blog/${encodeURIComponent(slug)}`, null);
 }
 
-export async function trackVisit(visitorId: string, path: string): Promise<void> {
+export type AnalyticsTrackingResult =
+  | { ok: true }
+  | { ok: false; reason: "network" | "http"; status?: number };
+
+export async function trackVisit(
+  visitorId: string,
+  path: string,
+): Promise<AnalyticsTrackingResult> {
   try {
-    await fetch(`${API_BASE}/api/analytics/visit`, {
+    const response = await fetch(`${API_BASE}/api/analytics/visit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -507,8 +514,12 @@ export async function trackVisit(visitorId: string, path: string): Promise<void>
       }),
       keepalive: true,
     });
+    if (!response.ok) {
+      return { ok: false, reason: "http", status: response.status };
+    }
+    return { ok: true };
   } catch {
-    // Analytics must never interrupt navigation.
+    return { ok: false, reason: "network" };
   }
 }
 

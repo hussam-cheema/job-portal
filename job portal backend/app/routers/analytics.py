@@ -8,9 +8,10 @@ import threading
 import time
 from collections import OrderedDict
 from calendar import monthrange
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, unquote
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 import pycountry
@@ -40,6 +41,32 @@ _LOCATION_CACHE: OrderedDict[
     tuple[float, tuple[str, str | None, str | None]],
 ] = OrderedDict()
 _LOCATION_CACHE_LOCK = threading.Lock()
+ANALYTICS_TIMEZONE_NAME = str(
+    cfg("analytics", "timezone", default="Asia/Karachi") or "Asia/Karachi"
+)
+try:
+    ANALYTICS_TIMEZONE = ZoneInfo(ANALYTICS_TIMEZONE_NAME)
+except ZoneInfoNotFoundError:
+    # Pakistan currently uses UTC+05:00 without daylight-saving changes. Keep
+    # reporting available if a minimal container image omits the IANA database.
+    ANALYTICS_TIMEZONE_NAME = "Asia/Karachi"
+    ANALYTICS_TIMEZONE = timezone(timedelta(hours=5), name="PKT")
+
+
+def _utc_aware(value: datetime) -> datetime:
+    """Return an ISO-serializable UTC datetime without changing the instant."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _utc_naive(value: datetime) -> datetime:
+    """Convert an aware boundary to the database's naive-UTC representation."""
+    return _utc_aware(value).replace(tzinfo=None)
+
+
+def _analytics_local(value: datetime) -> datetime:
+    return _utc_aware(value).astimezone(ANALYTICS_TIMEZONE)
 
 
 def _enabled(value: object) -> bool:
@@ -234,7 +261,7 @@ def _latest_verified_location(
             AnalyticsVisit.visitor_hash == visitor_hash,
             AnalyticsVisit.location_verified.is_(True),
         )
-        .order_by(AnalyticsVisit.visited_at.desc())
+        .order_by(AnalyticsVisit.last_seen_at.desc())
         .limit(1)
     ).first()
     if not row or not _clean_country(row.country):
@@ -265,7 +292,7 @@ def _verified_locations_by_visitor(
                 AnalyticsVisit.visitor_hash.in_(hashes[start : start + 500]),
                 AnalyticsVisit.location_verified.is_(True),
             )
-            .order_by(AnalyticsVisit.visited_at.desc())
+            .order_by(AnalyticsVisit.last_seen_at.desc())
         ).all()
         for row in rows:
             country = _clean_country(row.country)
@@ -319,12 +346,15 @@ def record_visit(
         select(AnalyticsVisit).where(
             AnalyticsVisit.visitor_hash == visitor_hash,
             AnalyticsVisit.path == path,
-            AnalyticsVisit.visited_at >= cutoff,
+            AnalyticsVisit.last_seen_at >= cutoff,
         )
+        .order_by(AnalyticsVisit.last_seen_at.desc())
+        .limit(1)
     ).scalar_one_or_none()
     if duplicate:
-        # Heartbeats refresh presence without increasing monthly page-view totals.
-        duplicate.visited_at = datetime.utcnow()
+        # Heartbeats refresh presence without rewriting the immutable visit
+        # timestamp or increasing monthly page-view totals.
+        duplicate.last_seen_at = datetime.utcnow()
         if not duplicate.location_verified or not duplicate.city:
             country, region, city, location_verified = _location(request)
             if not location_verified:
@@ -347,6 +377,7 @@ def record_visit(
             if previous:
                 country, region, city = previous
                 location_verified = True
+        now = datetime.utcnow()
         db.add(
             AnalyticsVisit(
                 id=str(uuid4()),
@@ -356,7 +387,8 @@ def record_visit(
                 region=region,
                 city=city,
                 location_verified=location_verified,
-                visited_at=datetime.utcnow(),
+                visited_at=now,
+                last_seen_at=now,
             )
         )
         db.commit()
@@ -379,10 +411,10 @@ def realtime_analytics(
             AnalyticsVisit.region,
             AnalyticsVisit.city,
             AnalyticsVisit.location_verified,
-            AnalyticsVisit.visited_at,
+            AnalyticsVisit.last_seen_at,
         )
-        .where(AnalyticsVisit.visited_at >= cutoff)
-        .order_by(AnalyticsVisit.visited_at.desc())
+        .where(AnalyticsVisit.last_seen_at >= cutoff)
+        .order_by(AnalyticsVisit.last_seen_at.desc())
     ).all()
 
     active_visitors = {row.visitor_hash for row in rows}
@@ -399,12 +431,12 @@ def realtime_analytics(
     for row in rows:
         page = pages.setdefault(
             row.path,
-            {"visitors": set(), "page_views": 0, "last_seen": row.visited_at},
+            {"visitors": set(), "page_views": 0, "last_seen": row.last_seen_at},
         )
         page["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         page["page_views"] = int(page["page_views"]) + 1
-        if row.visited_at > page["last_seen"]:  # type: ignore[operator]
-            page["last_seen"] = row.visited_at
+        if row.last_seen_at > page["last_seen"]:  # type: ignore[operator]
+            page["last_seen"] = row.last_seen_at
         display_location = _effective_row_location(row, verified_locations)
         location_key = _location_identity(display_location)
         location = locations.setdefault(
@@ -414,19 +446,19 @@ def realtime_analytics(
                 "region": display_location[1],
                 "city": display_location[2],
                 "visitors": set(),
-                "last_seen": row.visited_at,
+                "last_seen": row.last_seen_at,
             },
         )
         location["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
-        if row.visited_at > location["last_seen"]:  # type: ignore[operator]
-            location["last_seen"] = row.visited_at
+        if row.last_seen_at > location["last_seen"]:  # type: ignore[operator]
+            location["last_seen"] = row.last_seen_at
 
     page_rows = [
         {
             "path": path,
             "visitors": len(data["visitors"]),
             "page_views": data["page_views"],
-            "last_seen": data["last_seen"],
+            "last_seen": _utc_aware(data["last_seen"]),
         }
         for path, data in pages.items()
     ]
@@ -437,7 +469,7 @@ def realtime_analytics(
             "region": data["region"],
             "city": data["city"],
             "visitors": len(data["visitors"]),
-            "last_seen": data["last_seen"],
+            "last_seen": _utc_aware(data["last_seen"]),
         }
         for data in locations.values()
     ]
@@ -448,26 +480,33 @@ def realtime_analytics(
         page_views=len(rows),
         pages=page_rows,
         locations=location_rows,
-        generated_at=now,
+        generated_at=_utc_aware(now),
     )
 
 
 def _month_bounds(value: str | None) -> tuple[str, datetime, datetime]:
     try:
-        start = (
-            datetime.strptime(value, "%Y-%m")
-            if value
-            else datetime.utcnow().replace(
-                day=1, hour=0, minute=0, second=0, microsecond=0
-            )
-        )
+        local_now = datetime.now(ANALYTICS_TIMEZONE)
+        parsed = datetime.strptime(value, "%Y-%m") if value else local_now
     except ValueError:
         raise HTTPException(
             status_code=400, detail="month must use YYYY-MM format"
         ) from None
-    start = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    days = monthrange(start.year, start.month)[1]
-    return start.strftime("%Y-%m"), start, start + timedelta(days=days)
+    local_start = parsed.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+        tzinfo=ANALYTICS_TIMEZONE,
+    )
+    days = monthrange(local_start.year, local_start.month)[1]
+    local_end = local_start + timedelta(days=days)
+    return (
+        local_start.strftime("%Y-%m"),
+        _utc_naive(local_start),
+        _utc_naive(local_end),
+    )
 
 
 @router.get("/admin/analytics", response_model=AnalyticsDashboard)
@@ -504,7 +543,7 @@ def analytics_dashboard(
     )
     for row in rows:
         all_visitors.add(row.visitor_hash)
-        day = row.visited_at.strftime("%Y-%m-%d")
+        day = _analytics_local(row.visited_at).strftime("%Y-%m-%d")
         day_data = daily.setdefault(day, {"visitors": set(), "page_views": 0})
         day_data["visitors"].add(row.visitor_hash)  # type: ignore[union-attr]
         day_data["page_views"] = int(day_data["page_views"]) + 1
@@ -548,8 +587,10 @@ def analytics_dashboard(
     )
     return AnalyticsDashboard(
         month=label,
+        timezone=ANALYTICS_TIMEZONE_NAME,
         unique_visitors=len(all_visitors),
         page_views=len(rows),
         daily=daily_points,
         locations=location_points,
+        generated_at=_utc_aware(datetime.utcnow()),
     )

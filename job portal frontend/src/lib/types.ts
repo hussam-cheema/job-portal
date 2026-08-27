@@ -488,6 +488,7 @@ export type Branding = {
 
 export type AnalyticsDashboard = {
   month: string;
+  timezone: string;
   unique_visitors: number;
   page_views: number;
   daily: Array<{ date: string; visitors: number; page_views: number }>;
@@ -498,6 +499,7 @@ export type AnalyticsDashboard = {
     visitors: number;
     page_views: number;
   }>;
+  generated_at: string;
 };
 
 export type AnalyticsRealtime = {

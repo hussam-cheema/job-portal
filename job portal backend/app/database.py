@@ -234,6 +234,7 @@ def _ensure_new_columns() -> None:
         "ALTER TABLE seo_meta ADD COLUMN IF NOT EXISTS analysis JSON",
         "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS city VARCHAR(150) NULL",
+        "ALTER TABLE analytics_visits ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP NULL",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provinces JSON NULL",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS newspaper VARCHAR(200) NOT NULL DEFAULT ''",
         "ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL",
@@ -255,6 +256,7 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE seo_meta ADD COLUMN analysis JSON",
             "ALTER TABLE analytics_visits ADD COLUMN location_verified BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE analytics_visits ADD COLUMN city VARCHAR(150)",
+            "ALTER TABLE analytics_visits ADD COLUMN last_seen_at DATETIME",
             "ALTER TABLE jobs ADD COLUMN provinces JSON",
             "ALTER TABLE jobs ADD COLUMN newspaper VARCHAR(200) NOT NULL DEFAULT ''",
             "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
@@ -273,7 +275,21 @@ def _ensure_new_columns() -> None:
                     conn.execute(text(stmt))
                 except Exception:
                     pass
+            # Existing analytics rows predate the dedicated presence timestamp.
+            # Preserve their original visit time and initialize last_seen_at from it.
+            conn.execute(
+                text(
+                    "UPDATE analytics_visits SET last_seen_at = visited_at "
+                    "WHERE last_seen_at IS NULL"
+                )
+            )
             if not DATABASE_URL.startswith("sqlite"):
+                conn.execute(
+                    text(
+                        "ALTER TABLE analytics_visits "
+                        "ALTER COLUMN last_seen_at SET NOT NULL"
+                    )
+                )
                 # Page slugs are unique inside their public route namespace, not
                 # globally: /companies/dawn and /newspapers/dawn are both valid.
                 conn.execute(text("ALTER TABLE pages DROP CONSTRAINT IF EXISTS pages_slug_key"))
@@ -296,6 +312,10 @@ def _ensure_performance_indexes() -> None:
         "ON analytics_visits (visitor_hash, path, visited_at)",
         "CREATE INDEX IF NOT EXISTS ix_analytics_verified_visitor_visited "
         "ON analytics_visits (visitor_hash, location_verified, visited_at)",
+        "CREATE INDEX IF NOT EXISTS ix_analytics_visitor_path_last_seen "
+        "ON analytics_visits (visitor_hash, path, last_seen_at)",
+        "CREATE INDEX IF NOT EXISTS ix_analytics_visits_last_seen_at "
+        "ON analytics_visits (last_seen_at)",
         "CREATE INDEX IF NOT EXISTS ix_jobs_published_created "
         "ON jobs (published_date, created_at)",
         "CREATE INDEX IF NOT EXISTS ix_jobs_type_published "

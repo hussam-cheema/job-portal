@@ -61,6 +61,9 @@ test("all remaining admin navigation pages render", async ({ page }) => {
 
 test("site analytics shows full, non-redundant country names", async ({ page }) => {
   await page.goto("/admin/analytics");
+  await expect(page.getByText("Unique browsers", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Daily unique browsers", exact: true })).toBeVisible();
+  await expect(page.getByText(/Pakistan time \(PKT\).*refreshes every 60 seconds/)).toBeVisible();
   const realtimeLocations = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Realtime visitor locations", exact: true }),
   });
