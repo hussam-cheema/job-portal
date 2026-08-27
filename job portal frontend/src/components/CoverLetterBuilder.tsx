@@ -141,7 +141,7 @@ export function CoverLetterBuilder() {
         </p>
       </div>
 
-      <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
+      <div className="builder-workspace grid gap-8">
         <div className="builder-form-stack space-y-5">
           <FormSection title="Document heading">
             <Field label="Cover letter title" value={data.documentTitle} placeholder="Google Cover Letter" onChange={(value) => update("documentTitle", value)} />
@@ -179,7 +179,7 @@ export function CoverLetterBuilder() {
           </FormSection>
         </div>
 
-        <aside className="builder-preview-panel xl:sticky xl:top-20">
+        <aside className="builder-preview-panel">
           <div className="builder-preview-heading mb-3">
             <h2 className="font-semibold text-[var(--navy-100)]">A4 cover letter preview</h2>
             <p className="text-xs text-[var(--muted)]">

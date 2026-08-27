@@ -20,6 +20,39 @@ const builders = [
   },
 ] as const;
 
+for (const builder of builders) {
+  test(`${builder.path} stacks its building blocks above the preview on desktop`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(builder.path);
+
+    const layout = await page.evaluate(() => {
+      const form = document.querySelector<HTMLElement>(".builder-form-stack");
+      const preview = document.querySelector<HTMLElement>(".builder-preview-panel");
+      if (!form || !preview) return null;
+
+      const formRect = form.getBoundingClientRect();
+      const previewRect = preview.getBoundingClientRect();
+      return {
+        form: {
+          bottom: formRect.bottom,
+          left: formRect.left,
+          right: formRect.right,
+        },
+        preview: {
+          left: previewRect.left,
+          right: previewRect.right,
+          top: previewRect.top,
+        },
+      };
+    });
+
+    expect(layout).not.toBeNull();
+    expect(layout!.preview.top).toBeGreaterThanOrEqual(layout!.form.bottom);
+    expect(layout!.preview.left).toBeCloseTo(layout!.form.left, 0);
+    expect(layout!.preview.right).toBeCloseTo(layout!.form.right, 0);
+  });
+}
+
 for (const viewport of viewports) {
   for (const builder of builders) {
     test(`${builder.path} fits the ${viewport.name} viewport without clipping`, async ({ page }) => {

@@ -365,7 +365,7 @@ export function ResumeBuilder() {
         </p>
       </div>
 
-      <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
+      <div className="builder-workspace grid gap-8">
         <div className="builder-form-stack space-y-5">
           <section className="builder-form-card resume-template-picker">
             <div>
@@ -577,7 +577,7 @@ export function ResumeBuilder() {
           )}
         </div>
 
-        <aside className="builder-preview-panel xl:sticky xl:top-20">
+        <aside className="builder-preview-panel">
           <div className="builder-preview-heading mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="font-semibold text-[var(--navy-100)]">A4 resume preview</h2>
