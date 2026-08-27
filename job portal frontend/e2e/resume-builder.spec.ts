@@ -156,6 +156,71 @@ test("Resume Builder includes only the selected sections without discarding thei
   expect(documentXml).toContain("Activities");
 });
 
+test("Resume Builder switches among four layouts and exports the selected design", async ({
+  page,
+}) => {
+  await page.goto("/resume-builder");
+  const preview = page.getByTestId("resume-preview");
+  const classic = page.getByRole("radio", { name: /Classic/ });
+
+  await expect(classic).toBeChecked();
+  await expect(preview).toHaveAttribute("data-template", "classic");
+  await page.getByLabel("Full name").fill("Ayesha Khan");
+  await page.getByLabel("Email").fill("ayesha@example.com");
+  await page.getByLabel("Job title").first().fill("Product Designer");
+  await page.getByLabel("Company").first().fill("Design Studio");
+  await page.getByRole("textbox", { name: "Technical skills" }).fill(
+    "Research, Figma, Prototyping, Design Systems"
+  );
+
+  const templates = [
+    { label: /Editorial/, id: "editorial", color: "F5D400" },
+    { label: /Evergreen/, id: "evergreen", color: "285A1C" },
+    { label: /Modern/, id: "modern", color: "216C98" },
+  ];
+
+  for (const template of templates) {
+    await page.getByRole("radio", { name: template.label }).check();
+    await expect(preview).toHaveAttribute("data-template", template.id);
+    await expect(preview).toContainText("Ayesha Khan");
+    await expect(preview).toContainText("Product Designer");
+    await expect(preview).toContainText("Figma");
+
+    const docxPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download Resume as DOCX" }).click();
+    const docx = await docxPromise;
+    if (template.id === "modern" && process.env.RESUME_TEMPLATE_DOCX_OUTPUT) {
+      await docx.saveAs(process.env.RESUME_TEMPLATE_DOCX_OUTPUT);
+    }
+    const docxPath = await docx.path();
+    expect(docxPath).toBeTruthy();
+    const archive = await JSZip.loadAsync(await readFile(docxPath!));
+    const documentXml = await archive.file("word/document.xml")!.async("string");
+    expect(documentXml.toLowerCase()).toContain("ayesha khan");
+    expect(documentXml.toLowerCase()).toContain("product designer");
+    expect(documentXml.toLowerCase()).toContain("design studio");
+    expect(documentXml).toContain(template.color);
+  }
+
+  const pdfPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download Resume as PDF" }).click();
+  const pdf = await pdfPromise;
+  if (process.env.RESUME_TEMPLATE_PDF_OUTPUT) {
+    await pdf.saveAs(process.env.RESUME_TEMPLATE_PDF_OUTPUT);
+  }
+  const pdfPath = await pdf.path();
+  expect(pdfPath).toBeTruthy();
+  const pdfBytes = await readFile(pdfPath!);
+  expect(pdf.suggestedFilename()).toBe("ayesha-khan-resume.pdf");
+  expect(pdfBytes.subarray(0, 4).toString()).toBe("%PDF");
+  expect(pdfBytes.length).toBeGreaterThan(20_000);
+  expect(pdfBytes.toString("latin1")).toContain("Ayesha Khan");
+
+  await classic.check();
+  await expect(preview).toHaveAttribute("data-template", "classic");
+  await expect(page.getByLabel("Full name")).toHaveValue("Ayesha Khan");
+});
+
 test("Resume Builder scores the current form and highlights ATS improvements", async ({
   page,
 }) => {

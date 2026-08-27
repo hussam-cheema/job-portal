@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useA4PreviewScale } from "@/hooks/useA4PreviewScale";
 import { scoreResumeForAts, type AtsScoreResult } from "@/lib/atsResumeScore";
+import { ResumePreview } from "@/components/ResumePreview";
 import {
   buildResumeAtsText,
   createResumeDocx,
@@ -11,6 +12,7 @@ import {
   type ResumeDocumentData,
   type ResumeAdditionalSelection,
   type ResumeSectionSelection,
+  type ResumeTemplateId,
 } from "@/lib/documentDownloads";
 
 type Education = {
@@ -103,21 +105,26 @@ const emptyActivity = (): Activity => ({
   achievements: "",
 });
 
-function lines(value: string, fallback: string[]) {
-  const items = value
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : fallback;
-}
+const resumeTemplates: Array<{
+  id: ResumeTemplateId;
+  name: string;
+  description: string;
+}> = [
+  { id: "classic", name: "Classic", description: "ATS-first and timeless" },
+  { id: "editorial", name: "Editorial", description: "Bold monochrome sidebar" },
+  { id: "evergreen", name: "Evergreen", description: "Fresh green profile layout" },
+  { id: "modern", name: "Modern", description: "Clean two-column showcase" },
+];
 
-function ResumeSection({ title, children }: { title: string; children: React.ReactNode }) {
+function TemplateThumbnail({ template }: { template: ResumeTemplateId }) {
   return (
-    <section className="resume-section">
-      <h2>{title}</h2>
-      <div className="resume-section-rule" aria-hidden="true" />
-      {children}
-    </section>
+    <span className={`resume-template-thumbnail is-${template}`} aria-hidden="true">
+      <i className="template-thumb-header" />
+      <i className="template-thumb-sidebar" />
+      <i className="template-thumb-line one" />
+      <i className="template-thumb-line two" />
+      <i className="template-thumb-line three" />
+    </span>
   );
 }
 
@@ -214,12 +221,14 @@ export function ResumeBuilder() {
     volunteerExperience: true,
     interests: true,
   });
+  const [selectedTemplate, setSelectedTemplate] = useState<ResumeTemplateId>("classic");
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [atsResult, setAtsResult] = useState<AtsScoreResult | null>(null);
   const [atsFingerprint, setAtsFingerprint] = useState<string | null>(null);
   const atsResultRef = useRef<HTMLDivElement>(null);
   const resumeData: ResumeDocumentData = {
+    template: selectedTemplate,
     personal,
     education,
     experience,
@@ -358,6 +367,46 @@ export function ResumeBuilder() {
 
       <div className="builder-workspace grid gap-8 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.22fr)] xl:items-start">
         <div className="builder-form-stack space-y-5">
+          <section className="builder-form-card resume-template-picker">
+            <div>
+              <p className="resume-section-picker-kicker">Choose your look</p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">
+                Resume template
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Your information stays unchanged when you switch designs. Classic is selected by
+                default.
+              </p>
+            </div>
+            <fieldset className="mt-4">
+              <legend className="sr-only">Choose a resume template</legend>
+              <div className="resume-template-options">
+                {resumeTemplates.map((template) => (
+                  <label
+                    key={template.id}
+                    className={`resume-template-option ${
+                      selectedTemplate === template.id ? "is-selected" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="resume-template"
+                      value={template.id}
+                      checked={selectedTemplate === template.id}
+                      onChange={() => setSelectedTemplate(template.id)}
+                    />
+                    <TemplateThumbnail template={template.id} />
+                    <span className="resume-template-copy">
+                      <strong>{template.name}</strong>
+                      <small>{template.description}</small>
+                    </span>
+                    <span className="resume-template-check" aria-hidden="true">✓</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </section>
+
           <section className="builder-form-card resume-section-picker">
             <div>
               <p className="resume-section-picker-kicker">Build it your way</p>
@@ -539,117 +588,14 @@ export function ResumeBuilder() {
           </div>
           <div ref={shellRef} className="resume-preview-shell" data-testid="resume-preview-shell">
             <div className="document-preview-stage" style={stageStyle}>
-              <div ref={previewRef} className="resume-paper" style={documentStyle} data-testid="resume-preview">
-              <header className="resume-header">
-                <h1>{personal.fullName || "YOUR NAME"}</h1>
-                <p>
-                  {[personal.address || "Address", personal.phone || "Phone", personal.email || "Email"]
-                    .filter(Boolean)
-                    .join(" • ")}
-                </p>
-              </header>
-
-              {includedSections.education && (
-              <ResumeSection title="Education">
-                {education.map((item, index) => (
-                  <div className="resume-entry" key={index}>
-                    <div className="resume-entry-row">
-                      <div>
-                        <h3>{item.school || (index === 0 ? "[UNIVERSITY/COLLEGE NAME]" : "[YOUR HIGH SCHOOL NAME]")}</h3>
-                        <p>{item.degree || (index === 0 ? "[Bachelor of Science in Major]" : "Include any honours, awards, or relevant extracurricular activities if applicable.")}</p>
-                      </div>
-                      <div className="resume-entry-aside">
-                        <p>{item.location || (index === 0 ? "[Location]" : "[City, State]")}</p>
-                        <p>{item.graduationYear || "[Year of Graduation]"}</p>
-                      </div>
-                    </div>
-                    {index === 0 ? (
-                      <>
-                        <p>{item.details || "GPA: [Your GPA, if it is above 3.0]"}</p>
-                        <p>Relevant coursework: {item.coursework || "[List any specific courses relevant to the job]"}</p>
-                      </>
-                    ) : (
-                      <p>{item.details || "If you have pursued any specialized coursework or achieved notable academic accomplishments during high school."}</p>
-                    )}
-                  </div>
-                ))}
-              </ResumeSection>
-              )}
-
-              {includedSections.experience && (
-              <ResumeSection title="Experience">
-                {experience.map((item, index) => (
-                  <div className="resume-entry" key={index}>
-                    <div className="resume-entry-row">
-                      <div>
-                        <h3>{item.jobTitle || "[JOB TITLE]"}</h3>
-                        <p>{item.company || "[Company Name]"}</p>
-                      </div>
-                      <div className="resume-entry-aside">
-                        <p>{item.location || "[Location]"}</p>
-                        <p>{item.dates || "[Dates of Employment]"}</p>
-                      </div>
-                    </div>
-                    <ul>
-                      {lines(item.achievements, [
-                        "Spearheaded [specific project or initiative], resulting in [quantifiable achievement].",
-                        "Collaborated with cross-functional teams to [accomplishment or task].",
-                        "Implemented [strategy or process improvement], leading to [positive outcome].",
-                        "Managed [specific responsibility or duty], ensuring [desired outcome].",
-                      ]).map((achievement, bulletIndex) => <li key={bulletIndex}>{achievement}</li>)}
-                    </ul>
-                  </div>
-                ))}
-              </ResumeSection>
-              )}
-
-              {includedSections.projects && (
-              <ResumeSection title="University Projects">
-                {projects.map((item, index) => (
-                  <div className="resume-entry" key={index}>
-                    <div className="resume-entry-row">
-                      <h3>{item.title || "[PROJECT TITLE]"}</h3>
-                      <div className="resume-entry-aside"><p>{item.dates || "[Dates]"}</p></div>
-                    </div>
-                    <ul>
-                      <li>Description: {item.description || "Brief overview of the project and its objectives."}</li>
-                      <li>Role: {item.role || "Your specific role or contribution to the project."}</li>
-                      <li>Technologies Used: {item.technologies || "Any tools, software, or programming languages utilized."}</li>
-                      <li>Outcome: {item.outcome || "Results achieved or lessons learned from the project."}</li>
-                    </ul>
-                  </div>
-                ))}
-              </ResumeSection>
-              )}
-
-              {includedSections.activities && (
-              <ResumeSection title="Activities">
-                {activities.map((item, index) => (
-                  <div className="resume-entry" key={index}>
-                    <div className="resume-entry-row">
-                      <h3>{item.name || "[ACTIVITY NAME]"}</h3>
-                      <div className="resume-entry-aside"><p>{item.dates || "[Dates]"}</p></div>
-                    </div>
-                    <ul>
-                      <li>Description: {item.description || "Brief overview of the activity and your role."}</li>
-                      <li>Skills Developed: {item.skills || "Any relevant skills or qualities honed through participation."}</li>
-                      <li>Achievements: {item.achievements || "Any notable achievements or leadership roles within the activity."}</li>
-                    </ul>
-                  </div>
-                ))}
-              </ResumeSection>
-              )}
-
-              {includedSections.additional && Object.values(includedAdditional).some(Boolean) && (
-              <ResumeSection title="Additional">
-                <div className="resume-additional">
-                  {includedAdditional.languages && <p><strong>Language Skills:</strong> {additional.languages || "[List any languages you speak fluently or proficiently.]"}</p>}
-                  {includedAdditional.technicalSkills && <p><strong>Technical Skills:</strong> {additional.technicalSkills || "[List any relevant technical skills or software proficiencies.]"}</p>}
-                  {includedAdditional.volunteerExperience && <p><strong>Volunteer Experience:</strong> {additional.volunteerExperience || "[Briefly mention any volunteer work you have done, highlighting skills or experiences gained.]"}</p>}
-                  {includedAdditional.interests && <p><strong>Interests/Hobbies:</strong> {additional.interests || "[Include any interests or hobbies that demonstrate relevant skills or qualities, or provide insight into your personality.]"}</p>}
-                </div>
-              </ResumeSection>
-              )}
+              <div
+                ref={previewRef}
+                className={`resume-paper resume-paper-${selectedTemplate}`}
+                style={documentStyle}
+                data-testid="resume-preview"
+                data-template={selectedTemplate}
+              >
+                <ResumePreview data={resumeData} template={selectedTemplate} />
               </div>
             </div>
           </div>

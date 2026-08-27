@@ -47,7 +47,10 @@ export type ResumeAdditionalSelection = {
   interests: boolean;
 };
 
+export type ResumeTemplateId = "classic" | "editorial" | "evergreen" | "modern";
+
 export type ResumeDocumentData = {
+  template?: ResumeTemplateId;
   personal: {
     fullName: string;
     address: string;
@@ -222,7 +225,213 @@ export function buildResumeAtsText(data: ResumeDocumentData) {
   return output;
 }
 
+async function createStyledResumeDocx(data: ResumeDocumentData) {
+  const {
+    AlignmentType,
+    BorderStyle,
+    Document,
+    LevelFormat,
+    LineRuleType,
+    Packer,
+    PageOrientation,
+    Paragraph,
+    Table,
+    TableBorders,
+    TableCell,
+    TableLayoutType,
+    TableRow,
+    TextRun,
+    WidthType,
+  } = await import("docx");
+
+  const template = data.template || "classic";
+  const palette = template === "editorial"
+    ? { ink: "202020", accent: "F5D400", soft: "F2F2F2", side: "202020", sideInk: "FFFFFF" }
+    : template === "evergreen"
+      ? { ink: "285A1C", accent: "87C642", soft: "EAF4D5", side: "EAF4D5", sideInk: "263120" }
+      : { ink: "216C98", accent: "42BBA8", soft: "EAF4F8", side: "FFFFFF", sideInk: "171717" };
+  const includedSections = { education: true, experience: true, projects: true, activities: true, additional: true, ...data.includedSections };
+  const includedAdditional = { languages: true, technicalSkills: true, volunteerExperience: true, interests: true, ...data.includedAdditional };
+  const bodyFont = "Arial";
+  const pageWidth = 10_772;
+  const noBorder = { style: BorderStyle.NONE, color: "FFFFFF", size: 0 };
+  const paragraphs = {
+    left: [] as Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>,
+    right: [] as Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>,
+  };
+
+  const text = (value: string, options: { bold?: boolean; color?: string; size?: number; italics?: boolean; allCaps?: boolean } = {}) =>
+    new TextRun({
+      text: value,
+      font: bodyFont,
+      size: options.size || 18,
+      bold: options.bold,
+      italics: options.italics,
+      allCaps: options.allCaps,
+      color: options.color || "171717",
+    });
+
+  const paragraph = (
+    value: string,
+    options: { bold?: boolean; color?: string; size?: number; after?: number; alignment?: (typeof AlignmentType)[keyof typeof AlignmentType]; keepNext?: boolean; allCaps?: boolean } = {}
+  ) => new Paragraph({
+    children: [text(value, options)],
+    alignment: options.alignment,
+    keepNext: options.keepNext,
+    spacing: { after: options.after ?? 80, line: 286, lineRule: LineRuleType.AUTO },
+  });
+
+  const heading = (title: string) => new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    layout: TableLayoutType.FIXED,
+    borders: TableBorders.NONE,
+    rows: [new TableRow({
+      cantSplit: true,
+      children: [new TableCell({
+        shading: { fill: template === "editorial" ? "FFFFFF" : palette.ink },
+        margins: { top: 95, bottom: 95, left: 180, right: 120, marginUnitType: WidthType.DXA },
+        borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+        children: [paragraph(title.toUpperCase(), { bold: true, size: 25, color: template === "editorial" ? palette.ink : "FFFFFF", after: 0, keepNext: true })],
+      })],
+    })],
+  });
+
+  const bullet = (value: string, color = "171717") => new Paragraph({
+    children: [text(value, { color })],
+    numbering: { reference: "styled-resume-bullets", level: 0 },
+    spacing: { after: 45, line: 286, lineRule: LineRuleType.AUTO },
+  });
+
+  const addEducation = (target: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>) => {
+    target.push(heading("Education"));
+    data.education.forEach((item, index) => {
+      target.push(
+        paragraph(item.school || (index === 0 ? "[UNIVERSITY / COLLEGE]" : "[SCHOOL NAME]"), { bold: true, size: 21, color: palette.ink, after: 10, keepNext: true }),
+        paragraph(item.degree || "[Degree / programme]", { bold: true, after: 10 }),
+        paragraph([item.location || "[Location]", item.graduationYear || "[Year]"].join(" • "), { color: "5B6472", after: 35 }),
+        paragraph(item.details || "Academic achievements, honours and relevant activities.", { after: 35 })
+      );
+      if (item.coursework) target.push(paragraph(`Coursework: ${item.coursework}`, { after: 120 }));
+    });
+  };
+
+  const addExperience = (target: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>) => {
+    target.push(heading("Work Experience"));
+    data.experience.forEach((item) => {
+      target.push(
+        paragraph(item.jobTitle || "[JOB TITLE]", { bold: true, size: 21, color: palette.ink, after: 10, keepNext: true }),
+        paragraph(item.company || "[Company Name]", { bold: true, after: 10 }),
+        paragraph([item.location || "[Location]", item.dates || "[Employment dates]"].join(" • "), { color: palette.accent, after: 45 })
+      );
+      target.push(...populatedLines(item.achievements, [
+        "Describe a measurable achievement or responsibility.",
+        "Explain the impact of your work on the team or organisation.",
+      ]).map((value) => bullet(value)));
+      target.push(paragraph("", { after: 85 }));
+    });
+  };
+
+  const addProjects = (target: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>) => {
+    target.push(heading("Projects"));
+    data.projects.forEach((item) => target.push(
+      paragraph(`${item.title || "[PROJECT TITLE]"}  ${item.dates || "[Dates]"}`, { bold: true, size: 20, color: palette.ink, after: 25 }),
+      paragraph(item.description || "Brief overview of the project and its objective.", { after: 20 }),
+      paragraph(`Role: ${item.role || "Your contribution"}`, { after: 20 }),
+      paragraph(`Tools: ${item.technologies || "Relevant technologies"}`, { after: 20 }),
+      paragraph(`Outcome: ${item.outcome || "Result or lesson learned"}`, { after: 100 })
+    ));
+  };
+
+  const addActivities = (target: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>) => {
+    target.push(heading("Activities"));
+    data.activities.forEach((item) => target.push(
+      paragraph(`${item.name || "[ACTIVITY NAME]"}  ${item.dates || "[Dates]"}`, { bold: true, size: 20, color: palette.ink, after: 25 }),
+      paragraph(item.description || "Brief overview of your participation and role.", { after: 20 }),
+      paragraph(`Skills: ${item.skills || "Relevant skills developed"}`, { after: 20 }),
+      paragraph(`Achievements: ${item.achievements || "Leadership or notable result"}`, { after: 100 })
+    ));
+  };
+
+  const addAdditional = (target: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>, withHeading = true, color = "171717") => {
+    if (withHeading) target.push(heading("Additional"));
+    if (includedAdditional.languages) target.push(paragraph(`Languages: ${data.additional.languages || "English, Urdu"}`, { color }));
+    if (includedAdditional.technicalSkills) target.push(paragraph(`Technical skills: ${data.additional.technicalSkills || "Add your software and technical strengths"}`, { color }));
+    if (includedAdditional.volunteerExperience) target.push(paragraph(`Volunteering: ${data.additional.volunteerExperience || "Add relevant community experience"}`, { color }));
+    if (includedAdditional.interests) target.push(paragraph(`Interests: ${data.additional.interests || "Add interests that support your application"}`, { color }));
+  };
+
+  const name = data.personal.fullName || "YOUR NAME";
+  const contact = [data.personal.address || "Address", data.personal.phone || "Phone", data.personal.email || "Email"].join(" • ");
+
+  if (template === "modern") {
+    paragraphs.left.push(
+      paragraph(name, { size: 45, color: palette.ink, after: 45 }),
+      paragraph(data.experience[0]?.jobTitle || data.education[0]?.degree || "Emerging Professional", { size: 24, color: palette.accent, after: 80 }),
+      paragraph(data.additional.volunteerExperience || data.additional.interests || "Add a concise professional profile using the existing additional-information fields.", { after: 110 })
+    );
+    paragraphs.right.push(paragraph(contact, { alignment: AlignmentType.RIGHT, color: palette.ink, after: 0 }));
+  } else {
+    paragraphs.left.push(
+      paragraph(name.toUpperCase(), { bold: true, size: 35, color: palette.sideInk, after: 30 }),
+      paragraph(data.experience[0]?.jobTitle || data.education[0]?.degree || "Professional Profile", { bold: true, color: template === "evergreen" ? palette.ink : palette.accent, after: 160 }),
+      paragraph("PROFILE", { bold: true, size: 22, color: palette.sideInk, after: 50 }),
+      paragraph(data.additional.volunteerExperience || data.additional.interests || "Summarise your strengths, goals and the value you offer an employer.", { color: palette.sideInk, after: 160 }),
+      paragraph("CONTACT", { bold: true, size: 22, color: palette.sideInk, after: 50 }),
+      paragraph(contact, { color: palette.sideInk, after: 160 })
+    );
+    if (includedSections.additional) addAdditional(paragraphs.left, false, palette.sideInk);
+  }
+
+  if (includedSections.experience) addExperience(template === "modern" ? paragraphs.left : paragraphs.right);
+  if (includedSections.education) addEducation(template === "modern" ? paragraphs.left : paragraphs.right);
+  if (includedSections.projects) addProjects(template === "modern" ? paragraphs.right : paragraphs.right);
+  if (includedSections.activities) addActivities(paragraphs.right);
+  if (template === "modern" && includedSections.additional) addAdditional(paragraphs.right);
+
+  const makeCell = (
+    children: Array<InstanceType<typeof Paragraph> | InstanceType<typeof Table>>,
+    width: number,
+    fill: string,
+    ink: string
+  ) => new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    shading: { fill },
+    margins: { top: 350, bottom: 350, left: 340, right: 340, marginUnitType: WidthType.DXA },
+    borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+    children: children.length ? children : [paragraph("", { color: ink })],
+  });
+
+  const leftWidth = template === "modern" ? 5_650 : 3_650;
+  const rightWidth = pageWidth - leftWidth;
+  const contentTable = new Table({
+    width: { size: pageWidth, type: WidthType.DXA },
+    columnWidths: [leftWidth, rightWidth],
+    layout: TableLayoutType.FIXED,
+    borders: TableBorders.NONE,
+    rows: [new TableRow({ children: [
+      makeCell(paragraphs.left, leftWidth, template === "modern" ? "FFFFFF" : palette.side, palette.sideInk),
+      makeCell(paragraphs.right, rightWidth, "FFFFFF", "171717"),
+    ] })],
+  });
+
+  const resume = new Document({
+    creator: "Pakistan Jobs Market",
+    title: `${data.personal.fullName || "Professional"} Resume — ${template}`,
+    description: `Editable ${template} resume created with Pakistan Jobs Market Resume Builder`,
+    styles: { default: { document: { run: { font: bodyFont, size: 18, color: "171717" }, paragraph: { spacing: { line: 286, lineRule: LineRuleType.AUTO } } } } },
+    numbering: { config: [{ reference: "styled-resume-bullets", levels: [{ level: 0, format: LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT, style: { run: { font: bodyFont, color: palette.accent }, paragraph: { indent: { left: 320, hanging: 150 } } } }] }] },
+    sections: [{
+      properties: { page: { size: { width: 11_906, height: 16_838, orientation: PageOrientation.PORTRAIT }, margin: { top: 400, right: 400, bottom: 400, left: 400 } } },
+      children: [contentTable],
+    }],
+  });
+  return Packer.toBlob(resume);
+}
+
 export async function createResumeDocx(data: ResumeDocumentData) {
+  if (data.template && data.template !== "classic") {
+    return createStyledResumeDocx(data);
+  }
   const {
     AlignmentType,
     BorderStyle,
