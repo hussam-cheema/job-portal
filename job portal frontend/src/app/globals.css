@@ -685,6 +685,31 @@ a {
   aspect-ratio: 16 / 9;
 }
 
+.blog-content .blog-analysis-figure {
+  width: 100%;
+  margin: 2rem 0 2.25rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.1);
+}
+
+.blog-content .blog-analysis-figure img {
+  width: 100% !important;
+  margin: 0;
+  border-radius: 0;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.blog-content .blog-analysis-figure figcaption {
+  padding: 0.85rem 1rem 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
 /* Pasted rich text can carry a white background and black foreground from its
    source. In dark mode that looks like selected text, so use the same
    theme-aware article palette as job descriptions. */

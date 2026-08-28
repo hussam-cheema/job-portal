@@ -6,12 +6,14 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.content.career_guide_enrichments import CAREER_GUIDE_ENRICHMENTS
 from app.content.career_guides import CAREER_GUIDES
 from app.models import BlogPost, SiteSetting
 from app.services.seo import upsert_blog_seo
 
 
 CAREER_GUIDES_MARKER = "career_guides_2026_v1_published"
+CAREER_GUIDES_ENRICHMENT_MARKER = "career_guides_2026_v2_enriched"
 
 
 def publish_career_guides_once(db: Session) -> list[BlogPost]:
@@ -65,3 +67,50 @@ def publish_career_guides_once(db: Session) -> list[BlogPost]:
         )
     )
     return published
+
+
+def enrich_career_guides_once(db: Session) -> list[BlogPost]:
+    """Apply the reviewed long-form expansion once without overwriting future CMS edits."""
+    if db.get(SiteSetting, CAREER_GUIDES_ENRICHMENT_MARKER):
+        return []
+
+    guides_by_slug = {guide["slug"]: guide for guide in CAREER_GUIDES}
+    updated: list[BlogPost] = []
+    now = datetime.utcnow()
+
+    for slug, enrichment in CAREER_GUIDE_ENRICHMENTS.items():
+        guide = guides_by_slug.get(slug)
+        if not guide:
+            continue
+
+        post = db.execute(
+            select(BlogPost).where(BlogPost.slug == slug)
+        ).scalar_one_or_none()
+        if not post:
+            continue
+
+        post.excerpt = enrichment["excerpt"]
+        post.content = f"{guide['content'].rstrip()}\n\n{enrichment['content'].strip()}\n"
+        post.updated_at = now
+        db.add(post)
+        db.flush()
+        upsert_blog_seo(
+            db,
+            post,
+            {
+                "focus_keyword": enrichment["focus_keyword"],
+                "meta_title": enrichment["meta_title"],
+                "meta_description": enrichment["meta_description"],
+                "meta_keywords": enrichment["meta_keywords"],
+            },
+        )
+        updated.append(post)
+
+    db.add(
+        SiteSetting(
+            key=CAREER_GUIDES_ENRICHMENT_MARKER,
+            value="true",
+            updated_at=now,
+        )
+    )
+    return updated
