@@ -106,7 +106,7 @@ export default async function BlogPostPage({ params }: Props) {
           <section className="mt-10 border-t border-[var(--border)] pt-7">
             <h2 className="text-xl font-semibold text-[var(--navy-100)]">Continue exploring</h2>
             {related.length > 0 && <ul className="mt-4 grid gap-2 sm:grid-cols-2">{related.map((item) => <li key={item.id}><Link href={`/blog/${item.slug}`} className="text-sm text-[var(--accent)] hover:underline">{decodeHtmlEntities(item.title)}</Link></li>)}</ul>}
-            <div className="mt-5 flex flex-wrap gap-2"><Link href="/" className="btn btn-ghost">Latest jobs</Link><Link href="/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link><Link href="/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link><Link href="/browse" className="btn btn-ghost">Site directory</Link></div>
+            <div className="mt-5 flex flex-wrap gap-2"><Link href="/" className="btn btn-ghost">Latest jobs</Link><Link href="/tools/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link><Link href="/tools/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link><Link href="/browse" className="btn btn-ghost">Site directory</Link></div>
           </section>
         </div>
       </article>

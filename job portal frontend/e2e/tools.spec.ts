@@ -12,7 +12,7 @@ test("tools admin keeps the directory above the editor at desktop and tablet wid
 
   await expect(page.getByRole("heading", { name: "Other Tools", exact: true })).toBeVisible();
   await expect(page.getByText("4 Categories", { exact: false })).toBeVisible();
-  await expect(page.getByText("3 Tools", { exact: false })).toBeVisible();
+  await expect(page.getByText("6 Tools", { exact: false })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Find a category or tool" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Basic information" })).toBeVisible();
 
@@ -52,8 +52,26 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(page.getByRole("link", { name: "Tax & Salary Tools" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tools for Students" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pakistan Tax Calculator" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Government Salary Calculator" })).toBeVisible();
+  const constellation = page.locator(".tools-constellation");
+  await expect(constellation.getByRole("link", { name: "Resume Builder" })).toHaveAttribute("href", "/tools/resume-builder");
+  await expect(constellation.getByRole("link", { name: "Cover Letter Builder" })).toHaveAttribute("href", "/tools/cover-letter");
   await expect(page.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
   await expect(page.getByText("Tools coming soon")).toHaveCount(1);
+});
+
+test("student tool shortcuts open the existing resume and cover letter builders", async ({ page }) => {
+  await page.goto("/tools/categories/tools-for-students");
+  const directory = page.locator(".tool-category-grid");
+  const resume = directory.getByRole("link", { name: /Resume Builder/ });
+  const coverLetter = directory.getByRole("link", { name: /Cover Letter Builder/ });
+  await expect(resume).toHaveAttribute("href", "/tools/resume-builder");
+  await expect(coverLetter).toHaveAttribute("href", "/tools/cover-letter");
+  await resume.click();
+  await expect(page).toHaveURL(/\/tools\/resume-builder$/);
+  await page.goto("/tools/categories/tools-for-students");
+  await page.locator(".tool-category-grid").getByRole("link", { name: /Cover Letter Builder/ }).click();
+  await expect(page).toHaveURL(/\/tools\/cover-letter$/);
 });
 
 test("document converter validates one file, reports progress, downloads, and is tracked by analytics", async ({ page }) => {
@@ -91,6 +109,36 @@ test("Pakistan salary tax calculator covers current and historic years", async (
   await expect(calculator.getByText("PKR 500", { exact: true })).toBeVisible();
   await expect(calculator.getByText("PKR 99,500", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Tax year").locator("option")).toHaveCount(13);
+});
+
+test("government salary calculator covers federal and organization-specific scales", async ({ page }) => {
+  await page.goto("/tools/categories/tax-salary-tools");
+  const categoryTools = page.locator(".tool-category-grid a");
+  await expect(categoryTools.nth(0)).toContainText("Pakistan Tax Calculator");
+  await expect(categoryTools.nth(1)).toContainText("Government Salary Calculator");
+  await categoryTools.nth(1).click();
+
+  const calculator = page.getByTestId("government-salary-calculator");
+  await expect(page.getByRole("heading", { name: "Government Salary Calculator" })).toBeVisible();
+  await expect(calculator.getByText("PKR 16,280", { exact: true })).toBeVisible();
+  await expect(calculator.getByText("Basic pay (BPS 2026)")).toBeVisible();
+  await expect(calculator.getByText("House rent allowance", { exact: true })).toBeVisible();
+  await expect(calculator.getByText("Conveyance allowance", { exact: true })).toBeVisible();
+  await expect(calculator.getByText("Medical allowance", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Pay scale").selectOption("PPS");
+  await page.getByLabel("Government grade").selectOption("12");
+  await page.getByLabel("Pay stage").selectOption("5");
+  await expect(calculator.getByText("PKR 1,207,500", { exact: true }).first()).toBeVisible();
+  await expect(calculator.getByText("no additional facility", { exact: false })).toBeVisible();
+
+  await page.getByLabel("Pay scale").selectOption("EG");
+  await expect(page.getByLabel("Government grade").locator("option")).toHaveCount(9);
+  await page.getByLabel("Government grade").selectOption("9");
+  await page.getByLabel("Official package amount").fill("250000");
+  await expect(calculator.getByText("PKR 250,000", { exact: true }).first()).toBeVisible();
+  await expect(calculator.getByText("EG is not a single nationwide monetary scale", { exact: false })).toBeVisible();
+  await expect(calculator.getByRole("link", { name: /Senate of Pakistan/ })).toBeVisible();
 });
 
 test("CGPA calculator supports arbitrary subjects and semesters", async ({ page }) => {

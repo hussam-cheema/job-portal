@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import type { ToolCategory } from "@/lib/types";
+import { publicToolHref } from "@/lib/toolLinks";
 
 function hueFor(index: number) {
   return Math.round((index * 137.508 + 252) % 360);
@@ -60,7 +61,7 @@ export function ToolsConstellation({ categories }: { categories: ToolCategory[] 
             </Link>
             <div className="tool-branch-links">
               {category.tools.length ? category.tools.map((tool) => (
-                <Link key={tool.id} href={`/tools/${tool.slug}`}><span aria-hidden="true">•</span>{tool.title}</Link>
+                <Link key={tool.id} href={publicToolHref(tool)}><span aria-hidden="true">•</span>{tool.title}</Link>
               )) : <span className="tool-coming-soon">Tools coming soon</span>}
             </div>
           </div>

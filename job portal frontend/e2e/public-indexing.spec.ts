@@ -9,8 +9,8 @@ test("public pages expose self-canonicals and private pages are noindex", async 
     "/privacy",
     "/disclaimer",
     "/blog",
-    "/cover-letter",
-    "/resume-builder",
+    "/tools/cover-letter",
+    "/tools/resume-builder",
     "/jobs/closed-role",
     "/tags/government",
     "/categories/software-engineering",
@@ -77,8 +77,8 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
     'href="/jobs-by-organizations"',
     'href="/jobs-by-newspapers"',
     'href="/p/custom-seo-page"',
-    'href="/resume-builder"',
-    'href="/cover-letter"',
+    'href="/tools/resume-builder"',
+    'href="/tools/cover-letter"',
   ]) {
     expect(html).toContain(expected);
   }
@@ -414,7 +414,7 @@ test("sitemap advertises canonical content URLs and the legacy favicon resolves"
   const xml = await sitemap.text();
 
   expect(xml).toContain("<loc>http://localhost:3000/disclaimer</loc>");
-  expect(xml).toContain("<loc>http://localhost:3000/cover-letter</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/tools/cover-letter</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/jobs/closed-role</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/blog/fpsc-preparation-guide</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/p/custom-seo-page</loc>");

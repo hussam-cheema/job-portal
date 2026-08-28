@@ -24,12 +24,12 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
   // Warm the lazily compiled route before exercising client-side navigation;
   // parallel dev-server compilation can otherwise dominate the navigation
   // timeout without reflecting production behavior.
-  await page.goto("/resume-builder");
+  await page.goto("/tools/resume-builder");
   await expect(page.getByRole("heading", { name: "Resume Builder", exact: true })).toBeVisible();
   await page.goto("/");
   await expect(resumeLink).toBeVisible();
   await resumeLink.click();
-  await expect(page).toHaveURL(/\/resume-builder$/);
+  await expect(page).toHaveURL(/\/tools\/resume-builder$/);
   await expect(page.getByRole("heading", { name: "Resume Builder", exact: true })).toBeVisible();
 
   await page.getByLabel("Full name").fill("Mary Leannon");
@@ -117,7 +117,7 @@ test("Resume Builder downloads the populated resume as PDF and editable DOCX", a
 test("Resume Builder includes only the selected sections without discarding their data", async ({
   page,
 }) => {
-  await page.goto("/resume-builder");
+  await page.goto("/tools/resume-builder");
   const preview = page.getByTestId("resume-preview");
   const projectsToggle = page.getByRole("checkbox", { name: /^University projects/ });
   const languagesToggle = page.getByRole("checkbox", { name: "Language skills" });
@@ -159,7 +159,7 @@ test("Resume Builder includes only the selected sections without discarding thei
 test("Resume Builder switches among four layouts and exports the selected design", async ({
   page,
 }) => {
-  await page.goto("/resume-builder");
+  await page.goto("/tools/resume-builder");
   const preview = page.getByTestId("resume-preview");
   const classic = page.getByRole("radio", { name: /Classic/ });
 
@@ -224,7 +224,7 @@ test("Resume Builder switches among four layouts and exports the selected design
 test("Resume Builder scores the current form and highlights ATS improvements", async ({
   page,
 }) => {
-  await page.goto("/resume-builder");
+  await page.goto("/tools/resume-builder");
   await expect(page.getByText(/Build an ATS-standard resume/i)).toBeVisible();
 
   await page.getByLabel("Full name").fill("Ayesha Khan");

@@ -125,7 +125,7 @@ gtag('config', 'G-W6Z1YPL2JY');`,
                   <span className="site-action-label">Blog</span>
                 </Link>
                 <Link
-                  href="/resume-builder"
+                  href="/tools/resume-builder"
                   className="site-action"
                   title="Build your resume"
                 >
@@ -133,7 +133,7 @@ gtag('config', 'G-W6Z1YPL2JY');`,
                   <span className="site-action-label"><span className="sm:hidden">Resume</span><span className="hidden sm:inline">Resume Builder</span></span>
                 </Link>
                 <Link
-                  href="/cover-letter"
+                  href="/tools/cover-letter"
                   className="site-action"
                   title="Build your cover letter"
                 >

@@ -245,8 +245,11 @@ export type PublicSeoMeta = {
 export type ToolKind =
   | "content"
   | "tax_calculator"
+  | "government_salary_calculator"
   | "cgpa_calculator"
-  | "document_converter";
+  | "document_converter"
+  | "resume_builder"
+  | "cover_letter";
 
 export type ToolPage = {
   id: string;

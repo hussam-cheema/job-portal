@@ -7,13 +7,13 @@ const viewports = [
 
 const builders = [
   {
-    path: "/resume-builder",
+    path: "/tools/resume-builder",
     previewTestId: "resume-preview",
     shellTestId: "resume-preview-shell",
     downloadName: "Download Resume as PDF",
   },
   {
-    path: "/cover-letter",
+    path: "/tools/cover-letter",
     previewTestId: "cover-letter-preview",
     shellTestId: "cover-letter-preview-shell",
     downloadName: "Download Cover Letter as PDF",

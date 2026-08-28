@@ -71,7 +71,16 @@ def test_default_tool_directory_is_seeded_without_n_plus_one_shape(tools_client:
         "Document Tools",
     ]
     assert categories[0]["tools"][0]["slug"] == "pakistan-tax-calculator"
+    assert categories[0]["tools"][1]["slug"] == "government-salary-calculator"
+    assert categories[0]["tools"][1]["tool_kind"] == "government_salary_calculator"
     assert categories[1]["tools"][0]["slug"] == "cgpa-calculator"
+    assert [tool["slug"] for tool in categories[1]["tools"]] == [
+        "cgpa-calculator",
+        "resume-builder",
+        "cover-letter",
+    ]
+    assert categories[1]["tools"][1]["tool_kind"] == "resume_builder"
+    assert categories[1]["tools"][2]["tool_kind"] == "cover_letter"
     assert categories[2]["tools"] == []
     assert categories[3]["tools"][0]["slug"] == "docx-pdf-converter"
     assert categories[3]["tools"][0]["tool_kind"] == "document_converter"

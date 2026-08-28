@@ -25,7 +25,7 @@ test("Cover Letter follows Resume Builder and downloads PDF and editable DOCX", 
   expect(resumeBox!.x).toBeLessThan(coverBox!.x);
   expect(coverBox!.x).toBeLessThan(toggleBox!.x);
 
-  await page.goto("/cover-letter");
+  await page.goto("/tools/cover-letter");
   await expect(page.getByRole("heading", { name: "Cover Letter", exact: true })).toBeVisible();
   const signatureName = page
     .getByTestId("cover-letter-preview")

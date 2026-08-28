@@ -41,12 +41,19 @@ const toolCategories = [
     id: "tool-category-tax", slug: "tax-salary-tools", title: "Tax & Salary Tools",
     content: "<p>Practical calculators for Pakistan salary and tax planning.</p>", icon_key: "coins",
     color_index: 1, sort_order: 0, is_published: true,
-    tools: [{ id: "tool-tax", category_id: "tool-category-tax", slug: "pakistan-tax-calculator", title: "Pakistan Tax Calculator", content: "<p>Estimate salary tax.</p>", tool_kind: "tax_calculator", sort_order: 0, is_published: true }],
+    tools: [
+      { id: "tool-tax", category_id: "tool-category-tax", slug: "pakistan-tax-calculator", title: "Pakistan Tax Calculator", content: "<p>Estimate salary tax.</p>", tool_kind: "tax_calculator", sort_order: 0, is_published: true },
+      { id: "tool-government-salary", category_id: "tool-category-tax", slug: "government-salary-calculator", title: "Government Salary Calculator", content: "<p>Estimate government salary.</p>", tool_kind: "government_salary_calculator", sort_order: 1, is_published: true },
+    ],
   },
   {
     id: "tool-category-students", slug: "tools-for-students", title: "Tools for Students",
     content: "<p>Student calculators.</p>", icon_key: "graduation", color_index: 2, sort_order: 1, is_published: true,
-    tools: [{ id: "tool-cgpa", category_id: "tool-category-students", slug: "cgpa-calculator", title: "CGPA Calculator", content: "<p>Calculate CGPA.</p>", tool_kind: "cgpa_calculator", sort_order: 0, is_published: true }],
+    tools: [
+      { id: "tool-cgpa", category_id: "tool-category-students", slug: "cgpa-calculator", title: "CGPA Calculator", content: "<p>Calculate CGPA.</p>", tool_kind: "cgpa_calculator", sort_order: 0, is_published: true },
+      { id: "tool-resume", category_id: "tool-category-students", slug: "resume-builder", title: "Resume Builder", content: "<p>Create a resume.</p>", tool_kind: "resume_builder", sort_order: 1, is_published: true },
+      { id: "tool-cover-letter", category_id: "tool-category-students", slug: "cover-letter", title: "Cover Letter Builder", content: "<p>Create a cover letter.</p>", tool_kind: "cover_letter", sort_order: 2, is_published: true },
+    ],
   },
   { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [] },
   {

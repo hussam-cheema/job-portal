@@ -50,12 +50,12 @@ const corePageSlugs = new Set([
 
 const careerTools = [
   {
-    href: "/resume-builder",
+    href: "/tools/resume-builder",
     label: "ATS Resume Builder",
     description: "Build and score an ATS-friendly resume.",
   },
   {
-    href: "/cover-letter",
+    href: "/tools/cover-letter",
     label: "Cover Letter Builder",
     description: "Create a polished, editable cover letter.",
   },

@@ -3159,6 +3159,48 @@ iframe {
 .calculator-note strong { color: var(--navy-200); }
 .calculator-sources { margin: 0 2rem 2rem; color: var(--muted); font-size: .74rem; }
 .calculator-sources a { color: var(--accent); text-decoration: underline; text-underline-offset: .15rem; }
+.government-salary-form { display: grid; gap: 1rem; padding: 0 2rem 1.5rem; }
+.government-salary-section { overflow: hidden; border: 1px solid var(--border); border-radius: 1.15rem; background: color-mix(in srgb, var(--navy-900) 56%, var(--card)); }
+.government-salary-section-title { display: flex; align-items: flex-start; gap: .8rem; padding: 1.15rem 1.25rem; border-bottom: 1px solid var(--border); }
+.government-salary-section-title > span { display: grid; width: 2.2rem; height: 2.2rem; place-items: center; flex: 0 0 auto; border-radius: .7rem; background: var(--accent-soft); color: var(--accent); font-size: .68rem; font-weight: 850; }
+.government-salary-section-title h3 { color: var(--navy-100); font-size: 1rem; font-weight: 780; }
+.government-salary-section-title p { margin-top: .18rem; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+.government-salary-inputs { padding: 1.2rem 1.25rem; }
+.government-salary-inputs.single-input { grid-template-columns: minmax(0, 1fr); max-width: 36rem; }
+.government-salary-inline-note { margin: 0 1.25rem 1.25rem; padding: .85rem 1rem; border: 1px solid color-mix(in srgb, #eab308 28%, var(--border)); border-radius: .8rem; background: color-mix(in srgb, #eab308 7%, var(--card)); color: var(--muted); font-size: .76rem; line-height: 1.55; }
+.government-salary-inline-note strong { color: var(--navy-200); }
+.government-salary-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1.2rem 1.25rem 0; }
+.government-salary-toggles label { display: flex; align-items: flex-start; gap: .7rem; min-width: 0; padding: .85rem; border: 1px solid var(--border); border-radius: .85rem; background: var(--card); cursor: pointer; }
+.government-salary-toggles label:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 62%, var(--border)); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--ring); }
+.government-salary-toggles input { width: 1rem; height: 1rem; margin-top: .15rem; accent-color: var(--accent); }
+.government-salary-toggles span { display: grid; min-width: 0; gap: .12rem; }
+.government-salary-toggles strong { color: var(--navy-100); font-size: .78rem; }
+.government-salary-toggles small { color: var(--muted); font-size: .66rem; line-height: 1.4; }
+.government-salary-results { padding: 0 2rem 1.5rem; }
+.government-salary-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: 1rem 1rem 0 0; background: var(--border); }
+.government-salary-summary > div { display: grid; gap: .35rem; padding: 1.15rem 1.25rem; background: linear-gradient(135deg, var(--accent-soft), var(--navy-900)); }
+.government-salary-summary span { color: var(--muted); font-size: .68rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.government-salary-summary strong { color: var(--accent); font-size: clamp(1.25rem, 2.8vw, 2rem); }
+.government-salary-breakdown { overflow: hidden; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 1rem 1rem; }
+.government-salary-breakdown-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .85rem 1.15rem; border-bottom: 1px solid var(--border); background: var(--card); }
+.government-salary-breakdown-head h3 { color: var(--navy-100); font-size: .9rem; font-weight: 760; }
+.government-salary-breakdown-head span { padding: .3rem .55rem; border-radius: 999px; background: color-mix(in srgb, var(--success) 10%, var(--card)); color: var(--success); font-size: .62rem; font-weight: 750; }
+.government-salary-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .82rem 1.15rem; border-bottom: 1px solid var(--border); background: var(--navy-900); }
+.government-salary-row:last-child { border-bottom: 0; }
+.government-salary-row > div { display: grid; min-width: 0; gap: .1rem; }
+.government-salary-row strong { color: var(--navy-200); font-size: .78rem; }
+.government-salary-row small { color: var(--muted); font-size: .65rem; line-height: 1.35; }
+.government-salary-row b { flex: 0 0 auto; color: var(--navy-100); font-size: .84rem; }
+.government-salary-row.total { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--navy-900)), var(--navy-900)); }
+.government-salary-row.total strong, .government-salary-row.total b { color: var(--accent); }
+.government-salary-sources { margin: 0 2rem 2rem; padding: 1.3rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--navy-900); }
+.government-salary-sources h3 { margin-top: .25rem; color: var(--navy-100); font-size: 1rem; font-weight: 760; }
+.government-salary-sources > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: .85rem; }
+.government-salary-sources a { display: grid; gap: .2rem; padding: .8rem; border: 1px solid var(--border); border-radius: .75rem; background: var(--card); transition: border-color .18s ease, transform .18s ease; }
+.government-salary-sources a:hover { border-color: var(--accent); transform: translateY(-2px); }
+.government-salary-sources a strong { display: flex; justify-content: space-between; gap: .7rem; color: var(--navy-100); font-size: .73rem; }
+.government-salary-sources a strong span { color: var(--accent); }
+.government-salary-sources a small { color: var(--muted); font-size: .64rem; line-height: 1.45; }
 .tool-cms-content { margin-top: 1.25rem; padding: 1.5rem 2rem; }
 
 .document-converter { overflow: hidden; border: 1px solid var(--border); border-radius: 1.6rem; background: var(--card); box-shadow: 0 30px 80px rgba(16,35,70,.12); }
@@ -3319,6 +3361,11 @@ iframe {
   .calculator-input-grid, .tax-result-grid { grid-template-columns: 1fr; }
   .calculator-input-grid, .semester-stack { padding: 1rem; }
   .tax-result-grid, .calculator-note, .calculator-sources { margin-left: 1rem; margin-right: 1rem; }
+  .government-salary-form, .government-salary-results { padding-left: 1rem; padding-right: 1rem; }
+  .government-salary-toggles, .government-salary-summary, .government-salary-sources > div { grid-template-columns: 1fr; }
+  .government-salary-sources { margin-left: 1rem; margin-right: 1rem; }
+  .government-salary-breakdown-head { align-items: flex-start; flex-direction: column; }
+  .government-salary-row { align-items: flex-start; }
   .cgpa-summary { flex-wrap: wrap; padding: 1rem; }
   .cgpa-summary strong { margin-left: 0; }
   .cgpa-summary em { width: 100%; }

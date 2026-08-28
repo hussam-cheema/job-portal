@@ -514,8 +514,11 @@ class ToolPageIn(BaseModel):
     tool_kind: Literal[
         "content",
         "tax_calculator",
+        "government_salary_calculator",
         "cgpa_calculator",
         "document_converter",
+        "resume_builder",
+        "cover_letter",
     ] = "content"
     sort_order: int = 0
     is_published: bool = True
@@ -531,8 +534,11 @@ class ToolPageUpdate(BaseModel):
         Literal[
             "content",
             "tax_calculator",
+            "government_salary_calculator",
             "cgpa_calculator",
             "document_converter",
+            "resume_builder",
+            "cover_letter",
         ]
     ] = None
     sort_order: Optional[int] = None

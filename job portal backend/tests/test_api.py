@@ -828,6 +828,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         PRIVACY_HTML,
         sync_core_page_content_v2,
         sync_core_page_content_v3,
+        sync_expanded_tools_core_pages_v5,
         sync_privacy_adsense_disclosures_v4,
         sync_homepage_branding_seo_v1,
     )
@@ -868,6 +869,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         assert len(sync_core_page_content_v2(session)) == 3
         assert len(sync_core_page_content_v3(session)) == 3
         assert len(sync_privacy_adsense_disclosures_v4(session)) == 1
+        assert len(sync_expanded_tools_core_pages_v5(session)) == 3
         assert len(sync_homepage_branding_seo_v1(session)) == len(HOMEPAGE_BRANDING)
         session.commit()
 
@@ -880,15 +882,18 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
             assert page.content == expected_content[page.slug]
             if page.slug == "about":
                 assert "ATS-standard resume tools" in page.content
+                assert "Government Salary Calculator" in page.content
             elif page.slug == "privacy":
-                assert "ATS-readiness score are processed" in page.content
-                assert "does not receive" in page.content
+                assert "Resume Builder or Cover Letter Builder" in page.content
+                assert "short-lived access token" in page.content
                 assert "Third-party vendors, including Google, use cookies" in page.content
                 assert "https://adssettings.google.com/" in page.content
                 assert "https://www.aboutads.info/choices/" in page.content
                 assert "Google-certified consent-management controls" in page.content
             elif page.slug == "disclaimer":
                 assert "does not guarantee parsing" in page.content
+                assert "Calculator results are informational estimates" in page.content
+                assert "DOCX/PDF Converter" in page.content
             seo = (
                 session.query(SEOMeta)
                 .filter(
@@ -909,6 +914,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         assert sync_core_page_content_v2(session) == []
         assert sync_core_page_content_v3(session) == []
         assert sync_privacy_adsense_disclosures_v4(session) == []
+        assert sync_expanded_tools_core_pages_v5(session) == []
         assert sync_homepage_branding_seo_v1(session) == []
     finally:
         session.close()

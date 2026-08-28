@@ -88,6 +88,22 @@ DEFAULT_TOOLS = (
         ),
     },
     {
+        "category_slug": "tax-salary-tools",
+        "slug": "government-salary-calculator",
+        "title": "Government Salary Calculator",
+        "tool_kind": "government_salary_calculator",
+        "content": (
+            "<p>Estimate a Pakistan government salary from the selected pay family, grade "
+            "and pay stage. The result separates basic or consolidated pay from standard "
+            "allowances and clearly identifies benefits that depend on an employee's "
+            "department, posting or appointment terms.</p><p>Federal BPS, PPS, MP, SPPS "
+            "and Management Grade figures use published Government of Pakistan schedules. "
+            "Organization-specific SPS, O, E, OG, EG and J packages must be entered from "
+            "the relevant official advertisement, appointment letter or salary slip because "
+            "those labels do not have one government-wide monetary table.</p>"
+        ),
+    },
+    {
         "category_slug": "tools-for-students",
         "slug": "cgpa-calculator",
         "title": "CGPA Calculator",
@@ -95,6 +111,26 @@ DEFAULT_TOOLS = (
         "content": (
             "<p>Add any number of semesters and subjects to calculate semester GPA and "
             "CGPA on Pakistan's common 4.00 scale.</p>"
+        ),
+    },
+    {
+        "category_slug": "tools-for-students",
+        "slug": "resume-builder",
+        "title": "Resume Builder",
+        "tool_kind": "resume_builder",
+        "content": (
+            "<p>Create a polished resume from guided sections, choose from four templates, "
+            "preview the result and download it as PDF or DOCX.</p>"
+        ),
+    },
+    {
+        "category_slug": "tools-for-students",
+        "slug": "cover-letter",
+        "title": "Cover Letter Builder",
+        "tool_kind": "cover_letter",
+        "content": (
+            "<p>Build a structured cover letter, review it in the live preview and download "
+            "the finished application letter.</p>"
         ),
     },
     {
@@ -144,6 +180,17 @@ application deadline, education, experience, location and original application o
   from relevant public video transcripts or comments to support further research.</li>
 </ul>
 
+<h2>Free tools for applications, study and salary planning</h2>
+<p>The Tools hub brings together interactive resources designed for Pakistan. It includes the
+Pakistan Tax Calculator, Government Salary Calculator, CGPA Calculator, Resume Builder, Cover
+Letter Builder and DOCX/PDF Converter. Tool categories and pages are managed through the website's
+content system so the directory can continue to grow.</p>
+<p>The Government Salary Calculator separates basic pay and applicable allowances where a central
+official schedule exists. Because SPS, O, E, OG, EG and J packages can be set by individual
+organizations, those scales require the user to enter the amount shown in the relevant official
+advertisement, appointment letter or salary slip. Official references and important limitations
+are shown with the calculator.</p>
+
 <h2>ATS-standard resume tools</h2>
 <p>Our Resume Builder uses conventional headings, searchable text, a clean single-column reading
 order and recruiter-friendly formatting. Visitors can check a transparent ATS-readiness score for
@@ -180,7 +227,7 @@ PRIVACY_HTML = """
 <p><strong>Pakistan Jobs Market</strong> respects the privacy of visitors, subscribers and people
 who contact us. This Privacy Policy explains what information may be collected when you use this
 website, why it is used, how it may be protected and the choices available to you.</p>
-<p><strong>Effective date:</strong> 25 August 2026</p>
+<p><strong>Effective date:</strong> 28 August 2026</p>
 
 <h2>Information we may collect</h2>
 <p>You can browse public job listings and career content without creating an account. Depending on
@@ -194,6 +241,9 @@ the feature you use, we may collect the following limited information:</p>
   pages, timestamps, referral data and error records that may be processed in server logs,
   security monitoring or aggregate analytics.</li>
   <li><strong>Preference information:</strong> browser-stored choices such as light or dark theme.</li>
+  <li><strong>Temporary document-conversion information:</strong> when you choose the DOCX/PDF
+  Converter, the selected file, original filename, validation details, conversion status and
+  generated download are processed for the limited purpose of completing that request.</li>
 </ul>
 
 <h2>How information is used</h2>
@@ -202,11 +252,21 @@ alerts, responding to messages, preventing abuse, diagnosing errors, protecting 
 understanding aggregate usage and improving content and performance. We do not ask visitors to
 submit a CV or sensitive financial credentials in order to browse the website.</p>
 
-<h2>Resume Builder and ATS score</h2>
-<p>Information entered in the Resume Builder and the resulting ATS-readiness score are processed
-in your browser to create the preview, score and downloads. Pakistan Jobs Market does not receive
-or store that resume content or score. Closing or refreshing the page may remove the information
-unless your browser preserves it independently.</p>
+<h2>Resume Builder, Cover Letter Builder and calculators</h2>
+<p>Information entered in the Resume Builder or Cover Letter Builder is processed in your browser
+to create the preview and requested PDF or DOCX download. Resume content and the resulting
+ATS-readiness score are not submitted to Pakistan Jobs Market. Salary, tax and CGPA calculator
+inputs are likewise calculated in the browser and are not stored by Pakistan Jobs Market. Closing
+or refreshing a page may remove this information unless your browser preserves it independently.</p>
+
+<h2>DOCX and PDF conversion</h2>
+<p>The document converter must send the selected DOCX or PDF file to our server because the format
+conversion cannot be completed entirely in the browser. Files are checked for type and size,
+processed in an isolated temporary job, made available through a short-lived access token and
+automatically removed after the configured download window. We do not use uploaded document
+content for advertising, profiling or model training. Do not upload documents containing
+information you are not authorized to process, and remove unnecessary sensitive information
+before conversion.</p>
 
 <h2>Email alerts and unsubscribe choices</h2>
 <p>If you subscribe to job alerts, Pakistan Jobs Market uses the submitted address to send messages
@@ -255,7 +315,9 @@ message.</p>
 <h2>Service providers and third-party links</h2>
 <p>We may rely on hosting, database, object-storage, email-delivery, security and analytics
 providers to operate the service. These providers process limited information for the services
-they supply. Job listings and articles can link to employer, government, newspaper, social media
+they supply. Document conversion may also rely on server-side open-source office and document
+processing software. Job listings and articles can link to employer, government, newspaper,
+social media
 or other external websites. Pakistan Jobs Market does not control their content or privacy
 practices, so visitors should review the policy of each external service before submitting data.</p>
 
@@ -333,6 +395,24 @@ keywords and readability. Applicant-tracking systems and job requirements vary, 
 guidance rather than a test performed by an employer and does not guarantee parsing, shortlisting,
 an interview or employment. Users should tailor every resume to the official job description and
 review all generated documents before applying.</p>
+
+<h2>Tax, salary and CGPA calculators</h2>
+<p>Calculator results are informational estimates, not tax, payroll, accounting, legal or academic
+advice. Tax laws, pay notifications, allowances, departmental rules and university grading
+policies can change or depend on facts the calculator does not know. Government salary figures for
+organization-specific scales require an amount from the relevant employer's current official
+document. Users must verify every result with FBR, the Finance Division, the employing department,
+their accounts office or their educational institution as applicable. No calculator result creates
+an entitlement or guarantees a payslip, tax liability, grade or benefit.</p>
+
+<h2>Document conversion</h2>
+<p>The DOCX/PDF Converter is provided for convenience. Although the service validates files and
+checks converted output, the two formats store content differently. Complex layouts, fonts,
+forms, tracked changes, embedded objects, scanned pages or damaged and password-protected files
+may not convert exactly. Users must inspect the downloaded file before relying on, signing,
+printing or submitting it. Keep an independent copy of every original; Pakistan Jobs Market is not
+responsible for formatting changes, omitted elements, file corruption or loss arising from use of
+the converter.</p>
 
 <h2>Copyright, corrections and availability</h2>
 <p>Advertisements, logos and source materials may belong to their respective owners and are used
@@ -769,6 +849,31 @@ def sync_privacy_adsense_disclosures_v4(db) -> list[Page]:
     return changed
 
 
+def sync_expanded_tools_core_pages_v5(db) -> list[Page]:
+    """Publish the expanded tools, privacy and accuracy disclosures exactly once."""
+    marker_key = "expanded_tools_core_pages_v5"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    defaults = {slug: (title, content) for slug, title, content in DEFAULT_PAGES}
+    changed: list[Page] = []
+    for slug in ("about", "privacy", "disclaimer"):
+        title, content = defaults[slug]
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO[slug])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
 def sync_homepage_branding_seo_v1(db) -> list[str]:
     """Apply the new public brand and homepage SEO once, without overwriting future edits."""
     marker_key = "homepage_branding_seo_v1"
@@ -845,6 +950,7 @@ def seed_if_empty() -> None:
         sync_core_page_content_v2(db)
         sync_core_page_content_v3(db)
         sync_privacy_adsense_disclosures_v4(db)
+        sync_expanded_tools_core_pages_v5(db)
         sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 
