@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { ToolsConstellation } from "@/components/ToolsConstellation";
 import { fetchTools } from "@/lib/api";
 
-export const dynamic = "force-dynamic";
+// The directory changes infrequently and is safe to serve from Azure's edge.
+// Keeping it out of the managed SSR runtime avoids cold-start 503s while the
+// short revalidation window still makes admin changes visible promptly.
+export const revalidate = 15;
 
 export const metadata: Metadata = {
   title: "Free Online Tools for Pakistan | Pakistan Jobs Market",

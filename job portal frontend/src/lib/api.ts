@@ -528,7 +528,7 @@ export async function fetchPage(slug: string): Promise<PageItem | null> {
 }
 
 export function fetchTools(): Promise<ToolCategory[]> {
-  return getFreshJson<ToolCategory[]>("/api/tools", []);
+  return getJson<ToolCategory[]>("/api/tools", []);
 }
 
 export function fetchToolCategory(slug: string): Promise<ToolCategory | null> {
