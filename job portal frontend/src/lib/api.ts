@@ -296,7 +296,7 @@ export async function fetchBlogPosts(params: {
   Object.entries({ ...params, page, page_size: pageSize }).forEach(([key, value]) => {
     if (value !== undefined && value !== "") query.set(key, String(value));
   });
-  return getFreshJson<BlogListResponse>(`/api/blog?${query}`, {
+  return getJson<BlogListResponse>(`/api/blog?${query}`, {
     items: [], total: 0, page, page_size: pageSize, pages: 0,
   });
 }
@@ -493,7 +493,7 @@ export async function fetchSiteDirectory(): Promise<SiteDirectory> {
 }
 
 export function fetchBlogPost(slug: string): Promise<BlogPost | null> {
-  return getFreshJson<BlogPost | null>(`/api/blog/${encodeURIComponent(slug)}`, null);
+  return getJson<BlogPost | null>(`/api/blog/${encodeURIComponent(slug)}`, null);
 }
 
 export type AnalyticsTrackingResult =

@@ -14,7 +14,22 @@ import {
 
 type Props = { params: Promise<{ slug: string }> };
 
-export const dynamic = "force-dynamic";
+// Published articles are pre-rendered and refreshed shortly after an admin
+// edit. This keeps existing posts available even when Azure's managed SSR
+// runtime is cold or temporarily unable to call the backend.
+export const revalidate = 15;
+
+export async function generateStaticParams() {
+  const firstPage = await fetchBlogPosts({ page: 1, page_size: 50 });
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, firstPage.pages - 1) }, (_, index) =>
+      fetchBlogPosts({ page: index + 2, page_size: 50 }),
+    ),
+  );
+  return [firstPage, ...remainingPages]
+    .flatMap((result) => result.items)
+    .map((post) => ({ slug: post.slug }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
