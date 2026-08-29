@@ -220,6 +220,23 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+async function getBuildJson<T>(path: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      cache: "force-cache",
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      console.warn(`API ${res.status} ${path} — using build fallback`);
+      return fallback;
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    console.warn(`API unreachable ${path} — using build fallback`, err);
+    return fallback;
+  }
+}
+
 async function getFreshJson<T>(path: string, fallback: T): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -299,6 +316,46 @@ export async function fetchBlogPosts(params: {
   return getJson<BlogListResponse>(`/api/blog?${query}`, {
     items: [], total: 0, page, page_size: pageSize, pages: 0,
   });
+}
+
+export async function fetchBuildBlogPosts(params: {
+  q?: string;
+  category?: string;
+  tag?: string;
+  page?: number;
+  page_size?: number;
+} = {}): Promise<BlogListResponse> {
+  const page = params.page || 1;
+  const pageSize = params.page_size || 12;
+  const query = new URLSearchParams();
+  Object.entries({ ...params, page, page_size: pageSize }).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  });
+  return getBuildJson<BlogListResponse>(`/api/blog?${query}`, {
+    items: [], total: 0, page, page_size: pageSize, pages: 0,
+  });
+}
+
+export async function fetchBuildBlogPost(slug: string): Promise<BlogPost | null> {
+  return getBuildJson<BlogPost | null>(`/api/blog/${encodeURIComponent(slug)}`, null);
+}
+
+export async function fetchBuildBranding(): Promise<Branding> {
+  const response = await getBuildJson<Partial<Branding>>(
+    "/api/settings/branding",
+    DEFAULT_BRANDING,
+  );
+  return { ...DEFAULT_BRANDING, ...response };
+}
+
+export async function fetchBuildPublicSeo(
+  entityType: string,
+  entityId: string,
+): Promise<PublicSeoMeta | null> {
+  return getBuildJson<PublicSeoMeta | null>(
+    `/api/seo/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+    null,
+  );
 }
 
 export function fetchBlogFilters(): Promise<BlogFilters> {
