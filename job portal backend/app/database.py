@@ -240,6 +240,7 @@ def _ensure_new_columns() -> None:
         "ALTER TABLE subscription_digest_runs ADD COLUMN IF NOT EXISTS job_id VARCHAR(36) NULL",
         "ALTER TABLE pages ADD COLUMN IF NOT EXISTS page_type VARCHAR(30) NOT NULL DEFAULT 'standard'",
         "ALTER TABLE pages ADD COLUMN IF NOT EXISTS taxonomy_value VARCHAR(300) NULL",
+        "ALTER TABLE taxonomy_terms ADD COLUMN IF NOT EXISTS province VARCHAR(100) NULL",
     ]
     if DATABASE_URL.startswith("sqlite"):
         # SQLite lacks IF NOT EXISTS for columns — ignore errors
@@ -262,6 +263,7 @@ def _ensure_new_columns() -> None:
             "ALTER TABLE subscription_digest_runs ADD COLUMN job_id VARCHAR(36)",
             "ALTER TABLE pages ADD COLUMN page_type VARCHAR(30) NOT NULL DEFAULT 'standard'",
             "ALTER TABLE pages ADD COLUMN taxonomy_value VARCHAR(300)",
+            "ALTER TABLE taxonomy_terms ADD COLUMN province VARCHAR(100)",
         ]
     try:
         with engine.begin() as conn:
@@ -301,6 +303,10 @@ def _ensure_new_columns() -> None:
                         "ON subscription_digest_runs (job_id) WHERE job_id IS NOT NULL"
                     )
                 )
+                # Optional job fields use SQL NULL. Empty strings are neither
+                # useful content nor valid structured-data values.
+                conn.execute(text("ALTER TABLE jobs ALTER COLUMN newspaper DROP NOT NULL"))
+                conn.execute(text("ALTER TABLE jobs ALTER COLUMN newspaper DROP DEFAULT"))
     except Exception:
         logger.exception("ensure_new_columns failed")
 

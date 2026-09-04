@@ -11,16 +11,28 @@ import {
 } from "@/lib/api";
 import type { TaxonomyTerm } from "@/lib/types";
 
+const PROVINCES = [
+  "Punjab",
+  "Sindh",
+  "Khyber Pakhtunkhwa",
+  "Balochistan",
+  "Islamabad Capital Territory",
+  "Gilgit-Baltistan",
+  "Azad Jammu and Kashmir",
+];
+
 export default function CitiesPage() {
   const { token } = useAdminAuth();
   const [cities, setCities] = useState<TaxonomyTerm[]>([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [province, setProvince] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
+  const [editProvince, setEditProvince] = useState("");
 
   const reload = useCallback(async () => {
     if (!token) return;
@@ -33,16 +45,18 @@ export default function CitiesPage() {
 
   async function create(event: FormEvent) {
     event.preventDefault();
-    if (!token || !name.trim()) return;
+    if (!token || !name.trim() || !province) return;
     setBusy(true);
     setError(null);
     try {
       await adminCreateCity(token, {
         name: name.trim(),
         slug: slug.trim() || undefined,
+        province,
       });
       setName("");
       setSlug("");
+      setProvince("");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
@@ -80,13 +94,14 @@ export default function CitiesPage() {
   }
 
   async function saveEdit(city: TaxonomyTerm) {
-    if (!token || !editName.trim() || !editSlug.trim()) return;
+    if (!token || !editName.trim() || !editSlug.trim() || (city.name !== "Pakistan" && !editProvince)) return;
     setBusy(true);
     setError(null);
     try {
       await adminUpdateTaxonomyTerm(token, city.id, {
         name: editName.trim(),
         slug: editSlug.trim(),
+        province: city.name === "Pakistan" ? null : editProvince,
       });
       setEditing(null);
       await reload();
@@ -106,10 +121,17 @@ export default function CitiesPage() {
             Define the cities available in the City / Cities field when creating or editing job posts.
           </p>
           {error && <p className="field-error mt-3">{error}</p>}
-          <form className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={create}>
+          <form className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={create}>
             <div>
               <label className="field-label" htmlFor="city-name">Name</label>
               <input id="city-name" className="input" value={name} onChange={(event) => setName(event.target.value)} required />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="city-province">Province / territory</label>
+              <select id="city-province" className="input" value={province} onChange={(event) => setProvince(event.target.value)} required>
+                <option value="">Select province</option>
+                {PROVINCES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
             </div>
             <div>
               <label className="field-label" htmlFor="city-slug">Slug (optional)</label>
@@ -127,14 +149,23 @@ export default function CitiesPage() {
               {cities.map((city) => (
                 <div key={city.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                   {editing === city.id ? (
-                    <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                    <div className="grid flex-1 gap-2 sm:grid-cols-3">
                       <input aria-label="City name" className="input" value={editName} onChange={(event) => setEditName(event.target.value)} />
                       <input aria-label="City slug" className="input" value={editSlug} onChange={(event) => setEditSlug(event.target.value)} />
+                      {city.name !== "Pakistan" && (
+                        <select aria-label="City province" className="input" value={editProvince} onChange={(event) => setEditProvince(event.target.value)}>
+                          <option value="">Select province</option>
+                          {PROVINCES.map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                      )}
                     </div>
                   ) : (
                     <div>
                       <div className="font-medium text-[var(--navy-100)]">{city.name}</div>
                       <code className="text-xs text-[var(--muted)]">/{city.slug}</code>
+                      <div className="mt-1 text-xs text-[var(--muted)]">
+                        {city.name === "Pakistan" ? "All of Pakistan" : city.province || "Province not assigned"}
+                      </div>
                     </div>
                   )}
                   <div className="flex items-center gap-2">
@@ -150,7 +181,7 @@ export default function CitiesPage() {
                         <button className="btn btn-ghost" type="button" onClick={() => setEditing(null)}>Cancel</button>
                       </>
                     ) : (
-                      <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => { setEditing(city.id); setEditName(city.name); setEditSlug(city.slug); }}>Edit</button>
+                      <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => { setEditing(city.id); setEditName(city.name); setEditSlug(city.slug); setEditProvince(city.province || ""); }}>Edit</button>
                     )}
                     <button className="btn btn-ghost text-red-500" type="button" disabled={busy} onClick={() => remove(city)}>Delete</button>
                   </div>

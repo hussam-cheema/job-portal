@@ -1142,7 +1142,7 @@ export async function adminListCities(token: string): Promise<TaxonomyTerm[]> {
 
 export async function adminCreateCity(
   token: string,
-  data: { name: string; slug?: string; is_active?: boolean }
+  data: { name: string; slug?: string; province?: string; is_active?: boolean }
 ): Promise<TaxonomyTerm> {
   return requestJson<TaxonomyTerm>("/api/admin/taxonomy", {
     method: "POST",
@@ -1154,7 +1154,7 @@ export async function adminCreateCity(
 export async function adminUpdateTaxonomyTerm(
   token: string,
   id: string,
-  data: { name?: string; slug?: string; is_active?: boolean }
+  data: { name?: string; slug?: string; province?: string | null; is_active?: boolean }
 ): Promise<TaxonomyTerm> {
   return requestJson<TaxonomyTerm>(`/api/admin/taxonomy/${id}`, {
     method: "PUT",

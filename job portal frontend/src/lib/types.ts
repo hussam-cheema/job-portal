@@ -7,7 +7,7 @@ export type JobSummary = {
   deadline_date: string | null;
   salary_range: string | null;
   source: string | null;
-  newspaper: string;
+  newspaper: string | null;
   reference_url: string | null;
   application_url: string | null;
   experience_required: string | null;
@@ -41,6 +41,7 @@ export type TaxonomyTerm = {
   kind: string;
   name: string;
   slug: string;
+  province?: string | null;
   is_active: boolean;
   created_at?: string | null;
   updated_at?: string | null;
@@ -186,7 +187,7 @@ export type JobFormData = {
   deadline_date?: string | null;
   salary_range?: string | null;
   source?: string | null;
-  newspaper?: string;
+  newspaper?: string | null;
   reference_url?: string | null;
   application_url?: string | null;
   experience_required?: string | null;
@@ -358,7 +359,7 @@ export type SiteDirectory = {
     deadline_date: string | null;
     applications_closed: boolean;
     organization: string | null;
-    newspaper: string;
+    newspaper: string | null;
     salary_range: string | null;
     education_required: string | null;
     experience_required: string | null;

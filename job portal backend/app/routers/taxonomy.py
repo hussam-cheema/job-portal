@@ -8,13 +8,27 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
+from app.constants import PAKISTAN_ALL_CITIES, PAKISTAN_PROVINCES
 from app.database import get_db
 from app.models import Job, Page, TaxonomyTerm, User
 from app.schemas import TaxonomyTermIn, TaxonomyTermOut, TaxonomyTermUpdate
-from app.services.taxonomy import ensure_default_taxonomy
+from app.services.taxonomy import canonicalize_job_locations, ensure_default_taxonomy
 from app.utils import as_list, slugify
 
 router = APIRouter()
+
+
+def _city_province(name: str, value: str | None) -> str | None:
+    if name.casefold() == PAKISTAN_ALL_CITIES.casefold():
+        return None
+    clean = (value or "").strip()
+    allowed = {province.casefold(): province for province in PAKISTAN_PROVINCES}
+    if clean.casefold() not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="Select the city’s province or territory.",
+        )
+    return allowed[clean.casefold()]
 
 
 def _rows(db: Session, *, active_only: bool) -> list[TaxonomyTerm]:
@@ -87,6 +101,11 @@ def create_term(
         name=name,
         slug=slug,
         kind=payload.kind,
+        province=(
+            _city_province(name, payload.province)
+            if payload.kind == "city"
+            else None
+        ),
         is_active=payload.is_active,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -108,6 +127,7 @@ def update_term(
     if not row:
         raise HTTPException(status_code=404, detail="Tag/category not found")
     old_name = row.name
+    old_province = row.province
     data = payload.model_dump(exclude_unset=True)
     if data.get("name") is not None:
         candidate_name = data["name"].strip()
@@ -135,15 +155,21 @@ def update_term(
         row.slug = candidate
     if data.get("is_active") is not None:
         row.is_active = data["is_active"]
-    if row.name.casefold() != old_name.casefold():
+    if row.kind == "city" and ("province" in data or row.name != old_name):
+        row.province = _city_province(row.name, data.get("province", row.province))
+    if row.name.casefold() != old_name.casefold() or row.province != old_province:
         if row.kind == "city":
             for job in db.execute(select(Job)).scalars().all():
                 values = as_list(job.cities)
                 if any(value.casefold() == old_name.casefold() for value in values):
-                    job.cities = [
+                    renamed_cities = [
                         row.name if value.casefold() == old_name.casefold() else value
                         for value in values
                     ]
+                    job.cities, canonical_provinces = canonicalize_job_locations(
+                        db, renamed_cities, as_list(job.provinces)
+                    )
+                    job.provinces = canonical_provinces or None
             pages = (
                 db.execute(select(Page).where(Page.page_type == "city"))
                 .scalars()

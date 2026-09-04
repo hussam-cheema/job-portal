@@ -55,6 +55,7 @@ from app.seed import (
     sync_job_directory_pages_v3,
 )
 from app.services.taxonomy import ensure_default_taxonomy
+from app.services.job_data_quality import repair_job_data_quality
 from app.services.watermark import migrate_legacy_job_watermarks
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
@@ -151,6 +152,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             expanded_tools_content_synced = sync_expanded_tools_core_pages_v5(db)
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
+            data_quality_repairs = repair_job_data_quality(db)
             watermarks_upgraded = migrate_legacy_job_watermarks(db)
             career_guides_created = []
             career_guides_enriched = []
@@ -187,6 +189,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))
             if taxonomy_created:
                 logger.info("taxonomy terms created count=%s", len(taxonomy_created))
+            if any(data_quality_repairs.values()):
+                logger.info("job data quality repaired stats=%s", data_quality_repairs)
             if watermarks_upgraded:
                 logger.info(
                     "legacy job description watermarks upgraded count=%s",

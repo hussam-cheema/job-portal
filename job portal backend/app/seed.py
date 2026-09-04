@@ -10,7 +10,12 @@ from sqlalchemy import func, select
 from app.auth import ensure_admin_user
 from app.database import SessionLocal
 from app.logging_config import get_logger
-from app.constants import PAKISTAN_CITIES, PAKISTAN_NEWSPAPERS, PAKISTAN_PROVINCES
+from app.constants import (
+    PAKISTAN_ALL_CITIES,
+    PAKISTAN_CITIES,
+    PAKISTAN_NEWSPAPERS,
+    PAKISTAN_PROVINCES,
+)
 from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm, ToolCategory, ToolPage
 from app.page_types import page_slug_namespace
 from app.services.directory_pages import ensure_directory_pages
@@ -669,7 +674,7 @@ def sync_taxonomy_pages_v1(db) -> list[Page]:
     ).scalars().all()
 
     values_by_type = {
-        "city": PAKISTAN_CITIES,
+        "city": [*PAKISTAN_CITIES, PAKISTAN_ALL_CITIES],
         "province": PAKISTAN_PROVINCES,
         "category": [
             *category_terms,

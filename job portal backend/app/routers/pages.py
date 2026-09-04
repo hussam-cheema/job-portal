@@ -15,6 +15,7 @@ from app.page_types import DIRECTORY_PAGE_PATHS, VALID_PAGE_TYPES, page_slug_nam
 from app.schemas import DirectoryPageLinkOut, PageIn, PageOut, PageUpdate
 from app.seed import ensure_default_pages, sync_taxonomy_pages_v1
 from app.services.seo import delete_seo, upsert_page_seo
+from app.services.job_data_quality import organization_aliases, organizations_equivalent
 from app.utils import slugify
 
 router = APIRouter()
@@ -38,6 +39,27 @@ def _page_identity(page_type: str | None, taxonomy_value: str | None) -> tuple[s
 
 def _slug_page_types(page_type: str) -> set[str]:
     return {"city", "province"} if page_slug_namespace(page_type) == "location" else {page_type}
+
+
+def _reject_duplicate_organization(
+    db: Session, taxonomy_value: str | None, exclude_id: str | None = None
+) -> None:
+    if not taxonomy_value:
+        return
+    rows = db.execute(
+        select(Page).where(
+            Page.page_type == "organization",
+            Page.id != exclude_id if exclude_id else Page.id.is_not(None),
+        )
+    ).scalars()
+    if any(
+        organizations_equivalent(taxonomy_value, row.taxonomy_value)
+        for row in rows
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This organization already has a canonical directory page.",
+        )
 
 
 @router.get("/pages", response_model=list[PageOut])
@@ -137,6 +159,16 @@ def get_directory_page(page_type: str, slug: str, db: Session = Depends(get_db))
             Page.is_published.is_(True),
         )
     ).scalar_one_or_none()
+    if not page and normalized_type == "organization":
+        canonical_slug = organization_aliases(db).get(slug.casefold())
+        if canonical_slug:
+            page = db.execute(
+                select(Page).where(
+                    Page.page_type == "organization",
+                    Page.slug == canonical_slug,
+                    Page.is_published.is_(True),
+                )
+            ).scalar_one_or_none()
     if not page:
         raise HTTPException(status_code=404, detail="Directory page not found")
     return page
@@ -173,6 +205,8 @@ def create_page(
         if exists:
             raise HTTPException(status_code=400, detail="Slug already exists")
         if taxonomy_value:
+            if page_type == "organization":
+                _reject_duplicate_organization(db, taxonomy_value)
             duplicate_taxonomy = db.execute(
                 select(Page).where(
                     Page.page_type == page_type,
@@ -228,6 +262,8 @@ def update_page(
             data.pop("taxonomy_value", page.taxonomy_value),
         )
         if taxonomy_value:
+            if page_type == "organization":
+                _reject_duplicate_organization(db, taxonomy_value, page_id)
             duplicate_taxonomy = db.execute(
                 select(Page).where(
                     Page.page_type == page_type,

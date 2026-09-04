@@ -49,15 +49,19 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(page).toHaveURL(/\/tools$/);
   await expect(page.getByRole("heading", { name: "Other Tools" })).toBeVisible();
   await expect(page.getByText("TOOLS", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tax & Salary Tools" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tools for Students" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Pakistan Tax Calculator" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Government Salary Calculator" })).toBeVisible();
   const constellation = page.locator(".tools-constellation");
+  await expect(constellation.getByRole("link", { name: "Tax & Salary Tools" })).toBeVisible();
+  await expect(constellation.getByRole("link", { name: "Tools for Students" })).toBeVisible();
+  await expect(constellation.getByRole("link", { name: "Pakistan Tax Calculator" })).toBeVisible();
+  await expect(constellation.getByRole("link", { name: "Government Salary Calculator" })).toBeVisible();
   await expect(constellation.getByRole("link", { name: "Resume Builder" })).toHaveAttribute("href", "/tools/resume-builder");
   await expect(constellation.getByRole("link", { name: "Cover Letter Builder" })).toHaveAttribute("href", "/tools/cover-letter");
-  await expect(page.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
+  await expect(constellation.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
   await expect(page.getByText("Tools coming soon")).toHaveCount(1);
+  const seoContent = page.locator(".tools-seo-content");
+  await expect(seoContent.getByRole("heading", { name: "Free calculators and career tools for Pakistan" })).toBeVisible();
+  await expect(seoContent.getByRole("link", { name: "latest jobs in Pakistan" })).toHaveAttribute("href", "/");
+  await expect(seoContent.getByRole("link", { name: "career guides" })).toHaveAttribute("href", "/blog");
 });
 
 test("student tool shortcuts open the existing resume and cover letter builders", async ({ page }) => {

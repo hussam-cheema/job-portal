@@ -35,7 +35,11 @@ function jobLocations(job: JobSummary): JsonObject[] {
   const cities = cleanValues(job.cities || []);
   const provinces = cleanValues(job.provinces || []);
 
-  if (job.nationwide || (!cities.length && !provinces.length)) {
+  if (
+    job.nationwide ||
+    cities.some((city) => city.toLowerCase() === "pakistan") ||
+    (!cities.length && !provinces.length)
+  ) {
     return [
       {
         "@type": "Place",

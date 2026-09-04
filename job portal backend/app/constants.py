@@ -15,10 +15,16 @@ PAKISTAN_CITIES: list[str] = sorted(
         "Muzaffargarh", "Nawabshah", "Nowshera", "Okara", "Pakpattan",
         "Peshawar", "Quetta", "Rahim Yar Khan", "Rawalpindi", "Sahiwal",
         "Sargodha", "Sheikhupura", "Sialkot", "Skardu", "Sukkur", "Swabi",
-        "Swat", "Tando Allahyar", "Thatta", "Turbat", "Vehari",
+        "Swat", "Tando Allahyar", "Tharparkar", "Thatta", "Turbat", "Vehari",
         "Wah Cantonment",
     ]
 )
+
+# A deliberate, non-geographic catch-all for vacancies whose advertisement does
+# not identify a city or province. It has its own /locations/pakistan page and
+# must never make an unknown-location vacancy appear on every individual city
+# page.
+PAKISTAN_ALL_CITIES = "Pakistan"
 
 # Provinces plus the three territory-level regions used by nationwide
 # employers. Keeping these separate from cities lets an administrator target a
@@ -48,7 +54,7 @@ PAKISTAN_CITIES_BY_PROVINCE: dict[str, list[str]] = {
     "Sindh": [
         "Dadu", "Ghotki", "Hyderabad", "Jacobabad", "Karachi", "Khairpur",
         "Larkana", "Mirpur Khas", "Nawabshah", "Sukkur", "Tando Allahyar",
-        "Thatta",
+        "Tharparkar", "Thatta",
     ],
     "Khyber Pakhtunkhwa": [
         "Abbottabad", "Bannu", "Batagram", "Charsadda", "Chitral",

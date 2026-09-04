@@ -327,16 +327,16 @@ class JobBase(BaseModel):
     deadline_date: Optional[datetime] = None
     salary_range: Optional[str] = None
     source: Optional[str] = None
-    newspaper: str = ""
+    newspaper: Optional[str] = None
     reference_url: Optional[str] = None
     application_url: Optional[str] = None
     experience_required: Optional[str] = None
     education_required: Optional[str] = None
-    skills: list[str] = Field(default_factory=list)
+    skills: Optional[list[str]] = None
     job_type: Optional[str] = None  # government | private
-    cities: list[str] = Field(default_factory=list)
-    provinces: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
+    cities: Optional[list[str]] = None
+    provinces: Optional[list[str]] = None
+    tags: Optional[list[str]] = None
     keywords: Optional[str] = None
 
 
@@ -383,7 +383,7 @@ class JobSummary(BaseModel):
     deadline_date: Optional[datetime] = None
     salary_range: Optional[str] = None
     source: Optional[str] = None
-    newspaper: str = ""
+    newspaper: Optional[str] = None
     reference_url: Optional[str] = None
     application_url: Optional[str] = None
     experience_required: Optional[str] = None
@@ -764,12 +764,14 @@ class TaxonomyTermIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     slug: Optional[str] = Field(default=None, max_length=140)
     kind: str = Field(default="category", pattern=r"^(category|tag|city)$")
+    province: Optional[str] = Field(default=None, max_length=100)
     is_active: bool = True
 
 
 class TaxonomyTermUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     slug: Optional[str] = Field(default=None, max_length=140)
+    province: Optional[str] = Field(default=None, max_length=100)
     is_active: Optional[bool] = None
 
 
@@ -780,6 +782,7 @@ class TaxonomyTermOut(BaseModel):
     name: str
     slug: str
     kind: str
+    province: Optional[str] = None
     is_active: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

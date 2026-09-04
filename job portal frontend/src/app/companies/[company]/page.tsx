@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { JobDirectoryList } from "@/components/JobDirectoryList";
 import { fetchDirectoryPage } from "@/lib/api";
 import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
@@ -24,6 +24,7 @@ export default async function CompanyPage({ params, searchParams }: Props) {
     searchParams,
   ]);
   if (!cmsPage?.taxonomy_value) notFound();
+  if (cmsPage.slug !== raw) permanentRedirect(`/companies/${cmsPage.slug}`);
   const page = Math.max(1, Number(typeof search.page === "string" ? search.page : 1) || 1);
   return (
     <JobDirectoryList

@@ -38,6 +38,7 @@ from app.auth import ensure_admin_user  # noqa: E402
 from app.exceptions import unhandled_exception_handler  # noqa: E402
 from app.models import Job  # noqa: E402
 from app.services.seo import build_job_structured_data  # noqa: E402
+from app.services.job_data_quality import organizations_equivalent  # noqa: E402
 from app.utils import strip_html  # noqa: E402
 
 
@@ -138,6 +139,17 @@ def test_job_structured_data_omits_unknown_optional_fields():
         assert optional_field not in structured
     assert "streetAddress" not in structured["jobLocation"][0]["address"]
     assert "postalCode" not in structured["jobLocation"][0]["address"]
+
+
+def test_organization_matching_merges_only_safe_identity_variants():
+    assert organizations_equivalent("Acme Pvt. Ltd.", "Acme")
+    assert organizations_equivalent("National Bank of Pakistan", "NBP")
+    assert organizations_equivalent("National Bank of Pakistan (NBP)", "NBP")
+    assert not organizations_equivalent("Election Commission of Pakistan", "SECP")
+    assert not organizations_equivalent(
+        "Population Welfare Department Sindh",
+        "Population Welfare Department Punjab",
+    )
 
 
 def test_job_structured_data_represents_province_and_city_without_fake_address():
@@ -381,17 +393,168 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
         item["title"] for item in client.get("/api/jobs?newspaper=dawn").json()["items"]
     }
 
-    assert {"Sindh Province Vacancy", "Nationwide Vacancy"} <= karachi_titles
-    assert {"Lahore City Vacancy", "Nationwide Vacancy"} <= punjab_titles
-    assert "Nationwide Vacancy" in quetta_titles
+    assert karachi_titles == {"Sindh Province Vacancy"}
+    assert punjab_titles == {"Lahore City Vacancy"}
+    assert "Nationwide Vacancy" not in quetta_titles
+    pakistan_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Pakistan").json()["items"]
+    }
+    assert pakistan_titles == {"Nationwide Vacancy"}
     assert dawn_titles == {"Sindh Province Vacancy"}
 
     directory = client.get("/api/site-directory").json()["taxonomies"]
     karachi = next(item for item in directory["cities"] if item["slug"] == "karachi")
     sindh = next(item for item in directory["provinces"] if item["slug"] == "sindh")
-    assert karachi["count"] >= 2
-    assert sindh["count"] >= 2
+    pakistan = next(item for item in directory["cities"] if item["slug"] == "pakistan")
+    assert karachi["count"] >= 1
+    assert sindh["count"] >= 1
+    assert pakistan["count"] >= 1
     assert any(item["slug"] == "dawn" for item in directory["newspapers"])
+
+
+def test_job_location_is_corrected_and_unknown_location_uses_only_pakistan(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    corrected = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={
+            "title": "Karachi Location Integrity Role",
+            "description": "<p>This role is genuinely based in Karachi.</p>",
+            "published_date": "2026-09-04T00:00:00",
+            "cities": ["Karachi"],
+            "provinces": ["Punjab"],
+        },
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["cities"] == ["Karachi"]
+    assert corrected.json()["provinces"] == ["Sindh"]
+
+    unknown = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={
+            "title": "Location Not Disclosed Role",
+            "description": "<p>The advertisement does not state a location.</p>",
+            "published_date": "2026-09-04T00:00:00",
+            "newspaper": "  ",
+            "salary_range": "None",
+        },
+    )
+    assert unknown.status_code == 200, unknown.text
+    assert unknown.json()["cities"] == ["Pakistan"]
+    assert unknown.json()["provinces"] == []
+    assert unknown.json()["newspaper"] is None
+    assert unknown.json()["salary_range"] is None
+
+    lahore_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Lahore").json()["items"]
+    }
+    pakistan_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Pakistan").json()["items"]
+    }
+    assert "Location Not Disclosed Role" not in lahore_titles
+    assert "Location Not Disclosed Role" in pakistan_titles
+
+
+def test_near_duplicate_organization_names_reuse_one_canonical_page(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    base = {
+        "description": "<p>A confirmed vacancy.</p>",
+        "published_date": "2026-09-04T00:00:00",
+        "cities": ["Lahore"],
+    }
+    first = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={**base, "title": "Acme First Role", "source": "Acme Pvt. Ltd."},
+    )
+    second = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={**base, "title": "Acme Second Role", "source": "Acme"},
+    )
+    assert first.status_code == second.status_code == 200
+    assert second.json()["source"] == first.json()["source"]
+    organizations = client.get("/api/pages/directory-links").json()
+    acme_pages = [
+        page
+        for page in organizations
+        if page["page_type"] == "organization"
+        and "acme" in (page["taxonomy_value"] or "").casefold()
+    ]
+    assert len(acme_pages) == 1
+
+
+def test_legacy_duplicate_organization_page_becomes_a_canonical_alias(client: TestClient):
+    from datetime import datetime
+    from uuid import uuid4
+
+    from app.models import Page
+    from app.services.job_data_quality import repair_job_data_quality
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post(
+        "/api/admin/jobs",
+        headers=headers,
+        json={
+            "title": "Legacy Organization Alias Role",
+            "description": "<p>A confirmed vacancy.</p>",
+            "published_date": "2026-09-04T00:00:00",
+            "source": "Acme Associates Ltd.",
+            "cities": ["Lahore"],
+        },
+    )
+    assert created.status_code == 200
+
+    override = app.dependency_overrides[get_db]
+    db_generator = override()
+    db = next(db_generator)
+    try:
+        db.add(
+            Page(
+                id=str(uuid4()),
+                slug="acme-associates-old",
+                title="Acme Associates Jobs",
+                content="<p>Legacy duplicate directory page.</p>",
+                page_type="organization",
+                taxonomy_value="Acme Associates",
+                is_published=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+        stats = repair_job_data_quality(db)
+        db.commit()
+        assert stats["organization_pages"] == 1
+    finally:
+        try:
+            next(db_generator)
+        except StopIteration:
+            pass
+
+    alias = client.get(
+        "/api/pages/directory/organization/acme-associates-old"
+    )
+    assert alias.status_code == 200
+    assert alias.json()["slug"] != "acme-associates-old"
+    pages = [
+        page
+        for page in client.get("/api/pages/directory-links").json()
+        if page["page_type"] == "organization"
+        and "acme associates" in (page["taxonomy_value"] or "").casefold()
+    ]
+    assert len(pages) == 1
 
 
 def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: TestClient):
@@ -1663,7 +1826,7 @@ def test_taxonomy_controls_job_cities(client: TestClient):
     created_term = client.post(
         "/api/admin/taxonomy",
         headers=auth,
-        json={"kind": "city", "name": "Sargodha Test", "slug": "sargodha-test"},
+        json={"kind": "city", "name": "Sargodha Test", "slug": "sargodha-test", "province": "Punjab"},
     )
     assert created_term.status_code == 200
     city_id = created_term.json()["id"]
@@ -1736,7 +1899,7 @@ def test_taxonomy_controls_job_cities(client: TestClient):
     removable = client.post(
         "/api/admin/taxonomy",
         headers=auth,
-        json={"kind": "city", "name": "Temporary City"},
+        json={"kind": "city", "name": "Temporary City", "province": "Punjab"},
     )
     assert removable.status_code == 200
     assert client.delete(

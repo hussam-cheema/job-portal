@@ -448,7 +448,7 @@ export default function JobFormPage() {
         deadline_date: dateInputToApiValue(form.deadline_date),
         salary_range: form.salary_range || null,
         source: form.source || null,
-        newspaper: form.newspaper.trim(),
+        newspaper: form.newspaper.trim() || null,
         reference_url: form.reference_url || null,
         application_url: form.application_url || null,
         experience_required: form.experience_required || null,

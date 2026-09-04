@@ -15,6 +15,7 @@ from app.auth import get_current_admin
 from app.constants import (
     DEFAULT_CATEGORIES,
     JOB_TYPES,
+    PAKISTAN_ALL_CITIES,
     PAKISTAN_CITIES,
     PAKISTAN_CITIES_BY_PROVINCE,
     PAKISTAN_NEWSPAPERS,
@@ -44,9 +45,14 @@ from app.services.seo import delete_seo, upsert_job_seo
 from app.services.storage import delete_objects
 from app.services.watermark import process_description_images
 from app.services.taxonomy import (
-    canonicalize_job_cities,
+    canonicalize_job_locations,
     canonicalize_job_terms,
     ensure_default_taxonomy,
+)
+from app.services.job_data_quality import (
+    canonicalize_job_organization,
+    clean_optional_list,
+    clean_optional_text,
 )
 from app.utils import as_list, experience_label, normalize_job_type, slugify
 
@@ -98,7 +104,14 @@ def _to_summary(job: Any) -> JobSummary:
     skills = _list_field(job.skills)
     configured_cities = {city.casefold() for city in PAKISTAN_CITIES}
     selected_cities = {city.casefold() for city in cities}
-    nationwide = bool(configured_cities) and configured_cities.issubset(selected_cities)
+    nationwide = (
+        PAKISTAN_ALL_CITIES.casefold() in selected_cities
+        or (bool(configured_cities) and configured_cities.issubset(selected_cities))
+        or (
+            len(selected_cities) >= 20
+            and len(selected_cities & configured_cities) / len(configured_cities) >= 0.9
+        )
+    )
     locations = [*provinces, *cities]
     location = "Pakistan" if nationwide else ", ".join(locations) if locations else None
     deadline = job.deadline_date
@@ -115,7 +128,7 @@ def _to_summary(job: Any) -> JobSummary:
         deadline_date=job.deadline_date,
         salary_range=job.salary_range,
         source=job.source,
-        newspaper=job.newspaper or "",
+        newspaper=job.newspaper,
         reference_url=job.reference_url,
         application_url=job.application_url,
         experience_required=job.experience_required,
@@ -264,40 +277,52 @@ def _apply_job_fields(job: Job, data: dict, db: Session, *, is_create: bool) -> 
     if "deadline_date" in data:
         job.deadline_date = data["deadline_date"]
     if "salary_range" in data:
-        job.salary_range = data["salary_range"]
+        job.salary_range = clean_optional_text(data["salary_range"])
     if "source" in data:
-        job.source = (data["source"] or "").strip() or None
+        job.source = canonicalize_job_organization(db, data["source"])
     if "newspaper" in data:
-        job.newspaper = (data["newspaper"] or "").strip()
+        job.newspaper = clean_optional_text(data["newspaper"])
     if "reference_url" in data:
-        job.reference_url = data["reference_url"]
+        job.reference_url = clean_optional_text(data["reference_url"])
     if "application_url" in data:
-        job.application_url = data["application_url"]
+        job.application_url = clean_optional_text(data["application_url"])
     if "experience_required" in data:
-        job.experience_required = experience_label(data["experience_required"])
+        job.experience_required = experience_label(
+            clean_optional_text(data["experience_required"])
+        )
     if "education_required" in data:
-        job.education_required = data["education_required"]
-    if "skills" in data and data["skills"] is not None:
-        job.skills = as_list(data["skills"])
+        job.education_required = clean_optional_text(data["education_required"])
+    if "skills" in data:
+        job.skills = clean_optional_list(data["skills"])
     if "job_type" in data:
-        job.job_type = normalize_job_type(data["job_type"])
-    if "cities" in data and data["cities"] is not None:
-        job.cities = canonicalize_job_cities(db, as_list(data["cities"]))
-    if "provinces" in data and data["provinces"] is not None:
-        selected = as_list(data["provinces"])
-        allowed = {value.casefold(): value for value in PAKISTAN_PROVINCES}
-        unknown = [value for value in selected if value.casefold() not in allowed]
-        if unknown:
-            raise HTTPException(
-                status_code=400,
-                detail="Select only predefined provinces/territories. Unknown: "
-                + ", ".join(unknown[:10]),
-            )
-        job.provinces = [allowed[value.casefold()] for value in selected]
-    if "tags" in data and data["tags"] is not None:
-        job.tags = canonicalize_job_terms(db, as_list(data["tags"]))
+        job.job_type = normalize_job_type(clean_optional_text(data["job_type"]))
+    if is_create or "cities" in data or "provinces" in data:
+        selected_cities = (
+            as_list(data.get("cities"))
+            if "cities" in data
+            else as_list(job.cities)
+        )
+        selected_provinces = (
+            as_list(data.get("provinces"))
+            if "provinces" in data
+            else as_list(job.provinces)
+        )
+        # Replacing a country-wide marker with a province must not retain the
+        # previous Pakistan city marker.
+        if "provinces" in data and "cities" not in data and any(
+            value.casefold() == PAKISTAN_ALL_CITIES.casefold()
+            for value in selected_cities
+        ):
+            selected_cities = []
+        job.cities, canonical_provinces = canonicalize_job_locations(
+            db, selected_cities, selected_provinces
+        )
+        job.provinces = canonical_provinces or None
+    if "tags" in data:
+        selected_tags = clean_optional_list(data["tags"])
+        job.tags = canonicalize_job_terms(db, selected_tags) if selected_tags else None
     if "keywords" in data:
-        job.keywords = data["keywords"]
+        job.keywords = clean_optional_text(data["keywords"])
     job.updated_at = datetime.utcnow()
 
 
@@ -374,11 +399,17 @@ def list_jobs(
                 func.lower(cast(Job.cities, String)).like(
                     f'%"{canonical_city.casefold()}"%'
                 ),
-                func.lower(cast(Job.cities, String)).like('%"pakistan"%'),
-                func.lower(cast(Job.provinces, String)).like('%"pakistan"%'),
             ]
             linked_province = PAKISTAN_PROVINCE_BY_CITY.get(canonical_city)
-            if linked_province:
+            if not linked_province:
+                city_row = db.execute(
+                    select(TaxonomyTerm).where(
+                        TaxonomyTerm.kind == "city",
+                        func.lower(TaxonomyTerm.name) == canonical_city.casefold(),
+                    )
+                ).scalar_one_or_none()
+                linked_province = city_row.province if city_row else None
+            if linked_province and canonical_city.casefold() != PAKISTAN_ALL_CITIES.casefold():
                 city_filters.append(
                     func.lower(cast(Job.provinces, String)).like(
                         f'%"{linked_province.casefold()}"%'
@@ -399,16 +430,23 @@ def list_jobs(
                 func.lower(cast(Job.provinces, String)).like(
                     f'%"{canonical_province.casefold()}"%'
                 ),
-                func.lower(cast(Job.provinces, String)).like('%"pakistan"%'),
-                func.lower(cast(Job.cities, String)).like('%"pakistan"%'),
             ]
+            linked_cities = list(PAKISTAN_CITIES_BY_PROVINCE.get(canonical_province, []))
+            linked_cities.extend(
+                row.name
+                for row in db.execute(
+                    select(TaxonomyTerm).where(
+                        TaxonomyTerm.kind == "city",
+                        TaxonomyTerm.province == canonical_province,
+                    )
+                ).scalars()
+                if row.name not in linked_cities
+            )
             province_filters.extend(
                 func.lower(cast(Job.cities, String)).like(
                     f'%"{linked_city.casefold()}"%'
                 )
-                for linked_city in PAKISTAN_CITIES_BY_PROVINCE.get(
-                    canonical_province, []
-                )
+                for linked_city in linked_cities
             )
             filters.append(or_(*province_filters))
         if company:
@@ -785,7 +823,7 @@ def get_filters(db: Session = Depends(get_db)):
     except Exception:
         logger.exception("get_filters failed")
         data = empty_filters()
-        data["cities"] = PAKISTAN_CITIES
+        data["cities"] = [PAKISTAN_ALL_CITIES, *PAKISTAN_CITIES]
         data["provinces"] = PAKISTAN_PROVINCES
         data["categories"] = DEFAULT_CATEGORIES
         return FiltersResponse(**data)

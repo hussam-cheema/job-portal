@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.page_types import DIRECT_PAGE_SLUGS, public_page_path
 from app.constants import (
+    PAKISTAN_ALL_CITIES,
     PAKISTAN_CITIES,
     PAKISTAN_CITIES_BY_PROVINCE,
     PAKISTAN_PROVINCE_BY_CITY,
@@ -347,7 +348,9 @@ def _directory_page_values(
     ]
 
 
-def _expanded_job_locations(job: Any) -> tuple[list[str], list[str]]:
+def _expanded_job_locations(
+    job: Any, cities_by_province: dict[str, list[str]] | None = None
+) -> tuple[list[str], list[str]]:
     """Expand city/province assignments using the public directory rules."""
     selected_cities = set(as_list(job.cities))
     selected_provinces = set(as_list(job.provinces))
@@ -355,15 +358,20 @@ def _expanded_job_locations(job: Any) -> tuple[list[str], list[str]]:
     nationwide = (
         "pakistan" in lowered
         or set(PAKISTAN_CITIES).issubset(selected_cities)
+        or (
+            len(selected_cities) >= 20
+            and len(selected_cities & set(PAKISTAN_CITIES)) / len(PAKISTAN_CITIES) >= 0.9
+        )
         or set(PAKISTAN_PROVINCES).issubset(selected_provinces)
     )
     if nationwide:
-        return list(PAKISTAN_CITIES), list(PAKISTAN_PROVINCES)
+        return [PAKISTAN_ALL_CITIES], []
 
     expanded_cities = set(selected_cities)
     expanded_provinces = set(selected_provinces)
     for province in selected_provinces:
         expanded_cities.update(PAKISTAN_CITIES_BY_PROVINCE.get(province, []))
+        expanded_cities.update((cities_by_province or {}).get(province, []))
     for city in selected_cities:
         province = PAKISTAN_PROVINCE_BY_CITY.get(city)
         if province:
@@ -422,7 +430,19 @@ def build_site_directory(db: Session) -> dict[str, Any]:
         .order_by(Page.title.asc())
     ).all()
     job_tags = [value for job in jobs for value in set(as_list(job.tags))]
-    expanded_locations = [_expanded_job_locations(job) for job in jobs]
+    city_terms = db.execute(
+        select(TaxonomyTerm.name, TaxonomyTerm.province).where(
+            TaxonomyTerm.kind == "city",
+            TaxonomyTerm.is_active.is_(True),
+            TaxonomyTerm.province.is_not(None),
+        )
+    ).all()
+    dynamic_cities_by_province: dict[str, list[str]] = {}
+    for city_name, province_name in city_terms:
+        dynamic_cities_by_province.setdefault(province_name, []).append(city_name)
+    expanded_locations = [
+        _expanded_job_locations(job, dynamic_cities_by_province) for job in jobs
+    ]
     cities = [value for city_values, _ in expanded_locations for value in city_values]
     provinces = [
         value for _, province_values in expanded_locations for value in province_values
@@ -450,7 +470,7 @@ def build_site_directory(db: Session) -> dict[str, Any]:
                     job.deadline_date and job.deadline_date.date() < now.date()
                 ),
                 "organization": (job.source or "").strip() or None,
-                "newspaper": (job.newspaper or "").strip(),
+                "newspaper": (job.newspaper or "").strip() or None,
                 "salary_range": (job.salary_range or "").strip() or None,
                 "education_required": (job.education_required or "").strip()
                 or None,

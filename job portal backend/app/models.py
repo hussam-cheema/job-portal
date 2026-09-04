@@ -144,9 +144,7 @@ class Job(Base):
     deadline_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     salary_range: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    newspaper: Mapped[str] = mapped_column(
-        String(200), nullable=False, default="", server_default=""
-    )
+    newspaper: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     reference_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     application_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     experience_required: Mapped[Optional[str]] = mapped_column(
@@ -402,6 +400,10 @@ class TaxonomyTerm(Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(140), nullable=False, index=True)
+    # City terms carry their real province/territory so future administrator-
+    # created locations cannot be assigned to the wrong regional directory.
+    # Category/tag rows leave this NULL.
+    province: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, index=True
     )

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import canonical_site_url, cfg, site_name
+from app.constants import PAKISTAN_ALL_CITIES, PAKISTAN_PROVINCE_BY_CITY
 from app.logging_config import get_logger
 from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric, ToolCategory, ToolPage
 from app.page_types import public_page_path
@@ -27,7 +28,9 @@ def _job_locations(job: Job) -> list[dict[str, Any]]:
     cities = _clean_values(job.cities)
     provinces = _clean_values(job.provinces)
 
-    if not cities and not provinces:
+    if (
+        not cities and not provinces
+    ) or any(city.casefold() == PAKISTAN_ALL_CITIES.casefold() for city in cities):
         return [
             {
                 "@type": "Place",
@@ -36,9 +39,11 @@ def _job_locations(job: Job) -> list[dict[str, Any]]:
         ]
 
     if cities:
-        region = provinces[0] if len(provinces) == 1 else None
         result = []
         for city in cities:
+            region = PAKISTAN_PROVINCE_BY_CITY.get(city)
+            if not region and len(provinces) == 1:
+                region = provinces[0]
             address: dict[str, Any] = {
                 "@type": "PostalAddress",
                 "addressLocality": city,
