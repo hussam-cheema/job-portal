@@ -93,6 +93,7 @@ def test_readiness(client: TestClient):
     r = client.get("/ready")
     assert r.status_code == 200
     assert r.json() == {"status": "ready", "database": "up"}
+    assert r.headers["x-app-revision"]
 
 
 def test_job_structured_data_omits_unknown_optional_fields():

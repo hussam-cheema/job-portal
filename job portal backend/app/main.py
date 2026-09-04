@@ -5,7 +5,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -405,7 +405,7 @@ def health():
 
 
 @app.get("/ready", tags=["meta"])
-def readiness():
+def readiness(response: Response):
     """Readiness probe: fail routing/deployment checks while PostgreSQL is unavailable."""
     try:
         from sqlalchemy import text
@@ -417,6 +417,10 @@ def readiness():
             db.execute(text("SELECT 1"))
         finally:
             db.close()
+        response.headers["X-App-Revision"] = os.getenv(
+            "RAILWAY_GIT_COMMIT_SHA",
+            "local",
+        )
         return {"status": "ready", "database": "up"}
     except Exception as exc:
         logger.warning("readiness db check failed: %s", exc)
