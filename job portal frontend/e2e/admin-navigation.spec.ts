@@ -324,6 +324,7 @@ test("administrator-created cities appear dynamically in the job form", async ({
   await expect(page.getByText("Lahore", { exact: true })).toBeVisible();
 
   await page.getByLabel("Name").fill("Sargodha Test");
+  await page.getByLabel("Province / territory").selectOption("Punjab");
   await page.getByRole("button", { name: "Add city" }).click();
   await expect(page.getByText("Sargodha Test", { exact: true })).toBeVisible();
 
