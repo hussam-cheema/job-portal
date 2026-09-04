@@ -37,6 +37,8 @@ from app.utils import as_list, slugify
 
 logger = get_logger("jobportal.seo_tools")
 
+GSC_SEARCH_ANALYTICS_PAGE_SIZE = 25_000
+
 
 def gsc_credentials_configured() -> bool:
     """Return whether either file-based or environment-based GSC credentials exist."""
@@ -645,6 +647,51 @@ def authority_score(db: Session) -> dict[str, Any]:
         return {"score": 0, "method": "error"}
 
 
+def _fetch_gsc_search_analytics_rows(
+    service: Any,
+    *,
+    site: str,
+    start: Any,
+    end: Any,
+    page_size: int = GSC_SEARCH_ANALYTICS_PAGE_SIZE,
+) -> list[dict[str, Any]]:
+    """Fetch every available query/URL row using Search Console offsets."""
+    page_size = max(1, min(int(page_size), GSC_SEARCH_ANALYTICS_PAGE_SIZE))
+    start_row = 0
+    rows: list[dict[str, Any]] = []
+
+    while True:
+        body = {
+            "startDate": start.isoformat(),
+            "endDate": end.isoformat(),
+            "dimensions": ["query", "page"],
+            "rowLimit": page_size,
+            "startRow": start_row,
+        }
+        response = (
+            service.searchanalytics()
+            .query(siteUrl=site, body=body)
+            .execute()
+        )
+        batch = response.get("rows") or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        start_row += page_size
+
+    return rows
+
+
+def _count_unique_gsc_queries(rows: list[dict[str, Any]]) -> int:
+    return len(
+        {
+            _normalized_keyword(item.get("keyword")).casefold()
+            for item in rows
+            if _normalized_keyword(item.get("keyword"))
+        }
+    )
+
+
 def sync_gsc_data(db: Session) -> dict[str, Any]:
     """
     Pull Search Console search analytics when GSC_SITE_URL and either a
@@ -676,14 +723,12 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
         # Use an exact 28-day window and avoid today's still-changing data.
         end = datetime.utcnow().date() - timedelta(days=1)
         start = end - timedelta(days=27)
-        body = {
-            "startDate": start.isoformat(),
-            "endDate": end.isoformat(),
-            "dimensions": ["query", "page"],
-            "rowLimit": 1000,
-        }
-        resp = service.searchanalytics().query(siteUrl=site, body=body).execute()
-        rows = resp.get("rows") or []
+        rows = _fetch_gsc_search_analytics_rows(
+            service,
+            site=site,
+            start=start,
+            end=end,
+        )
 
         # The dashboard represents the latest 28-day snapshot. Replace the
         # previous snapshot atomically so repeated syncs cannot append the same
@@ -744,20 +789,21 @@ def sync_gsc_data(db: Session) -> dict[str, Any]:
                 }
             )
         db.commit()
-        unique_keywords = list_keyword_ranks(db, limit=1000)
+        unique_query_count = _count_unique_gsc_queries(keywords_out)
+        unique_keywords = list_keyword_ranks(db, limit=50)
         set_setting(db, "gsc_last_sync", datetime.utcnow().isoformat())
         set_setting(db, "gsc_period_start", start.isoformat())
         set_setting(db, "gsc_period_end", end.isoformat())
         return {
             "connected": True,
             "site": site,
-            "rows": len(unique_keywords),
+            "rows": unique_query_count,
             "query_url_rows": len(keywords_out),
             "keywords": unique_keywords[:50],
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
             "message": (
-                f"Synced {len(unique_keywords)} unique search queries across "
+                f"Synced {unique_query_count} unique search queries across "
                 f"{len(keywords_out)} query/URL rows from Google Search Console "
                 f"for {start.isoformat()} to {end.isoformat()}."
             ),
