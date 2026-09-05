@@ -30,7 +30,6 @@ from app.page_types import DIRECT_PAGE_SLUGS, public_page_path
 from app.constants import (
     PAKISTAN_ALL_CITIES,
     PAKISTAN_CITIES,
-    PAKISTAN_CITIES_BY_PROVINCE,
     PAKISTAN_PROVINCE_BY_CITY,
     PAKISTAN_PROVINCES,
 )
@@ -351,7 +350,7 @@ def _directory_page_values(
 def _expanded_job_locations(
     job: Any, cities_by_province: dict[str, list[str]] | None = None
 ) -> tuple[list[str], list[str]]:
-    """Expand city/province assignments using the public directory rules."""
+    """Normalize locations for directory counts without inventing city matches."""
     selected_cities = set(as_list(job.cities))
     selected_provinces = set(as_list(job.provinces))
     lowered = {value.casefold() for value in selected_cities | selected_provinces}
@@ -369,11 +368,17 @@ def _expanded_job_locations(
 
     expanded_cities = set(selected_cities)
     expanded_provinces = set(selected_provinces)
-    for province in selected_provinces:
-        expanded_cities.update(PAKISTAN_CITIES_BY_PROVINCE.get(province, []))
-        expanded_cities.update((cities_by_province or {}).get(province, []))
     for city in selected_cities:
         province = PAKISTAN_PROVINCE_BY_CITY.get(city)
+        if not province:
+            province = next(
+                (
+                    province_name
+                    for province_name, city_names in (cities_by_province or {}).items()
+                    if city in city_names
+                ),
+                None,
+            )
         if province:
             expanded_provinces.add(province)
     return sorted(expanded_cities, key=str.casefold), sorted(

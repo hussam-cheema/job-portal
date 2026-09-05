@@ -395,27 +395,14 @@ def list_jobs(
                 ),
                 requested_city,
             )
-            city_filters = [
+            # A city landing page must contain only jobs explicitly assigned to
+            # that city. Province-wide jobs remain available on the province
+            # page and must not be duplicated across every city in that province.
+            filters.append(
                 func.lower(cast(Job.cities, String)).like(
                     f'%"{canonical_city.casefold()}"%'
-                ),
-            ]
-            linked_province = PAKISTAN_PROVINCE_BY_CITY.get(canonical_city)
-            if not linked_province:
-                city_row = db.execute(
-                    select(TaxonomyTerm).where(
-                        TaxonomyTerm.kind == "city",
-                        func.lower(TaxonomyTerm.name) == canonical_city.casefold(),
-                    )
-                ).scalar_one_or_none()
-                linked_province = city_row.province if city_row else None
-            if linked_province and canonical_city.casefold() != PAKISTAN_ALL_CITIES.casefold():
-                city_filters.append(
-                    func.lower(cast(Job.provinces, String)).like(
-                        f'%"{linked_province.casefold()}"%'
-                    )
                 )
-            filters.append(or_(*city_filters))
+            )
         if province:
             requested_province = province.strip()
             canonical_province = next(

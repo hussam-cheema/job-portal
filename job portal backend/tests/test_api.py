@@ -384,6 +384,9 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
     karachi_titles = {
         item["title"] for item in client.get("/api/jobs?city=Karachi").json()["items"]
     }
+    lahore_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Lahore").json()["items"]
+    }
     punjab_titles = {
         item["title"] for item in client.get("/api/jobs?province=Punjab").json()["items"]
     }
@@ -394,7 +397,8 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
         item["title"] for item in client.get("/api/jobs?newspaper=dawn").json()["items"]
     }
 
-    assert karachi_titles == {"Sindh Province Vacancy"}
+    assert karachi_titles == set()
+    assert lahore_titles == {"Lahore City Vacancy"}
     assert punjab_titles == {"Lahore City Vacancy"}
     assert "Nationwide Vacancy" not in quetta_titles
     pakistan_titles = {
@@ -407,7 +411,7 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
     karachi = next(item for item in directory["cities"] if item["slug"] == "karachi")
     sindh = next(item for item in directory["provinces"] if item["slug"] == "sindh")
     pakistan = next(item for item in directory["cities"] if item["slug"] == "pakistan")
-    assert karachi["count"] >= 1
+    assert karachi["count"] == 0
     assert sindh["count"] >= 1
     assert pakistan["count"] >= 1
     assert any(item["slug"] == "dawn" for item in directory["newspapers"])
