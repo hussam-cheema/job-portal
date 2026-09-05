@@ -12,7 +12,7 @@ test("tools admin keeps the directory above the editor at desktop and tablet wid
 
   await expect(page.getByRole("heading", { name: "Other Tools", exact: true })).toBeVisible();
   await expect(page.getByText("4 Categories", { exact: false })).toBeVisible();
-  await expect(page.getByText("6 Tools", { exact: false })).toBeVisible();
+  await expect(page.getByText("7 Tools", { exact: false })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Find a category or tool" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Basic information" })).toBeVisible();
 
@@ -56,6 +56,7 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(constellation.getByRole("link", { name: "Government Salary Calculator" })).toBeVisible();
   await expect(constellation.getByRole("link", { name: "Resume Builder" })).toHaveAttribute("href", "/tools/resume-builder");
   await expect(constellation.getByRole("link", { name: "Cover Letter Builder" })).toHaveAttribute("href", "/tools/cover-letter");
+  await expect(constellation.locator('a[href="/tools/api"]')).toContainText("API");
   await expect(constellation.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
   await expect(page.getByText("Tools coming soon")).toHaveCount(1);
   const seoContent = page.locator(".tools-seo-content");
@@ -64,18 +65,72 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(seoContent.getByRole("link", { name: "career guides" })).toHaveAttribute("href", "/blog");
 });
 
-test("student tool shortcuts open the existing resume and cover letter builders", async ({ page }) => {
+test("student tool shortcuts open the builders and student API", async ({ page }) => {
   await page.goto("/tools/categories/tools-for-students");
   const directory = page.locator(".tool-category-grid");
   const resume = directory.getByRole("link", { name: /Resume Builder/ });
   const coverLetter = directory.getByRole("link", { name: /Cover Letter Builder/ });
+  const api = directory.locator('a[href="/tools/api"]');
   await expect(resume).toHaveAttribute("href", "/tools/resume-builder");
   await expect(coverLetter).toHaveAttribute("href", "/tools/cover-letter");
+  await expect(api).toHaveAttribute("href", "/tools/api");
   await resume.click();
   await expect(page).toHaveURL(/\/tools\/resume-builder$/);
   await page.goto("/tools/categories/tools-for-students");
   await page.locator(".tool-category-grid").getByRole("link", { name: /Cover Letter Builder/ }).click();
   await expect(page).toHaveURL(/\/tools\/cover-letter$/);
+});
+
+test("student API verifies a subscribed email, reveals the key once, and documents usage", async ({ page }) => {
+  await page.route("**/api/student-api/request-code", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ email: "student@example.com" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({
+        status: "code_sent",
+        message: "A six-digit verification code was sent to your subscribed email.",
+        expires_in_seconds: 600,
+        retry_after_seconds: 60,
+      }),
+    });
+  });
+  await page.route("**/api/student-api/verify-code", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ email: "student@example.com", code: "123456" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({
+        status: "verified",
+        message: "Email verified. Copy this API key now; it will not be shown again.",
+        api_key: "pjm_live_test_key_for_browser_1234567890",
+        key_prefix: "pjm_live_test_key_",
+        quota_total: 50,
+        requests_used: 0,
+        requests_remaining: 50,
+        documentation_url: "https://pakistanjobsmarket.com/tools/api",
+      }),
+    });
+  });
+
+  await page.goto("/tools/api");
+  await expect(page.getByRole("heading", { name: "API", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your student API key" })).toBeVisible();
+  await page.getByLabel("Newsletter email").fill("student@example.com");
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await expect(page.getByLabel("Six-digit verification code")).toBeVisible();
+  await page.getByLabel("Six-digit verification code").fill("123456");
+  await page.getByRole("button", { name: "Verify and create key" }).click();
+  await expect(page.getByText("pjm_live_test_key_for_browser_1234567890")).toBeVisible();
+  await expect(page.getByText("50", { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Read jobs and blog posts" })).toBeVisible();
+  await expect(page.getByText("/jobs/{slug}", { exact: true })).toBeVisible();
+  await expect(page.getByText("X-API-Key", { exact: false }).first()).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "Create your student API key" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("document converter validates one file, reports progress, downloads, and is tracked by analytics", async ({ page }) => {

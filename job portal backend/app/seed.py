@@ -139,6 +139,23 @@ DEFAULT_TOOLS = (
         ),
     },
     {
+        "category_slug": "tools-for-students",
+        "slug": "api",
+        "title": "API",
+        "tool_kind": "student_api",
+        "content": (
+            "<h2>Build student projects with real Pakistan jobs data</h2>"
+            "<p>The Pakistan Jobs Market student API gives active newsletter subscribers "
+            "read-only access to published job and blog data for learning, coursework and "
+            "portfolio projects. Verify your subscribed email to create a private API key.</p>"
+            "<p>Each subscriber receives a lifetime allowance of 50 data requests. Job "
+            "responses include the complete description, advertisement image URLs and public "
+            "attachment details; blog responses include the complete published article.</p>"
+            "<p>Keep your key private and use the service responsibly. Access remains linked "
+            "to an active newsletter subscription.</p>"
+        ),
+    },
+    {
         "category_slug": "document-tools",
         "slug": "docx-pdf-converter",
         "title": "DOCX and PDF Converter",
@@ -188,8 +205,10 @@ application deadline, education, experience, location and original application o
 <h2>Free tools for applications, study and salary planning</h2>
 <p>The Tools hub brings together interactive resources designed for Pakistan. It includes the
 Pakistan Tax Calculator, Government Salary Calculator, CGPA Calculator, Resume Builder, Cover
-Letter Builder and DOCX/PDF Converter. Tool categories and pages are managed through the website's
-content system so the directory can continue to grow.</p>
+Letter Builder, DOCX/PDF Converter and a read-only student API. Active newsletter subscribers can
+use the API to build coursework and portfolio projects with published job and blog data. Tool
+categories and pages are managed through the website's content system so the directory can
+continue to grow.</p>
 <p>The Government Salary Calculator separates basic pay and applicable allowances where a central
 official schedule exists. Because SPS, O, E, OG, EG and J packages can be set by individual
 organizations, those scales require the user to enter the amount shown in the relevant official
@@ -232,7 +251,7 @@ PRIVACY_HTML = """
 <p><strong>Pakistan Jobs Market</strong> respects the privacy of visitors, subscribers and people
 who contact us. This Privacy Policy explains what information may be collected when you use this
 website, why it is used, how it may be protected and the choices available to you.</p>
-<p><strong>Effective date:</strong> 28 August 2026</p>
+<p><strong>Effective date:</strong> 5 September 2026</p>
 
 <h2>Information we may collect</h2>
 <p>You can browse public job listings and career content without creating an account. Depending on
@@ -249,6 +268,10 @@ the feature you use, we may collect the following limited information:</p>
   <li><strong>Temporary document-conversion information:</strong> when you choose the DOCX/PDF
   Converter, the selected file, original filename, validation details, conversion status and
   generated download are processed for the limited purpose of completing that request.</li>
+  <li><strong>Student API information:</strong> when a subscriber requests API access, we process
+  the subscribed email, subscription status, one-time verification state, a one-way hash and short
+  prefix of the API key, quota and request counts, operational timestamps, and privacy-protected
+  network identifiers used to prevent abuse.</li>
 </ul>
 
 <h2>How information is used</h2>
@@ -278,6 +301,18 @@ before conversion.</p>
 about newly published jobs. Each alert includes an unsubscribe option. Using that option removes
 the active subscription record so future alerts are not sent. Transactional messages already in
 delivery may not be recalled.</p>
+
+<h2>Student API verification and credentials</h2>
+<p>The student API sends a short-lived, single-use verification code to an active newsletter
+subscriber before creating a key. Pakistan Jobs Market does not store the readable verification
+code or the complete API key: keyed one-way hashes are stored for comparison, and only a short key
+prefix is retained for support. The service also stores whether access is active, the lifetime
+quota, requests used and last-use timestamps. Creating a replacement key invalidates the earlier
+key but does not reset the quota.</p>
+<p>Hashed rate-limit and security events may be retained for a limited period to detect automated
+abuse. Unsubscribing disables API access. A minimal inactive access ledger may be retained where
+reasonably necessary to enforce the lifetime quota, prevent repeated free-key creation, investigate
+abuse or meet legal and security obligations.</p>
 
 <h2>Cookies, analytics and advertising</h2>
 <p>The website or its service providers may use cookies, local storage or similar technologies for
@@ -418,6 +453,14 @@ may not convert exactly. Users must inspect the downloaded file before relying o
 printing or submitting it. Keep an independent copy of every original; Pakistan Jobs Market is not
 responsible for formatting changes, omitted elements, file corruption or loss arising from use of
 the converter.</p>
+
+<h2>Student API</h2>
+<p>The student API is a limited, read-only learning resource. API responses may reproduce the same
+third-party job information and public-source limitations described above, and they may change or
+be removed without notice. A key does not transfer ownership of website or source content, permit
+misrepresentation, or guarantee uninterrupted access. Users must protect their key, respect the
+lifetime quota, attribute sources where appropriate, and independently verify information before
+using it in a project or application.</p>
 
 <h2>Copyright, corrections and availability</h2>
 <p>Advertisements, logos and source materials may belong to their respective owners and are used
@@ -879,6 +922,31 @@ def sync_expanded_tools_core_pages_v5(db) -> list[Page]:
     return changed
 
 
+def sync_student_api_core_pages_v6(db) -> list[Page]:
+    """Publish student API, credential and quota disclosures exactly once."""
+    marker_key = "student_api_core_pages_v6"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    defaults = {slug: (title, content) for slug, title, content in DEFAULT_PAGES}
+    changed: list[Page] = []
+    for slug in ("about", "privacy", "disclaimer"):
+        title, content = defaults[slug]
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO[slug])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
 def sync_homepage_branding_seo_v1(db) -> list[str]:
     """Apply the new public brand and homepage SEO once, without overwriting future edits."""
     marker_key = "homepage_branding_seo_v1"
@@ -956,6 +1024,7 @@ def seed_if_empty() -> None:
         sync_core_page_content_v3(db)
         sync_privacy_adsense_disclosures_v4(db)
         sync_expanded_tools_core_pages_v5(db)
+        sync_student_api_core_pages_v6(db)
         sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 

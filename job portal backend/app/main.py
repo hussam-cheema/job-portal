@@ -23,6 +23,7 @@ from app.exceptions import (
 )
 from app.logging_config import flush_production_logs, get_logger, setup_logging
 from app.middleware.conversion_upload_guard import ConversionUploadGuardMiddleware
+from app.middleware.student_api_guard import StudentApiGuardMiddleware
 from app.routers import (
     analytics,
     auth,
@@ -35,6 +36,7 @@ from app.routers import (
     seo,
     settings,
     stats,
+    student_api,
     subscriptions,
     taxonomy,
     tools,
@@ -47,6 +49,7 @@ from app.seed import (
     sync_core_page_content_v2,
     sync_core_page_content_v3,
     sync_expanded_tools_core_pages_v5,
+    sync_student_api_core_pages_v6,
     sync_privacy_adsense_disclosures_v4,
     sync_homepage_branding_seo_v1,
     sync_local_core_pages_once,
@@ -150,6 +153,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             ats_content_synced = sync_core_page_content_v3(db)
             privacy_adsense_synced = sync_privacy_adsense_disclosures_v4(db)
             expanded_tools_content_synced = sync_expanded_tools_core_pages_v5(db)
+            student_api_content_synced = sync_student_api_core_pages_v6(db)
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             data_quality_repairs = repair_job_data_quality(db)
@@ -184,6 +188,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info(
                     "expanded tools core-page disclosures published count=%s",
                     len(expanded_tools_content_synced),
+                )
+            if student_api_content_synced:
+                logger.info(
+                    "student API core-page disclosures published count=%s",
+                    len(student_api_content_synced),
                 )
             if branding_synced:
                 logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))
@@ -281,6 +290,7 @@ cors_raw = os.getenv(
 )
 origins = [o.strip() for o in cors_raw.split(",") if o.strip()]
 app.add_middleware(ConversionUploadGuardMiddleware)
+app.add_middleware(StudentApiGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins or ["*"],
@@ -340,6 +350,7 @@ app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(taxonomy.router, prefix="/api", tags=["taxonomy"])
 app.include_router(tools.router, prefix="/api", tags=["tools"])
+app.include_router(student_api.router, prefix="/api", tags=["student-api"])
 app.include_router(subscriptions.router, prefix="/api", tags=["subscriptions"])
 app.include_router(infrastructure.router, prefix="/api", tags=["infrastructure"])
 

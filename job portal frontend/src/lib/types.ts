@@ -70,6 +70,40 @@ export type DigestAdminSummary = {
   delivery_provider?: string;
   delivery_ready?: boolean;
   delivery_configuration_message?: string;
+  student_api_access?: SubscriberApiAccessAdmin[];
+};
+
+export type SubscriberApiAccessAdmin = {
+  subscriber_email: string;
+  subscriber_is_active: boolean;
+  key_prefix: string | null;
+  is_key_active: boolean;
+  quota_total: number;
+  requests_used: number;
+  requests_remaining: number;
+  verification_pending: boolean;
+  verification_expires_at: string | null;
+  verified_at: string | null;
+  api_key_created_at: string | null;
+  api_key_last_used_at: string | null;
+};
+
+export type StudentApiCodeRequest = {
+  status: "code_sent" | "subscription_required";
+  message: string;
+  expires_in_seconds?: number | null;
+  retry_after_seconds?: number | null;
+};
+
+export type StudentApiKey = {
+  status: "verified";
+  message: string;
+  api_key: string;
+  key_prefix: string;
+  quota_total: number;
+  requests_used: number;
+  requests_remaining: number;
+  documentation_url: string;
 };
 
 export type QnAItem = {
@@ -250,7 +284,8 @@ export type ToolKind =
   | "cgpa_calculator"
   | "document_converter"
   | "resume_builder"
-  | "cover_letter";
+  | "cover_letter"
+  | "student_api";
 
 export type ToolPage = {
   id: string;

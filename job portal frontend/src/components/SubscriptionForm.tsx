@@ -31,7 +31,7 @@ export function SubscriptionForm() {
   }
 
   return (
-    <section className="card-panel p-5 sm:p-6" aria-labelledby="job-alerts-heading">
+    <section id="job-alerts" className="card-panel p-5 sm:p-6" aria-labelledby="job-alerts-heading">
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)] md:items-center">
         <div>
           <h2 id="job-alerts-heading" className="text-lg font-semibold text-[var(--navy-100)]">

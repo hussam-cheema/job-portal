@@ -78,9 +78,11 @@ def test_default_tool_directory_is_seeded_without_n_plus_one_shape(tools_client:
         "cgpa-calculator",
         "resume-builder",
         "cover-letter",
+        "api",
     ]
     assert categories[1]["tools"][1]["tool_kind"] == "resume_builder"
     assert categories[1]["tools"][2]["tool_kind"] == "cover_letter"
+    assert categories[1]["tools"][3]["tool_kind"] == "student_api"
     assert categories[2]["tools"] == []
     assert categories[3]["tools"][0]["slug"] == "docx-pdf-converter"
     assert categories[3]["tools"][0]["tool_kind"] == "document_converter"

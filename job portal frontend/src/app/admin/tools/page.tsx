@@ -191,7 +191,7 @@ export default function AdminToolsPage() {
               </> : <>
                 <div><label className="field-label" htmlFor="tool-category">Category</label><select id="tool-category" className="input" required value={toolForm.category_id} onChange={(event) => setToolForm({ ...toolForm, category_id: event.target.value })}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.title}</option>)}</select></div>
                 <div><label className="field-label" htmlFor="tool-order">Display order</label><input id="tool-order" className="input" type="number" value={toolForm.sort_order} onChange={(event) => setToolForm({ ...toolForm, sort_order: Number(event.target.value) || 0 })} /></div>
-                <p className="admin-color-note admin-tool-field-full">{toolForm.tool_kind === "content" ? "New tools are created as fully editable content pages. Their name, content, slug, SEO, category and publishing status are managed here." : "This tool already has a built-in interactive calculator. Its calculator experience is preserved automatically while you edit its page content and SEO."}</p>
+                <p className="admin-color-note admin-tool-field-full">{toolForm.tool_kind === "content" ? "New tools are created as fully editable content pages. Their name, content, slug, SEO, category and publishing status are managed here." : "This tool has a built-in interactive experience. Its functionality is preserved automatically while you edit its page content and SEO."}</p>
               </>}
             </div>
           </section>

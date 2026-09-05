@@ -201,6 +201,8 @@ def _reset_app_tables() -> None:
         "analytics_visits",
         "infrastructure_cost_snapshots",
         "taxonomy_terms",
+        "student_api_security_events",
+        "subscriber_api_access",
         "email_subscribers",
         "subscription_email_deliveries",
         "subscription_digest_runs",
@@ -346,6 +348,14 @@ def _ensure_performance_indexes() -> None:
         "ON taxonomy_terms (kind, is_active, name)",
         "CREATE INDEX IF NOT EXISTS ix_subscribers_active_subscribed "
         "ON email_subscribers (is_active, subscribed_at)",
+        "CREATE INDEX IF NOT EXISTS ix_subscriber_api_access_active_key "
+        "ON subscriber_api_access (is_key_active, api_key_hash)",
+        "CREATE INDEX IF NOT EXISTS ix_subscriber_api_access_email_status "
+        "ON subscriber_api_access (subscriber_email, subscriber_is_active)",
+        "CREATE INDEX IF NOT EXISTS ix_student_api_security_scope_event_time "
+        "ON student_api_security_events (scope_hash, event_type, occurred_at)",
+        "CREATE INDEX IF NOT EXISTS ix_student_api_security_event_time "
+        "ON student_api_security_events (event_type, occurred_at)",
         "CREATE INDEX IF NOT EXISTS ix_deliveries_due "
         "ON subscription_email_deliveries (status, next_attempt_at, created_at)",
         "CREATE INDEX IF NOT EXISTS ix_deliveries_job_status "

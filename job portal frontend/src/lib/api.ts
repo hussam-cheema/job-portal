@@ -29,6 +29,8 @@ import type {
   ToolSEOFields,
   DocumentConversionJob,
   DocumentConversionJobCreated,
+  StudentApiCodeRequest,
+  StudentApiKey,
 } from "./types";
 import { removeAdminSession } from "./adminSession";
 import { publicPagePath } from "./pagePath";
@@ -701,6 +703,22 @@ export async function subscribeEmail(email: string): Promise<SubscriptionResult>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   }, "Unable to subscribe this email");
+}
+
+export async function requestStudentApiCode(email: string): Promise<StudentApiCodeRequest> {
+  return requestJson<StudentApiCodeRequest>("/api/student-api/request-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }, "Unable to send the verification code");
+}
+
+export async function verifyStudentApiCode(email: string, code: string): Promise<StudentApiKey> {
+  return requestJson<StudentApiKey>("/api/student-api/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  }, "Unable to verify the code");
 }
 
 export async function unsubscribeEmail(token: string): Promise<SubscriptionResult> {

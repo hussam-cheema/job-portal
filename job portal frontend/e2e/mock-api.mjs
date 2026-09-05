@@ -53,6 +53,7 @@ const toolCategories = [
       { id: "tool-cgpa", category_id: "tool-category-students", slug: "cgpa-calculator", title: "CGPA Calculator", content: "<p>Calculate CGPA.</p>", tool_kind: "cgpa_calculator", sort_order: 0, is_published: true },
       { id: "tool-resume", category_id: "tool-category-students", slug: "resume-builder", title: "Resume Builder", content: "<p>Create a resume.</p>", tool_kind: "resume_builder", sort_order: 1, is_published: true },
       { id: "tool-cover-letter", category_id: "tool-category-students", slug: "cover-letter", title: "Cover Letter Builder", content: "<p>Create a cover letter.</p>", tool_kind: "cover_letter", sort_order: 2, is_published: true },
+      { id: "tool-student-api", category_id: "tool-category-students", slug: "api", title: "API", content: "<p>Build student projects with published jobs and blog data.</p>", tool_kind: "student_api", sort_order: 3, is_published: true },
     ],
   },
   { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [] },
@@ -87,7 +88,7 @@ const adminJobs = Array.from({ length: 53 }, (_, index) => {
 const json = (response, value, status = 200) => {
   response.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Conversion-Token",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-API-Key, X-Conversion-Token",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Content-Type": "application/json",
   });

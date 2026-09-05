@@ -440,6 +440,90 @@ class EmailSubscriber(Base):
     )
 
 
+class SubscriberApiAccess(Base):
+    """Subscriber-owned student API credential and lifetime quota ledger.
+
+    Raw verification codes and API keys are never persisted. Only keyed hashes
+    and a non-sensitive key prefix are retained for authentication and support.
+    """
+
+    __tablename__ = "subscriber_api_access"
+    __table_args__ = (
+        Index("ix_subscriber_api_access_active_key", "is_key_active", "api_key_hash"),
+        Index("ix_subscriber_api_access_email_status", "subscriber_email", "subscriber_is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    subscriber_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    subscriber_email: Mapped[str] = mapped_column(
+        String(320), unique=True, nullable=False, index=True
+    )
+    subscriber_is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, index=True
+    )
+    verification_code_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    verification_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    verification_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    last_code_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    last_code_request_ip_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    api_key_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
+    api_key_prefix: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    api_key_created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    api_key_last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    last_request_ip_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    quota_total: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    requests_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_key_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class StudentApiSecurityEvent(Base):
+    """Privacy-safe persistent rate-limit and abuse audit event."""
+
+    __tablename__ = "student_api_security_events"
+    __table_args__ = (
+        Index(
+            "ix_student_api_security_scope_event_time",
+            "scope_hash",
+            "event_type",
+            "occurred_at",
+        ),
+        Index("ix_student_api_security_event_time", "event_type", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    scope_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
+
+
 class SubscriptionDigestRun(Base):
     __tablename__ = "subscription_digest_runs"
 

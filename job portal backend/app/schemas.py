@@ -519,6 +519,7 @@ class ToolPageIn(BaseModel):
         "document_converter",
         "resume_builder",
         "cover_letter",
+        "student_api",
     ] = "content"
     sort_order: int = 0
     is_published: bool = True
@@ -539,6 +540,7 @@ class ToolPageUpdate(BaseModel):
             "document_converter",
             "resume_builder",
             "cover_letter",
+            "student_api",
         ]
     ] = None
     sort_order: Optional[int] = None
@@ -803,6 +805,69 @@ class SubscriptionResult(BaseModel):
     message: str
 
 
+class StudentApiCodeRequestIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class StudentApiCodeRequestOut(BaseModel):
+    status: Literal["code_sent", "subscription_required"]
+    message: str
+    expires_in_seconds: Optional[int] = None
+    retry_after_seconds: Optional[int] = None
+
+
+class StudentApiCodeVerifyIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=100)
+    code: str = Field(..., pattern=r"^\d{6}$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class StudentApiKeyOut(BaseModel):
+    status: Literal["verified"] = "verified"
+    message: str
+    api_key: str
+    key_prefix: str
+    quota_total: int
+    requests_used: int
+    requests_remaining: int
+    documentation_url: str
+
+
+class StudentApiQuotaOut(BaseModel):
+    key_prefix: str
+    subscriber_email: str
+    quota_total: int
+    requests_used: int
+    requests_remaining: int
+    is_active: bool
+    created_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+
+
+class SubscriberApiAccessAdminOut(BaseModel):
+    subscriber_email: str
+    subscriber_is_active: bool
+    key_prefix: Optional[str] = None
+    is_key_active: bool
+    quota_total: int
+    requests_used: int
+    requests_remaining: int
+    verification_pending: bool
+    verification_expires_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    api_key_created_at: Optional[datetime] = None
+    api_key_last_used_at: Optional[datetime] = None
+
+
 class DigestTemplateUpdate(BaseModel):
     subject_template: str = Field(..., min_length=1, max_length=300)
     body_template: str = Field(..., min_length=1, max_length=6000)
@@ -824,3 +889,4 @@ class DigestAdminSummary(BaseModel):
     delivery_provider: str = "unconfigured"
     delivery_ready: bool = False
     delivery_configuration_message: str = "Email delivery is not configured."
+    student_api_access: list[SubscriberApiAccessAdminOut] = Field(default_factory=list)

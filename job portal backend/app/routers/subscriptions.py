@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
-from app.models import EmailSubscriber, Job, SubscriptionDigestRun, User
+from app.models import (
+    EmailSubscriber,
+    Job,
+    SubscriberApiAccess,
+    SubscriptionDigestRun,
+    User,
+)
 from app.schemas import (
     DigestAdminSummary,
     DigestTemplateUpdate,
@@ -57,6 +63,15 @@ def subscribe(payload: SubscriptionIn, db: Session = Depends(get_db)):
             updated_at=datetime.utcnow(),
         )
         db.add(row)
+    api_access = db.execute(
+        select(SubscriberApiAccess).where(
+            SubscriberApiAccess.subscriber_email == email
+        )
+    ).scalar_one_or_none()
+    if api_access:
+        api_access.subscriber_id = row.user_uuid
+        api_access.subscriber_is_active = True
+        api_access.updated_at = datetime.utcnow()
     db.commit()
     return SubscriptionResult(
         status="subscribed",
@@ -77,6 +92,15 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
     # An unsubscribe is a deletion request, not a soft-disable. Removing the
     # row keeps dashboard counts accurate and avoids retaining an address that
     # explicitly asked to leave the mailing list.
+    api_access = db.execute(
+        select(SubscriberApiAccess).where(
+            SubscriberApiAccess.subscriber_email == row.subscribed_email
+        )
+    ).scalar_one_or_none()
+    if api_access:
+        api_access.subscriber_is_active = False
+        api_access.is_key_active = False
+        api_access.updated_at = datetime.utcnow()
     db.delete(row)
     db.commit()
     return SubscriptionResult(
@@ -97,6 +121,10 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
     last = last_row[0] if last_row else None
     last_job_title = last_row[1] if last_row else None
     provider, delivery_ready, delivery_message = email_delivery_status()
+    api_rows = db.execute(
+        select(SubscriberApiAccess).order_by(SubscriberApiAccess.updated_at.desc())
+    ).scalars().all()
+    now = datetime.utcnow()
     return DigestAdminSummary(
         subscriber_count=total,
         active_subscriber_count=active,
@@ -113,6 +141,27 @@ def admin_summary(db: Session = Depends(get_db), _: User = Depends(get_current_a
         delivery_provider=provider,
         delivery_ready=delivery_ready,
         delivery_configuration_message=delivery_message,
+        student_api_access=[
+            {
+                "subscriber_email": item.subscriber_email,
+                "subscriber_is_active": item.subscriber_is_active,
+                "key_prefix": item.api_key_prefix,
+                "is_key_active": item.is_key_active,
+                "quota_total": item.quota_total,
+                "requests_used": item.requests_used,
+                "requests_remaining": max(0, item.quota_total - item.requests_used),
+                "verification_pending": bool(
+                    item.verification_code_hash
+                    and item.verification_expires_at
+                    and item.verification_expires_at >= now
+                ),
+                "verification_expires_at": item.verification_expires_at,
+                "verified_at": item.verified_at,
+                "api_key_created_at": item.api_key_created_at,
+                "api_key_last_used_at": item.api_key_last_used_at,
+            }
+            for item in api_rows
+        ],
     )
 
 

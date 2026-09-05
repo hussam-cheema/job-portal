@@ -93,7 +93,9 @@ test("privacy policy contains required AdSense disclosures without loading the a
 
   await expect(
     page.locator(".prose-job p").filter({ hasText: "Effective date:" })
-  ).toContainText("25 August 2026");
+  ).toContainText("5 September 2026");
+  await expect(page.getByRole("heading", { name: "Student API access" })).toBeVisible();
+  await expect(page.getByText("Readable codes and full keys are not stored", { exact: false })).toBeVisible();
   await expect(page.getByText("Third-party vendors, including Google, use cookies")).toBeVisible();
   await expect(page.getByRole("link", { name: "Google Ads Settings" })).toHaveAttribute(
     "href",

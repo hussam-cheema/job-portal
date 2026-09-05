@@ -111,6 +111,40 @@ export default function NewsletterSubscriptionPage() {
           )}
         </section>
 
+        <section className="card-panel overflow-hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border)] p-5">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--navy-100)]">Student API access</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                Subscriber verification, key status, and lifetime 50-request quota. Complete keys and codes are never stored.
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--border)] bg-[var(--navy-900)] px-3 py-1 text-xs font-semibold text-[var(--muted)]">
+              {digest?.student_api_access?.length ?? 0} API subscribers
+            </span>
+          </div>
+          {digest?.student_api_access?.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-[850px] w-full text-left text-sm">
+                <thead className="bg-[var(--navy-900)] text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <tr><th className="p-4">Subscriber</th><th className="p-4">Key</th><th className="p-4">Status</th><th className="p-4">Quota</th><th className="p-4">Last used</th></tr>
+                </thead>
+                <tbody>
+                  {digest.student_api_access.map((item) => (
+                    <tr className="border-t border-[var(--border)]" key={item.subscriber_email}>
+                      <td className="p-4"><strong className="block text-[var(--navy-100)]">{item.subscriber_email}</strong><span className="text-xs text-[var(--muted)]">{item.subscriber_is_active ? "Newsletter active" : "Newsletter inactive"}</span></td>
+                      <td className="p-4 font-mono text-xs text-[var(--navy-200)]">{item.key_prefix ? `${item.key_prefix}…` : "Not created"}</td>
+                      <td className="p-4"><span className={item.is_key_active ? "text-[var(--success)]" : "text-[var(--muted)]"}>{item.is_key_active ? "Active" : item.verification_pending ? "Verification pending" : "Inactive"}</span>{item.verification_pending && item.verification_expires_at && <small className="block text-[var(--muted)]">Expires {new Date(item.verification_expires_at).toLocaleString("en-PK")}</small>}</td>
+                      <td className="p-4"><strong className="text-[var(--navy-100)]">{item.requests_used} / {item.quota_total}</strong><span className="block text-xs text-[var(--muted)]">{item.requests_remaining} remaining</span></td>
+                      <td className="p-4 text-xs text-[var(--muted)]">{item.api_key_last_used_at ? new Date(item.api_key_last_used_at).toLocaleString("en-PK") : "Never"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="p-5 text-sm text-[var(--muted)]">No subscriber has requested student API access yet.</p>}
+        </section>
+
         <section className="card-panel p-5 space-y-4">
           <form onSubmit={saveTemplate} className="space-y-3">
             <div>
