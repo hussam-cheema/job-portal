@@ -3422,6 +3422,8 @@ iframe {
 .student-api-key-stats span { display: grid; gap: .15rem; padding: .62rem .7rem; border: 1px solid var(--border); border-radius: .68rem; background: var(--navy-900); }
 .student-api-key-stats small { color: var(--muted); font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; }
 .student-api-key-stats strong { color: var(--navy-100); font-size: 1rem; }
+.student-api-key-stats .student-api-requests-left { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+.student-api-key-stats .student-api-requests-left small, .student-api-key-stats .student-api-requests-left strong { color: var(--accent); }
 .student-api-key-result > .btn { width: fit-content; }
 
 .student-api-docs { overflow: hidden; border: 1px solid var(--border); border-radius: 1.25rem; background: var(--card); box-shadow: var(--shadow); }

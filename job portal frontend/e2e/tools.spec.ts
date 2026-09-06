@@ -124,6 +124,7 @@ test("student API verifies a subscribed email, reveals the key once, and documen
   await page.getByLabel("Six-digit verification code").fill("123456");
   await page.getByRole("button", { name: "Verify and create key" }).click();
   await expect(page.getByText("pjm_live_test_key_for_browser_1234567890")).toBeVisible();
+  await expect(page.getByText("Requests left", { exact: true })).toBeVisible();
   await expect(page.getByText("50", { exact: true }).last()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Read jobs and blog posts" })).toBeVisible();
   await expect(page.getByText("/jobs/{slug}", { exact: true })).toBeVisible();

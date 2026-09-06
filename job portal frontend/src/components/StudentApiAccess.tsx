@@ -148,7 +148,7 @@ print(data["items"])`;
           <div className="student-api-secret"><code>{key.api_key}</code><CopyButton value={key.api_key} label="Copy key" /></div>
           <div className="student-api-key-stats">
             <span><small>Used</small><strong>{key.requests_used}</strong></span>
-            <span><small>Remaining</small><strong>{key.requests_remaining}</strong></span>
+            <span className="student-api-requests-left"><small>Requests left</small><strong>{key.requests_remaining}</strong></span>
             <span><small>Total</small><strong>{key.quota_total}</strong></span>
           </div>
           <button type="button" className="btn btn-ghost" onClick={restart}>Generate a replacement key</button>

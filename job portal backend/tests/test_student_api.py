@@ -146,6 +146,7 @@ def _subscribe_and_key(
         headers=headers,
     )
     assert requested.status_code == 200
+    assert requested.headers["content-type"].startswith("application/json")
     assert requested.json()["status"] == "code_sent"
     plain = sent_messages[-1].get_body(preferencelist=("plain",)).get_content()
     match = re.search(r"\b(\d{6})\b", plain)
@@ -156,6 +157,7 @@ def _subscribe_and_key(
         headers=headers,
     )
     assert verified.status_code == 200
+    assert verified.headers["content-type"].startswith("application/json")
     key = verified.json()["api_key"]
     assert key.startswith("pjm_live_")
     return key
@@ -261,6 +263,48 @@ def test_key_retrieves_complete_jobs_and_blogs_and_counts_quota(student_api_cont
     assert quota.json()["requests_used"] == 2
     assert quota.json()["requests_remaining"] == 48
     assert quota.headers["X-Quota-Used"] == "2"
+
+
+def test_every_student_api_route_returns_json(student_api_context):
+    client, _session_factory, sent_messages = student_api_context
+    key = _subscribe_and_key(
+        client,
+        sent_messages,
+        "student.json@example.com",
+        ip="198.51.100.32",
+    )
+    headers = {"X-API-Key": key, "X-Forwarded-For": "198.51.100.32"}
+
+    responses = [
+        client.get("/api/student/v1/quota", headers=headers),
+        client.get("/api/student/v1/jobs", headers=headers),
+        client.get("/api/student/v1/jobs/student-api-test-job", headers=headers),
+        client.get("/api/student/v1/blog-posts", headers=headers),
+        client.get("/api/student/v1/blog-posts/student-api-test-blog", headers=headers),
+        client.get("/api/student/v1/jobs/missing-job", headers=headers),
+        client.get("/api/student/v1/quota"),
+        client.post("/api/student-api/request-code", json={"email": "not-an-email"}),
+    ]
+    assert [response.status_code for response in responses] == [
+        200,
+        200,
+        200,
+        200,
+        200,
+        404,
+        401,
+        400,
+    ]
+    for response in responses:
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() is not None
+
+    quota = responses[0].json()
+    assert quota["quota_total"] == 50
+    assert quota["requests_used"] == 0
+    assert quota["requests_remaining"] == 50
+    for response in responses[1:5]:
+        assert set(response.json()["quota"]) == {"limit", "used", "remaining"}
 
 
 def test_quota_is_atomic_lifetime_limit_and_key_rotation_does_not_reset_it(student_api_context):
