@@ -148,6 +148,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         try:
             created = ensure_default_pages(db)
             tools_created = ensure_default_tools(db)
+            # Core directory records must survive independently of the larger
+            # content/data-quality migration below.  Production databases can
+            # contain legacy rows that make a later repair fail; rolling that
+            # transaction back must not also discard a newly shipped tool.
+            db.commit()
             locally_synced = sync_local_core_pages_once(db)
             content_synced = sync_core_page_content_v2(db)
             ats_content_synced = sync_core_page_content_v3(db)
