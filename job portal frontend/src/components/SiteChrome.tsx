@@ -46,7 +46,7 @@ export function SiteChrome({ children, initialBranding }: Props) {
                 : branding.site_title_alignment === "right"
                   ? "justify-self-end text-right"
                   : "justify-self-center text-center"
-            } site-title min-w-0 truncate whitespace-nowrap`}
+            } site-title`}
           >
             {branding.site_title}
           </Link>

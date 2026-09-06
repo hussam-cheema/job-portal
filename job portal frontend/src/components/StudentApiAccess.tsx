@@ -42,7 +42,7 @@ export function StudentApiAccess() {
   const [busy, setBusy] = useState(false);
 
   const cleanEmail = useMemo(() => email.trim().toLowerCase(), [email]);
-  const curlExample = `curl "${API_ROOT}/jobs?page=1&page_size=10" \\\n+  -H "X-API-Key: YOUR_API_KEY"`;
+  const curlExample = `curl "${API_ROOT}/jobs?page=1&page_size=10" \\\n  -H "X-API-Key: YOUR_API_KEY"`;
   const javascriptExample = `const response = await fetch("${API_ROOT}/blog-posts?page=1", {
   headers: { "X-API-Key": "YOUR_API_KEY" }
 });
