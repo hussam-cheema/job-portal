@@ -1,4 +1,5 @@
 [build]
+# Deployment marker: core tool records now commit before legacy repair tasks.
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.railway"
 watchPatterns = [
