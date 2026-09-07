@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const viewports = [
+  { name: "narrow phone", width: 320, height: 740 },
   { name: "small phone", width: 360, height: 800 },
   { name: "tablet portrait", width: 820, height: 1180 },
   { name: "tablet landscape", width: 1024, height: 768 },
@@ -143,6 +144,16 @@ for (const viewport of viewports) {
         }), { message: `${path} A4 preview did not finish responsive scaling` }).toBe(true);
       }
       const result = await auditCurrentPage(page);
+      if (path === "/tools") {
+        const content = await page.locator(".tools-seo-content").evaluate((element) => {
+          const blocks = [element, ...element.querySelectorAll("p, h2, h3, article, .tools-seo-guide > div")];
+          return blocks.every((block) => {
+            const rect = block.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= innerWidth && block.scrollWidth <= block.clientWidth + 1;
+          });
+        });
+        expect(content, "Tools guide must wrap without hidden or clipped text").toBe(true);
+      }
       expect(result.documentWidth, `${path} expands the document at ${viewport.width}px`).toBeLessThanOrEqual(result.viewportWidth);
       expect(result.headerCollision, `${path} has overlapping title and navigation at ${viewport.width}px`).toBe(false);
       expect(result.offenders, `${path} clips visible elements at ${viewport.width}px`).toEqual([]);
@@ -150,7 +161,7 @@ for (const viewport of viewports) {
   });
 }
 
-for (const viewport of [viewports[0], viewports[1], viewports[3]]) {
+for (const viewport of viewports.filter((item) => item.name !== "tablet landscape")) {
   test(`every admin page fits the ${viewport.name} layout`, async ({ page }) => {
     test.setTimeout(240_000);
     await page.addInitScript(() => {

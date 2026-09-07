@@ -107,7 +107,7 @@ function ProviderSection({
   children: ReactNode;
 }) {
   return (
-    <section data-testid="infrastructure-section" className="card-panel overflow-hidden">
+    <section data-testid="infrastructure-section" className="card-panel min-w-0 [overflow-wrap:anywhere]">
       <header className="border-b border-[var(--border)] px-5 py-5 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">{eyebrow}</p>
         <h3 className="mt-1 text-lg font-semibold text-[var(--navy-100)]">{title}</h3>
@@ -161,6 +161,8 @@ function StorageCard({ metric, title }: { metric?: InfrastructureStorageMetric; 
       <div className="mt-4">
         <Progress value={metric.utilization_percent} color={color} />
       </div>
+      <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{metric.detail}</p>
+      <p className="mt-2 text-[10px] text-[var(--muted)]">Source: {metric.source}</p>
     </article>
   );
 }
@@ -258,8 +260,16 @@ function FinOpsCard({ label, billing }: { label: string; billing?: ProviderBilli
         {billing && <StatusBadge status={billing.status} />}
       </div>
       <p className="mt-5 text-2xl font-semibold tabular-nums text-[var(--navy-100)]">
-        {!billing || !billing.configured ? "Unavailable" : `$${billed?.toFixed(2) ?? "0.00"}`}
+        {!billing || !billing.configured || billed == null ? "Unavailable" : `$${billed.toFixed(2)}`}
       </p>
+      {billing && (
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 text-xs text-[var(--muted)]">
+          <div><dt>Configured account plan</dt><dd className="font-semibold text-[var(--navy-100)]">{billing.plan}</dd></div>
+          <div><dt>Monthly subscription / minimum commitment</dt><dd>${billing.subscription_fee_usd.toFixed(2)}</dd></div>
+          <div><dt>Included usage credit</dt><dd>${billing.included_credit_usd.toFixed(2)}</dd></div>
+          <div><dt>Billing period</dt><dd>{billing.billing_period_start?.slice(0, 10) || "Not reported"} – {billing.billing_period_end?.slice(0, 10) || "Not reported"}</dd></div>
+        </dl>
+      )}
       {hasCredit && typeof grossUsage === "number" && (
         <p className="mt-1 text-xs text-[var(--muted)]">
           ${grossUsage.toFixed(2)} gross usage before plan credit
@@ -271,6 +281,15 @@ function FinOpsCard({ label, billing }: { label: string; billing?: ProviderBilli
       {billing && <p className="mt-2 text-[10px] text-[var(--muted)]">Source: {billing.source}</p>}
     </article>
   );
+}
+
+function AccountBilling({ label, billing, pricingUrl }: { label: string; billing?: ProviderBilling; pricingUrl: string }) {
+  return <div className="mt-5 border-t border-[var(--border)] pt-5">
+    <h4 className="mb-3 font-semibold">Account billing & pricing</h4>
+    <FinOpsCard label={label} billing={billing} />
+    <p className="mt-3 text-xs text-[var(--muted)]">Amounts reflect the source and configured billing scope, not a final invoice. Missing provider data is not zero usage.</p>
+    <a className="mt-2 inline-block text-sm text-[var(--accent)] underline" href={pricingUrl} target="_blank" rel="noopener noreferrer">Official {label} pricing ↗</a>
+  </div>;
 }
 
 export default function InfrastructureAnalyticsPage() {
@@ -338,10 +357,7 @@ export default function InfrastructureAnalyticsPage() {
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold text-[var(--navy-100)]">Infrastructure analytics</h2>
             {data && (
-              <span
-                className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.7)]"
-                aria-label="Live telemetry"
-              />
+              <span className="text-xs text-[var(--muted)]">Usage & billing</span>
             )}
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
@@ -377,12 +393,13 @@ export default function InfrastructureAnalyticsPage() {
             title="Cloudflare R2"
             description="Storage footprint and the request classes that drive R2 billing. R2 internet egress remains free."
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <StorageCard metric={metrics.r2Storage} title="Object storage" />
               <UsageCard driver={metrics.r2StoredData} emptyLabel="Stored data snapshot" />
               <UsageCard driver={metrics.r2ClassA} emptyLabel="Class A operations" />
               <UsageCard driver={metrics.r2ClassB} emptyLabel="Class B operations" />
             </div>
+            <AccountBilling label="Cloudflare R2" billing={metrics.r2Billing} pricingUrl="https://developers.cloudflare.com/r2/pricing/" />
           </ProviderSection>
 
           <ProviderSection
@@ -390,21 +407,22 @@ export default function InfrastructureAnalyticsPage() {
             title="Neon Postgres"
             description="Database storage, compute, public network transfer, history, and active branches for the current billing period."
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <StorageCard metric={metrics.databaseStorage} title="Database storage" />
               <UsageCard driver={metrics.neonCompute} emptyLabel="Compute" />
               <UsageCard driver={metrics.neonNetwork} emptyLabel="Public network transfer" />
               <UsageCard driver={metrics.neonHistory} emptyLabel="History data changes" />
               <UsageCard driver={metrics.neonBranches} emptyLabel="Active branches" />
             </div>
+            <AccountBilling label="Neon" billing={metrics.neonBilling} pricingUrl="https://neon.com/pricing" />
           </ProviderSection>
 
           <ProviderSection
             eyebrow="Railway Serverless"
             title="Railway Serverless"
-            description="Live backend utilization, network egress, and the current plan credit consumed by the serverless API."
+            description="API runtime utilization and metered Railway resources. Runtime percentages describe this API deployment; billing usage follows the configured Railway project/account scope."
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <LivePercentCard
                 title="CPU utilization"
                 value={backend?.cpu_used_percent ?? null}
@@ -418,7 +436,9 @@ export default function InfrastructureAnalyticsPage() {
               />
               <UsageCard driver={metrics.railwayNetwork} emptyLabel="Network egress" />
               <UsageCard driver={metrics.railwayCredit} emptyLabel="Resource usage credit" />
+              {data.cost_drivers.filter((driver) => ["railway_cpu", "railway_memory", "railway_volume"].includes(driver.id)).map((driver) => <UsageCard key={driver.id} driver={driver} emptyLabel={driver.metric} />)}
             </div>
+            <AccountBilling label="Railway" billing={metrics.railwayBilling} pricingUrl="https://railway.com/pricing" />
           </ProviderSection>
 
           <ProviderSection
@@ -430,20 +450,19 @@ export default function InfrastructureAnalyticsPage() {
               <UsageCard driver={metrics.resendMonthly} emptyLabel="Monthly emails" />
               <UsageCard driver={metrics.resendDaily} emptyLabel="Daily emails" />
             </div>
+            <AccountBilling label="Resend" billing={metrics.resendBilling} pricingUrl="https://resend.com/pricing" />
           </ProviderSection>
 
           <ProviderSection
-            eyebrow="FinOps"
-            title="FinOps"
-            description="Provider-reported amount due for the current month so far. Free-plan usage credits are not presented as money owed."
+            eyebrow="Microsoft Azure"
+            title="Azure"
+            description="Static Web Apps resources used by this website, alongside billing from the configured Azure cost scope."
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <FinOpsCard label="Azure — all services" billing={metrics.azureBilling} />
-              <FinOpsCard label="Cloudflare R2" billing={metrics.r2Billing} />
-              <FinOpsCard label="Neon" billing={metrics.neonBilling} />
-              <FinOpsCard label="Railway" billing={metrics.railwayBilling} />
-              <FinOpsCard label="Resend" billing={metrics.resendBilling} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <UsageCard driver={data.cost_drivers.find((driver) => driver.id === "azure_bandwidth")} emptyLabel="Frontend bandwidth" />
+              <UsageCard driver={data.cost_drivers.find((driver) => driver.id === "azure_app_size")} emptyLabel="Deployed app size" />
             </div>
+            <AccountBilling label="Azure" billing={metrics.azureBilling} pricingUrl="https://azure.microsoft.com/en-us/pricing/details/app-service/static/" />
           </ProviderSection>
         </div>
       ) : null}

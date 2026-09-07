@@ -75,7 +75,7 @@ test("site analytics shows full, non-redundant country names", async ({ page }) 
   await expect(realtimeLocations.getByText("US", { exact: true })).toHaveCount(0);
 });
 
-test("infrastructure analytics shows the five focused provider and FinOps sections", async ({
+test("infrastructure analytics shows only five providers with their usage and billing", async ({
   page,
 }) => {
   await page.goto("/admin/infrastructure");
@@ -91,7 +91,7 @@ test("infrastructure analytics shows the five focused provider and FinOps sectio
     "Neon Postgres",
     "Railway Serverless",
     "Resend",
-    "FinOps",
+    "Azure",
   ]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
@@ -111,16 +111,17 @@ test("infrastructure analytics shows the five focused provider and FinOps sectio
   await expect(resend.getByText("Daily emails", { exact: true })).toBeVisible();
   await expect(resend.getByText("12 / 100", { exact: true })).toBeVisible();
 
-  const finops = sections.filter({ has: page.getByRole("heading", { name: "FinOps", exact: true }) });
-  for (const provider of ["Azure — all services", "Cloudflare R2", "Neon", "Railway", "Resend"]) {
-    await expect(finops.getByText(provider, { exact: true })).toBeVisible();
-  }
-  await expect(finops.getByText("$2.35", { exact: true })).toBeVisible();
-  await expect(finops.getByText("$0.18", { exact: true })).toBeVisible();
-  await expect(finops.getByText("$0.42", { exact: true })).toBeVisible();
-  await expect(finops.getByText(/No \$5 is currently owed/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account billing & pricing", exact: true })).toHaveCount(5);
+  await expect(page.getByRole("link", { name: /Official .* pricing/ })).toHaveCount(5);
+  const azure = sections.filter({ has: page.getByRole("heading", { name: "Azure", exact: true }) });
+  await expect(azure.getByText("Frontend bandwidth", { exact: true })).toBeVisible();
+  await expect(azure.getByText("Deployed app size", { exact: true })).toBeVisible();
+  await expect(azure.getByText("$2.35", { exact: true })).toBeVisible();
+  await expect(neon.getByText("$0.42", { exact: true })).toBeVisible();
+  await expect(railway.getByText(/No \$5 is currently owed/)).toBeVisible();
 
   for (const removedLabel of [
+    "FinOps",
     "Every active cost driver",
     "Monthly cost history",
     "Current outstanding",
