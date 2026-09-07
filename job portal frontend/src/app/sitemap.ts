@@ -19,6 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE}/privacy`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE}/disclaimer`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE}/blog`, changeFrequency: "daily", priority: 0.8 },
+    { url: `${SITE}/dashboard`, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE}/tools/resume-builder`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE}/tools/cover-letter`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE}/tools`, changeFrequency: "weekly", priority: 0.8 },

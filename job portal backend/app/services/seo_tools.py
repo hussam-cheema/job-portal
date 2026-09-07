@@ -114,6 +114,7 @@ def set_social_settings(db: Session, data: dict[str, str]) -> dict[str, str]:
 
 
 def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
+    from app.models import MarketReport
     base = canonical_site_url()
     urls: list[dict[str, Any]] = [
         {"loc": f"{base}/", "changefreq": "daily", "priority": 1.0},
@@ -122,6 +123,7 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/privacy", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/disclaimer", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/blog", "changefreq": "daily", "priority": 0.8},
+        {"loc": f"{base}/dashboard", "changefreq": "monthly", "priority": 0.9},
         {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
         {"loc": f"{base}/resume-builder", "changefreq": "monthly", "priority": 0.6},
         {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
@@ -280,6 +282,8 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 )
     except Exception:
         logger.exception("build_sitemap_urls failed")
+    for report_month, published_at in db.execute(select(MarketReport.month, MarketReport.published_at)).all():
+        urls.append({"loc": f"{base}/dashboard/{report_month}", "lastmod": published_at.isoformat() + "Z", "changefreq": "yearly", "priority": 0.8})
     return list({item["loc"]: item for item in urls}.values())
 
 

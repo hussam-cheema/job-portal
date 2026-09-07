@@ -1,0 +1,217 @@
+import copy
+import os
+from datetime import datetime, timezone
+
+os.environ.setdefault("JOBPORTAL_TESTING", "true")
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+from app.database import Base, get_db
+from app.models import Job, MarketReport
+from app.routers.market_reports import router
+from app.services import market_reports as service
+
+
+def official_rows():
+    return [
+        {
+            "countryiso3code": "PAK",
+            "indicator": {"id": code, "value": key},
+            "date": year,
+            "value": value,
+        }
+        for key, code in service.INDICATORS.items()
+        for year, value in [("2023", 0), ("2024", 5.5), ("2025", None)]
+    ]
+
+
+@pytest.fixture
+def db():
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
+
+
+@pytest.fixture
+def national(monkeypatch):
+    data = {
+        "series": service.parse_observations(official_rows()),
+        "data_fingerprint": "v1",
+        "source_updated": ["2026-07-13"],
+        "provider": "World Bank / ILO",
+        "license_url": "https://datacatalog.worldbank.org/public-licenses#cc-by",
+    }
+    monkeypatch.setattr(service, "fetch_national_data", lambda: copy.deepcopy(data))
+    return data
+
+
+def test_parser_preserves_zero_skips_null_sorts_and_ignores_other_countries():
+    rows = official_rows() + [
+        {
+            "countryiso3code": "IND",
+            "indicator": {"id": "SL.UEM.TOTL.ZS", "value": "wrong"},
+            "date": "2026",
+            "value": 99,
+        }
+    ]
+    series = service.parse_observations(rows)
+    assert len(series) == 14
+    assert series["unemployment"]["latest"] == {"year": "2024", "value": 5.5}
+    assert series["unemployment"]["points"][0]["value"] == 0
+    assert "locations=PK" in series["unemployment"]["source_url"]
+
+
+@pytest.mark.parametrize("bad", [-1, 101, float("nan"), float("inf"), "5.5", True])
+def test_bad_values_cannot_publish(bad):
+    rows = official_rows()
+    rows[0]["value"] = bad
+    with pytest.raises(ValueError):
+        service.parse_observations(rows)
+
+
+def test_missing_indicator_cannot_silently_become_zero():
+    with pytest.raises(ValueError, match="missing"):
+        service.parse_observations(official_rows()[3:])
+
+
+def test_pakistan_month_rollover_immutable_editions_and_no_invented_archives(
+    db, national
+):
+    before = datetime(2026, 8, 31, 18, 59, tzinfo=timezone.utc)
+    after = datetime(2026, 8, 31, 19, 0, tzinfo=timezone.utc)
+    assert service.publish_due_reports(db, now=before) == ["2026-08"]
+    snapshot = copy.deepcopy(db.get(MarketReport, "2026-08").data)
+    national["data_fingerprint"] = "v2"
+    national["series"]["unemployment"]["latest"]["value"] = 7
+    assert service.publish_due_reports(db, now=before) == []
+    assert service.publish_due_reports(db, now=after) == ["2026-09"]
+    assert db.get(MarketReport, "2026-08").data == snapshot
+    assert db.get(MarketReport, "2026-09").data["national_data_changed"] is True
+    assert service.publish_due_reports(
+        db, now=datetime(2026, 11, 1, tzinfo=timezone.utc)
+    ) == ["2026-11"]
+    assert db.get(MarketReport, "2026-10") is None
+    assert db.get(MarketReport, "2026-11").data["national_data_changed"] is False
+
+
+def test_site_supplement_is_separate_previous_calendar_month(db, national):
+    for i, (when, sector) in enumerate(
+        [
+            ("2026-08-01", "govt"),
+            ("2026-08-31", "private"),
+            ("2026-08-15", None),
+            ("2026-09-01", "private"),
+        ]
+    ):
+        db.add(
+            Job(
+                id=str(i),
+                slug=str(i),
+                title="Example job",
+                description="Test",
+                published_date=datetime.fromisoformat(when),
+                job_type=sector,
+            )
+        )
+    db.commit()
+    service.publish_due_reports(db, now=datetime(2026, 9, 6, tzinfo=timezone.utc))
+    report = db.get(MarketReport, "2026-09").data
+    assert report["site_supplement"]["total"] == 3
+    assert report["site_supplement"]["government"] == 1
+    assert report["site_supplement"]["unspecified"] == 1
+    assert report["national"]["series"]["unemployment"]["latest"]["value"] == 5.5
+
+
+def test_provider_failure_leaves_database_unchanged_and_can_retry(
+    db, monkeypatch, national
+):
+    def fail():
+        raise httpx.ReadTimeout("Provider temporarily unavailable")
+
+    monkeypatch.setattr(service, "fetch_national_data", fail)
+    with pytest.raises(httpx.ReadTimeout):
+        service.publish_due_reports(db)
+    db.rollback()
+    assert db.scalars(select(MarketReport)).all() == []
+    monkeypatch.setattr(service, "fetch_national_data", lambda: national)
+    assert len(service.publish_due_reports(db)) == 1
+
+
+def test_public_json_routes_and_invalid_months_are_read_only(db, national):
+    service.publish_due_reports(db, now=datetime(2026, 9, 6, tzinfo=timezone.utc))
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        listing = client.get("/api/market-reports")
+        assert listing.status_code == 200
+        assert listing.json()["reports"][0]["month"] == "2026-09"
+        response = client.get("/api/market-reports/2026-09")
+        assert (
+            response.json()["national"]["series"]["unemployment"]["latest"]["year"]
+            == "2024"
+        )
+        assert response.headers["content-type"] == "application/json"
+        for month in ["2026-08", "2026-13", "0000-01", "2026-09' OR '1'='1", "latest"]:
+            assert client.get(f"/api/market-reports/{month}").status_code == 404
+        assert client.post("/api/market-reports/2026-09").status_code == 405
+    assert len(db.scalars(select(MarketReport)).all()) == 1
+
+
+def test_cron_publishes_even_if_newsletter_delivery_fails(monkeypatch):
+    from app.commands import newsletter_retry, market_reports
+
+    called = []
+    monkeypatch.setattr(newsletter_retry, "setup_logging", lambda: None)
+    monkeypatch.setattr(market_reports, "run", lambda: called.append("reports"))
+
+    def fail():
+        raise RuntimeError("Mail unavailable")
+
+    monkeypatch.setattr(newsletter_retry, "run", fail)
+    with pytest.raises(RuntimeError):
+        newsletter_retry.main()
+    assert called == ["reports"]
+
+
+def test_fetch_validates_pagination_and_official_host(monkeypatch):
+    rows = official_rows()
+    calls = []
+
+    def handle(request):
+        assert request.url.host == "api.worldbank.org"
+        assert request.url.params["source"] == "2"
+        page = int(request.url.params["page"])
+        calls.append(page)
+        items = rows[:20] if page == 1 else rows[20:]
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "page": page,
+                    "pages": 2,
+                    "sourceid": None,
+                    "total": len(rows),
+                    "lastupdated": "2026-07-13",
+                },
+                items,
+            ],
+        )
+
+    monkeypatch.setattr(
+        service.httpx, "HTTPTransport", lambda **kwargs: httpx.MockTransport(handle)
+    )
+    result = service.fetch_national_data()
+    assert calls == [1, 2]
+    assert len(result["series"]) == 14

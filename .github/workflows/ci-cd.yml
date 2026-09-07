@@ -49,7 +49,12 @@ jobs:
           cache-dependency-path: job portal frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run build
+      - name: Build against deterministic test data
+        run: |
+          node e2e/mock-api.mjs &
+          mock_api_pid=$!
+          trap 'kill "$mock_api_pid"' EXIT
+          npm run build
       - name: Install dashboard smoke-test browser
         run: npx playwright install --with-deps chromium
       - name: Smoke-test every admin dashboard route

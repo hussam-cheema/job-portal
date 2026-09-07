@@ -167,6 +167,16 @@ class Job(Base):
     )
 
 
+class MarketReport(Base):
+    """Published monthly aggregate: retained even when source listings change."""
+
+    __tablename__ = "market_reports"
+
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    data: Mapped[Any] = mapped_column(JSON, nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class JobAttachment(Base):
     __tablename__ = "job_attachments"
     __table_args__ = (Index("ix_job_attachments_job_created", "job_id", "created_at"),)

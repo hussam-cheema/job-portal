@@ -51,6 +51,10 @@ export function SiteChrome({ children, initialBranding }: Props) {
             {branding.site_title}
           </Link>
           <nav className="site-actions" aria-label="Primary navigation">
+            <Link href="/dashboard" className="site-action" title="Pakistan job market dashboard">
+              <span className="site-action-icon"><UiIcon name="analytics" /></span>
+              <span className="site-action-label">Dashboard</span>
+            </Link>
             <AdminDashboardLink />
             <Link href="/blog" className="site-action" title="Read the blog">
               <span className="site-action-icon"><UiIcon name="blog" /></span>

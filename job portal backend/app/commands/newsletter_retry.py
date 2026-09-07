@@ -28,7 +28,14 @@ def run() -> dict[str, object]:
 
 def main() -> int:
     setup_logging()
-    run()
+    # Share the existing serverless cron, but never skip monthly publication
+    # because an unrelated email delivery failed.
+    try:
+        run()
+    finally:
+        from app.commands.market_reports import run as publish_reports
+
+        publish_reports()
     return 0
 
 

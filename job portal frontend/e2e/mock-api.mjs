@@ -101,10 +101,16 @@ const readJson = async (request) => {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 };
 
+const { marketReport } = await import("./market-report-fixture.mjs");
 const server = createServer(async (request, response) => {
   if (request.method === "OPTIONS") return json(response, {});
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1:4010");
   const path = requestUrl.pathname;
+  if (path === "/api/market-reports") return json(response, { reports: ["2026-09", "2026-08"].map(month => ({ month, published_at: `${month}-01T00:15:00Z`, unemployment: { year: "2025", value: 5.42 } })) });
+  if (path.startsWith("/api/market-reports/")) {
+    const month = path.split("/").at(-1);
+    return ["2026-09", "2026-08"].includes(month) ? json(response, marketReport(month)) : json(response, { detail: "Report not found" }, 404);
+  }
   const authorization = request.headers.authorization || "";
   if (path.startsWith("/api/admin/blog") && authorization === "Bearer expired-e2e-token") {
     return json(response, { detail: "Invalid token" }, 401);
@@ -249,6 +255,8 @@ const server = createServer(async (request, response) => {
   if (path === "/api/sitemap-data") {
     return json(response, {
       urls: [
+        { loc: `${mockSiteOrigin}/dashboard/2026-09`, changefreq: "monthly", priority: 0.8 },
+        { loc: `${mockSiteOrigin}/dashboard/2026-08`, changefreq: "monthly", priority: 0.8 },
         { loc: `${mockSiteOrigin}/jobs/closed-role`, changefreq: "weekly", priority: 0.8 },
         { loc: `${mockSiteOrigin}/jobs/multi-location-role`, changefreq: "weekly", priority: 0.8 },
         { loc: `${mockSiteOrigin}/blog/fpsc-preparation-guide`, changefreq: "weekly", priority: 0.7 },

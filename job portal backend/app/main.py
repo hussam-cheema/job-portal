@@ -32,6 +32,7 @@ from app.routers import (
     document_conversion,
     infrastructure,
     jobs,
+    market_reports,
     pages,
     seo,
     settings,
@@ -88,6 +89,26 @@ def _warm_embedding_cache_in_background() -> None:
         name="embedding-model-warmup",
         daemon=True,
     ).start()
+
+
+def _start_market_report_worker() -> tuple[threading.Event, threading.Thread] | None:
+    if os.getenv("JOBPORTAL_TESTING", "").lower() in {"1", "true", "yes"}:
+        return None
+    stop = threading.Event()
+
+    def publish() -> None:
+        from app.commands.market_reports import run
+
+        while not stop.is_set():
+            try:
+                run()
+            except Exception:
+                logger.exception("monthly report publication failed; will retry")
+            stop.wait(900)
+
+    thread = threading.Thread(target=publish, name="monthly-market-reports", daemon=True)
+    thread.start()
+    return stop, thread
 
 
 def _start_newsletter_retry_worker() -> tuple[threading.Event, threading.Thread] | None:
@@ -267,10 +288,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # mount/model cache during a Container Apps cold start.
     _warm_embedding_cache_in_background()
     newsletter_worker = _start_newsletter_retry_worker()
+    report_worker = _start_market_report_worker()
     logger.info("server running", extra={"r2_lifecycle": True})
     try:
         yield
     finally:
+        if report_worker:
+            stop_event, thread = report_worker
+            stop_event.set()
+            thread.join(timeout=2)
         if newsletter_worker:
             stop_event, thread = newsletter_worker
             stop_event.set()
@@ -345,6 +371,7 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(jobs.router, prefix="/api", tags=["jobs"])
 app.include_router(stats.router, prefix="/api", tags=["stats"])
+app.include_router(market_reports.router, prefix="/api")
 app.include_router(pages.router, prefix="/api", tags=["pages"])
 app.include_router(blog.router, prefix="/api", tags=["blog"])
 app.include_router(contact.router, prefix="/api", tags=["contact"])

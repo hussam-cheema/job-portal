@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AUTH_EVENT, getAdminToken } from "@/lib/adminAuth";
 import { UiIcon } from "@/components/UiIcon";
 
-/** Shows Dashboard link only when an admin session token exists. */
+/** Shows the Admin Panel link only when an admin session token exists. */
 export function AdminDashboardLink() {
   const [loggedIn, setLoggedIn] = useState(false);
 
@@ -25,9 +25,9 @@ export function AdminDashboardLink() {
   if (!loggedIn) return null;
 
   return (
-    <Link href="/admin" className="site-action" title="Admin dashboard">
+    <Link href="/admin" className="site-action" title="Admin Panel">
       <span className="site-action-icon"><UiIcon name="dashboard" /></span>
-      <span className="site-action-label">Dashboard</span>
+      <span className="site-action-label">Admin Panel</span>
     </Link>
   );
 }
