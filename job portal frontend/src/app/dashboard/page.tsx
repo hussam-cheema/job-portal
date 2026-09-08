@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { MarketDashboard } from "@/components/MarketDashboard";
-import { fetchMarketReport, fetchMarketReports } from "@/lib/marketReports";
+import { fetchMarketReport, fetchMarketReports, fetchSiteStatistics } from "@/lib/marketReports";
 
 export const revalidate = 300;
 export const metadata: Metadata = {
@@ -14,5 +14,5 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const reports = await fetchMarketReports();
   const report = reports[0] ? await fetchMarketReport(reports[0].month) : null;
-  return <MarketDashboard report={report} reports={reports}/>;
+  return <MarketDashboard report={report} reports={reports} siteStatistics={await fetchSiteStatistics()}/>;
 }

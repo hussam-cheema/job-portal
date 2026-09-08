@@ -1,6 +1,15 @@
 import { cache } from "react";
 
 export type Observation = { year: string; value: number };
+export type ListingCounts = { total: number; government: number; private: number; unspecified: number };
+export type SiteStatistics = { collected_at: string; current_month: string; overall: ListingCounts; undated: ListingCounts; months: (ListingCounts & { month: string })[] };
+
+export const fetchSiteStatistics = cache(async (): Promise<SiteStatistics | null> => {
+  try {
+    const res = await fetch(`${API}/api/market-reports/site-statistics`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(15000) });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+});
 export type MarketSeries = {
   code: string; title: string; unit: string; points: Observation[];
   latest: Observation; source_url: string; api_url: string;

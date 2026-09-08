@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import MarketReport
-from app.services.market_reports import month_date, report_summary
+from app.services.market_reports import (
+    current_site_statistics,
+    month_date,
+    report_summary,
+)
 
 router = APIRouter(prefix="/market-reports", tags=["Public market reports"])
 
@@ -14,6 +18,12 @@ def list_reports(response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=300"
     reports = db.scalars(select(MarketReport).order_by(MarketReport.month.desc())).all()
     return {"reports": [report_summary(report.data) for report in reports]}
+
+
+@router.get("/site-statistics")
+def site_statistics(response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return current_site_statistics(db)
 
 
 @router.get("/{month}")

@@ -29,6 +29,12 @@ fingerprint, and the small site supplement. Public JSON routes:
 
 - `GET /api/market-reports`: all published edition summaries, newest first.
 - `GET /api/market-reports/YYYY-MM`: immutable report data.
+- `GET /api/market-reports/site-statistics`: current website listing totals and
+  all publication-month breakdowns, cached for five minutes. Includes expired
+  advertisements; counts advertisements, not vacancies. Undated records appear
+  in overall totals separately from month buckets. A zero current-month bucket
+  is always present. The dashboard footer uses this live read-only aggregation,
+  not the original previous-month snapshot embedded in archived reports.
 
 The source importer follows complete pagination, validates country, indicator,
 year and finite 0–100 percent values, preserves true zeros, and rejects missing

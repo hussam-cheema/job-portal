@@ -130,6 +130,33 @@ def test_site_supplement_is_separate_previous_calendar_month(db, national):
     assert report["site_supplement"]["total"] == 3
     assert report["site_supplement"]["government"] == 1
     assert report["site_supplement"]["unspecified"] == 1
+    current = service.current_site_statistics(db)
+    assert current["overall"] == {
+        "total": 4,
+        "government": 1,
+        "private": 2,
+        "unspecified": 1,
+    }
+    months = {row["month"]: row for row in current["months"]}
+    assert months["2026-08"]["total"] == 3
+    assert months["2026-09"]["total"] == 1
+    assert (
+        sum(row["total"] for row in current["months"]) + current["undated"]["total"]
+        == current["overall"]["total"]
+    )
+    db.add(
+        Job(
+            id="new",
+            slug="new",
+            title="New",
+            description="Test",
+            published_date=datetime(2026, 9, 8),
+            job_type="government",
+        )
+    )
+    db.commit()
+    assert service.current_site_statistics(db)["overall"]["total"] == 5
+    assert db.get(MarketReport, "2026-09").data["site_supplement"]["total"] == 3
     assert report["national"]["series"]["unemployment"]["latest"]["value"] == 5.5
 
 
@@ -163,6 +190,13 @@ def test_public_json_routes_and_invalid_months_are_read_only(db, national):
             == "2024"
         )
         assert response.headers["content-type"] == "application/json"
+        stats = client.get("/api/market-reports/site-statistics")
+        assert stats.status_code == 200
+        assert stats.headers["content-type"] == "application/json"
+        assert stats.json()["overall"]["total"] == 0
+        assert stats.json()["months"][0]["month"] == stats.json()["current_month"]
+        assert stats.json()["months"][0]["total"] == 0
+        assert client.post("/api/market-reports/site-statistics").status_code == 405
         for month in ["2026-08", "2026-13", "0000-01", "2026-09' OR '1'='1", "latest"]:
             assert client.get(f"/api/market-reports/{month}").status_code == 404
         assert client.post("/api/market-reports/2026-09").status_code == 405

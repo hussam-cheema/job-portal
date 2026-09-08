@@ -107,6 +107,7 @@ const server = createServer(async (request, response) => {
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1:4010");
   const path = requestUrl.pathname;
   if (path === "/api/market-reports") return json(response, { reports: ["2026-09", "2026-08"].map(month => ({ month, published_at: `${month}-01T00:15:00Z`, unemployment: { year: "2025", value: 5.42 } })) });
+  if (path === "/api/market-reports/site-statistics") return json(response, { collected_at: "2026-09-08T08:00:00Z", current_month: "2026-09", overall: { total: 127, government: 82, private: 45, unspecified: 0 }, undated: { total: 0, government: 0, private: 0, unspecified: 0 }, months: [{ month: "2026-09", total: 18, government: 12, private: 6, unspecified: 0 }, { month: "2026-08", total: 84, government: 56, private: 28, unspecified: 0 }, { month: "2026-07", total: 25, government: 14, private: 11, unspecified: 0 }] });
   if (path.startsWith("/api/market-reports/")) {
     const month = path.split("/").at(-1);
     return ["2026-09", "2026-08"].includes(month) ? json(response, marketReport(month)) : json(response, { detail: "Report not found" }, 404);

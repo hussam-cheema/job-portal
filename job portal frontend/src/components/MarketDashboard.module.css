@@ -93,6 +93,10 @@
 .archiveGrid span { font-size: .65rem; color: var(--muted); }
 .supplement { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2rem; border-top: 1px solid var(--border); padding: 1.3rem .3rem; color: var(--muted); }
 .supplement h2 { font-size: .88rem; color: var(--navy-100); font-weight: 700; margin-bottom: .4rem; }
+.listingTotals { min-width: 0; max-width: 30rem; display: grid; gap: .7rem; }
+.listingTotals h3, .listingTotals label { display: block; font-size: .73rem; font-weight: 700; color: var(--navy-100); }
+.listingTotals strong { font-size: 1.1rem; color: var(--navy-100); }
+.listingTotals select { max-width: 100%; padding: .3rem .5rem; margin: .25rem 0; border: 1px solid var(--border); border-radius: .4rem; background: var(--card); color: var(--navy-100); font-size: .75rem; }
 .supplement p { font-size: .71rem; line-height: 1.8; }
 .supplement > p { align-self: center; }
 .supplement > p strong { color: var(--navy-100); font-size: 1.2rem; }

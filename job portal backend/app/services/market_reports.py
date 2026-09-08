@@ -152,6 +152,55 @@ def fetch_national_data() -> dict:
     }
 
 
+def current_site_statistics(db: Session) -> dict:
+    """Current inventory, grouped by the advertisement publication date.
+
+    These are date-only publication values, not UTC event timestamps. Count each
+    job once, including expired listings, and keep undated records in totals.
+    """
+    captured = datetime.now(timezone.utc)
+    current_month = captured.astimezone(PKT).strftime("%Y-%m")
+    rows = db.execute(
+        select(
+            func.extract("year", Job.published_date),
+            func.extract("month", Job.published_date),
+            Job.job_type,
+            func.count(Job.id),
+        ).group_by(
+            func.extract("year", Job.published_date),
+            func.extract("month", Job.published_date),
+            Job.job_type,
+        )
+    ).all()
+
+    def empty():
+        return {"total": 0, "government": 0, "private": 0, "unspecified": 0}
+
+    overall, undated = empty(), empty()
+    months = {current_month: empty()}
+    for year, month, sector, count in rows:
+        normalized = normalize_job_type(sector)
+        key = normalized if normalized in ("government", "private") else "unspecified"
+        bucket = (
+            months.setdefault(f"{int(year):04d}-{int(month):02d}", empty())
+            if year and month
+            else undated
+        )
+        for target in (overall, bucket):
+            target["total"] += count
+            target[key] += count
+    return {
+        "collected_at": captured.isoformat().replace("+00:00", "Z"),
+        "current_month": current_month,
+        "overall": overall,
+        "undated": undated,
+        "months": [
+            {"month": month, **counts}
+            for month, counts in sorted(months.items(), reverse=True)
+        ],
+    }
+
+
 def site_supplement(db: Session, edition: date) -> dict:
     end = datetime.combine(edition, datetime.min.time())
     last = date.fromordinal(edition.toordinal() - 1)

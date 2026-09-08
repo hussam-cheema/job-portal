@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MarketTrend } from "@/components/MarketCharts";
+import { SiteListingStatistics } from "@/components/SiteListingStatistics";
+import type { SiteStatistics } from "@/lib/marketReports";
 import { commonObservations, monthLabel, type MarketReport, type MarketSeries, type MarketSummary } from "@/lib/marketReports";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
 import styles from "./MarketDashboard.module.css";
@@ -16,7 +18,7 @@ function Comparison({ title, items, names, note }: { title: string; items: Marke
   </section>;
 }
 
-export function MarketDashboard({ report, reports, archive = false }: { report: MarketReport | null; reports: MarketSummary[]; archive?: boolean }) {
+export function MarketDashboard({ report, reports, archive = false, siteStatistics = null }: { report: MarketReport | null; reports: MarketSummary[]; archive?: boolean; siteStatistics?: SiteStatistics | null }) {
   const series = report?.national.series;
   const sectorKeys = ["agriculture", "industry", "services"];
   const sector = series ? commonObservations(sectorKeys.map(k => series[k])) : null;
@@ -73,6 +75,6 @@ export function MarketDashboard({ report, reports, archive = false }: { report: 
       </section>
     </>}
     <section id="report-archive" className={styles.panel}><p className={styles.eyebrow}>The report library</p><h2>Browse monthly editions</h2><p>Each edition has a permanent link and preserves the official data retrieved at publication. The archive begins with our first published edition; older annual observations are available in the trend charts, not presented as invented past monthly reports.</p><nav className={styles.archiveGrid} aria-label="Monthly report archive">{reports.map(r => <Link href={`/dashboard/${r.month}`} key={r.month} aria-current={report?.month === r.month ? "page" : undefined}><span>MONTHLY REPORT</span><strong>{monthLabel(r.month)}</strong><span>National job market briefing ↗</span></Link>)}</nav></section>
-    {report && <section className={styles.supplement} aria-label="Website-only supplementary statistics"><div><p className={styles.eyebrow}>Small supplementary snapshot · not national statistics</p><h2>From Pakistan Jobs Market’s own listings</h2><p>Based on current website records captured for this edition: {monthLabel(report.site_supplement.month)} publication dates. Advertisements are not vacancies or a representative sample of Pakistan’s job market.</p></div><p><strong>{report.site_supplement.total}</strong> listings · {report.site_supplement.government} government · {report.site_supplement.private} private · {report.site_supplement.unspecified} unspecified<br/><Link href="/">Source: website job listings →</Link></p></section>}
+    <SiteListingStatistics data={siteStatistics}/>
   </div>;
 }

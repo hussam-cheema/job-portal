@@ -8,6 +8,13 @@ test("national dashboard, chart interactions, archived edition and SEO", async (
   await expect(nav.getByRole("link", { name: "Admin Panel", exact: true })).toHaveCount(0);
   await expect(page.getByText("A monthly edition, not a monthly survey.")).toBeVisible();
   await expect(page.locator("#national-overview")).toContainText("5.4%");
+  const listings = page.getByRole("region", { name: "Website-only supplementary statistics" });
+  await expect(listings).toContainText("127 listings");
+  await expect(listings).toContainText("18 listings");
+  await listings.getByLabel("By publication month").selectOption("2026-08");
+  await expect(listings).toContainText("84 listings");
+  await expect(listings).toContainText("127 listings");
+  await expect(listings).toContainText("56 government");
   await page.getByLabel("Trend indicator").selectOption("youth_unemployment");
   await expect(page.locator("#market-trends")).toContainText("11.30%");
   await page.getByText("View chart data", { exact: true }).click();

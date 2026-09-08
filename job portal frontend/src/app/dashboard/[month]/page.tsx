@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MarketDashboard } from "@/components/MarketDashboard";
-import { fetchMarketReport, fetchMarketReports, monthLabel } from "@/lib/marketReports";
+import { fetchMarketReport, fetchMarketReports, fetchSiteStatistics, monthLabel } from "@/lib/marketReports";
 
 export const revalidate = 300;
 type Props = { params: Promise<{ month: string }> };
@@ -24,5 +24,5 @@ export default async function MonthlyReportPage({ params }: Props) {
   const { month } = await params;
   const report = await fetchMarketReport(month);
   if (!report) notFound();
-  return <MarketDashboard report={report} reports={await fetchMarketReports()} archive/>;
+  return <MarketDashboard report={report} reports={await fetchMarketReports()} siteStatistics={await fetchSiteStatistics()} archive/>;
 }
