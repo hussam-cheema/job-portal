@@ -386,7 +386,7 @@ const server = createServer(async (request, response) => {
     });
   }
   if (path === "/api/jobs") {
-    return json(response, { items: [{
+    const items = [{
       id: "closed-role", slug: "closed-role", title: "Nationwide Closed Role",
       description: "A nationwide job with a passed deadline. Bachelor&amp;#39;s qualification required.", published_date: "2026-07-01T00:00:00Z",
       // Canonical deadline_date must win over the legacy alias. The alias
@@ -411,7 +411,18 @@ const server = createServer(async (request, response) => {
       employment_type: null, salary_min: null, salary_max: null, currency: "PKR",
       category: "Government", source_type: "govt", source_name: "FPSC",
       nationwide: false, applications_closed: false,
-    }], total: 2, page: 1, page_size: 30, pages: 1 });
+    }];
+    if (requestUrl.searchParams.get("q") === "html-budget-fixture") {
+      return json(response, {
+        items: Array.from({ length: 30 }, (_, index) => ({
+          ...items[0], id: `budget-role-${index}`, slug: `budget-role-${index}`,
+          title: `Government recruitment opportunity ${index}`,
+          description: "FULL_DESCRIPTION_PAYLOAD ".repeat(500),
+        })),
+        total: 60, page: 1, page_size: 30, pages: 2,
+      });
+    }
+    return json(response, { items, total: 2, page: 1, page_size: 30, pages: 1 });
   }
   if (path === "/api/admin/jobs" && request.method === "GET") {
     const page = Math.max(1, Number(requestUrl.searchParams.get("page") || 1));

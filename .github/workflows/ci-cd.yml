@@ -55,6 +55,10 @@ jobs:
           mock_api_pid=$!
           trap 'kill "$mock_api_pid"' EXIT
           npm run build
+          npm run start -- -p 3102 &
+          frontend_pid=$!
+          trap 'kill "$frontend_pid" "$mock_api_pid"' EXIT
+          node e2e/check-html-budget.mjs
       - name: Install dashboard smoke-test browser
         run: npx playwright install --with-deps chromium
       - name: Smoke-test every admin dashboard route

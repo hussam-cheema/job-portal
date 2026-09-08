@@ -8,7 +8,7 @@ import type {
   DirectoryPageLink,
 } from "@/lib/types";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
-import { buildJobPostingStructuredData } from "@/lib/jobStructuredData";
+import { decodeHtmlEntities } from "@/lib/format";
 import { JobCard } from "@/components/JobCard";
 import { JobFilters } from "@/components/JobFilters";
 import { JobStats } from "@/components/JobStats";
@@ -36,10 +36,7 @@ export function HomeJobs({ initialJobs, initialQuery: query, filters, stats, bra
       "@type": "ListItem",
       position: index + 1,
       url: `${siteUrl}/jobs/${job.slug || job.id}`,
-      item: buildJobPostingStructuredData(
-        job,
-        `${siteUrl}/jobs/${job.slug || job.id}`,
-      ),
+      name: decodeHtmlEntities(job.title),
     })),
   };
 

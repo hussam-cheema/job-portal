@@ -186,21 +186,16 @@ test("homepage exposes complete job listings in initial HTML without JavaScript"
   for (const expected of [
     'href="/jobs/closed-role"',
     "Nationwide Closed Role",
-    "A nationwide job with a passed deadline.",
     "Deadline:",
     "Required Education:",
     "Required Experience:",
-    '"@type":"JobPosting"',
-    '"datePosted":"2026-07-01T00:00:00Z"',
-    '"industry":"Government"',
-    '"skills":"Python, SQL"',
-    '"educationRequirements":"Bachelor\'s degree"',
-    '"experienceRequirements":"Two years"',
-    '"hiringOrganization":{"@type":"Organization","name":"FPSC"}',
+    '"@type":"ItemList"',
+    '"@type":"ListItem"',
   ]) {
     expect(normalizedHtml).toContain(expected);
   }
   expect(normalizedHtml).not.toContain("h-96 animate-pulse");
+  expect(normalizedHtml).not.toContain('"@type":"JobPosting"');
 });
 
 test("homepage hover excludes descriptions and shows four optional facts in order", async ({
