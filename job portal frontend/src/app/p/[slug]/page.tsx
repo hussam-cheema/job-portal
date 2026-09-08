@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -41,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: decodeHtmlEntities(seo?.og_description || description),
       type: "article",
       url: `/p/${slug}`,
-      images: seo?.og_image ? [{ url: seo.og_image }] : undefined,
+      images: [{ url: selectSocialImage(seo?.og_image) }],
     },
   };
 }

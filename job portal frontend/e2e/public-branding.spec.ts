@@ -36,6 +36,9 @@ test("public branding, homepage text, footer, and disclaimer navigation render",
   const headerLogo = page.locator("header img");
   const tabIcon = page.locator('link[rel="icon"]').first();
   await expect(headerLogo).toHaveAttribute("src", /pakistan-jobs-market-logo\.png/);
+  await expect(headerLogo).toHaveAttribute("loading", "eager");
+  await expect(headerLogo).toHaveAttribute("fetchpriority", "high");
+  await expect(page.locator('link[rel="preload"][as="image"]').first()).toHaveAttribute("href", /pakistan-jobs-market-logo\.png/);
   await expect(tabIcon).toHaveAttribute("href", /pakistan-jobs-market-logo\.png/);
   const [headerLogoPath, tabIconPath] = await Promise.all([
     headerLogo.evaluate((element: HTMLImageElement) => new URL(element.src).pathname),

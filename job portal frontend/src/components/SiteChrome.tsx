@@ -34,6 +34,9 @@ export function SiteChrome({ children, initialBranding }: Props) {
               alt={`${branding.site_name} logo`}
               width={42}
               height={42}
+              priority
+              loading="eager"
+              fetchPriority="high"
               unoptimized
               className="h-10 w-10 shrink-0 rounded-xl object-contain"
             />

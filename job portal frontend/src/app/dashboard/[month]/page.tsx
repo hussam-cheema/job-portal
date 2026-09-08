@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MarketDashboard } from "@/components/MarketDashboard";
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `Pakistan Job Market Report — ${monthLabel(month)}`;
   const unemployment = report.national.series.unemployment.latest;
   const description = `${monthLabel(month)} edition: Pakistan unemployment (${unemployment.year} ILO estimate: ${unemployment.value.toFixed(1)}%), workforce participation, youth and sector trends. Official sources and methodology included.`;
-  return { title, description, alternates: { canonical: `/dashboard/${month}` }, openGraph: { title, description, url: `/dashboard/${month}`, type: "article", publishedTime: report.published_at, modifiedTime: report.published_at } };
+  return { title, description, alternates: { canonical: `/dashboard/${month}` }, openGraph: { title, description, url: `/dashboard/${month}`, type: "article", publishedTime: report.published_at, modifiedTime: report.published_at, images: [{ url: selectSocialImage() }] } };
 }
 
 export default async function MonthlyReportPage({ params }: Props) {

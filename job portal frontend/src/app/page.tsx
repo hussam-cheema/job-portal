@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import type { Metadata } from "next";
 import { HomeJobs } from "@/components/HomeJobs";
 import { fetchBranding, fetchDirectoryPages, fetchFilters, fetchJobs, fetchStats } from "@/lib/api";
@@ -36,6 +37,7 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       url: "/",
       siteName: branding.site_name,
+      images: [{ url: selectSocialImage(branding.logo_url) }],
     },
     twitter: {
       card: "summary",

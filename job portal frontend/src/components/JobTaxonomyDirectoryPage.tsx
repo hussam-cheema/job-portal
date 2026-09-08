@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { fetchDirectoryPages, fetchPage, fetchPublicSeo } from "@/lib/api";
@@ -64,7 +65,7 @@ export async function jobTaxonomyDirectoryMetadata(kind: DirectoryKind): Promise
     keywords: seo?.meta_keywords?.split(",").map((value) => value.trim()).filter(Boolean),
     alternates: { canonical: `/${config.slug}` },
     robots: { index: true, follow: true },
-    openGraph: { title, description, type: "website", url: `/${config.slug}` },
+    openGraph: { title, description, type: "website", url: `/${config.slug}`, images: [{ url: selectSocialImage() }] },
   };
 }
 

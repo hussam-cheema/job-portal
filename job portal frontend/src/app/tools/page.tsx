@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ToolsConstellation } from "@/components/ToolsConstellation";
@@ -26,6 +27,7 @@ export const metadata: Metadata = {
     description: "Practical salary, study, career and document tools built for users in Pakistan.",
     url: "/tools",
     type: "website",
+    images: [{ url: selectSocialImage() }],
   },
 };
 

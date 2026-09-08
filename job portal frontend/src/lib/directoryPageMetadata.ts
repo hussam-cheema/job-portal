@@ -1,3 +1,4 @@
+import { selectSocialImage } from "@/lib/socialMetadata";
 import type { Metadata } from "next";
 import { fetchDirectoryPage, fetchPublicSeo } from "@/lib/api";
 import { decodeHtmlEntities, stripHtml } from "@/lib/format";
@@ -31,7 +32,7 @@ export async function directoryPageMetadata(
       description: decodeHtmlEntities(seo?.og_description || description),
       type: "website",
       url: path,
-      images: seo?.og_image ? [{ url: seo.og_image }] : undefined,
+      images: [{ url: selectSocialImage(seo?.og_image) }],
     },
   };
 }
