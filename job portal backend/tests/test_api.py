@@ -310,6 +310,25 @@ def test_login_and_create_job(client: TestClient):
     assert invalid.status_code == 400
 
 
+@pytest.mark.parametrize("experience", ["2-4", "2–4", "5+", "3"])
+def test_job_experience_text_round_trips_create_update_and_public_reads(client: TestClient, experience: str):
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "admin-password"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post("/api/admin/jobs", headers=headers, json={
+        "title": "Experience range test", "description": "<p>Build APIs.</p>",
+        "published_date": "2026-09-01T00:00:00", "job_type": "private",
+        "experience_required": experience,
+    })
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+    assert created.json()["experience_required"] == f"{experience} year(s)"
+    assert client.get(f"/api/jobs/{job_id}").json()["experience_required"] == f"{experience} year(s)"
+    updated = client.put(f"/api/admin/jobs/{job_id}", headers=headers, json={"experience_required": "4-6"})
+    assert updated.status_code == 200
+    assert client.get(f"/api/jobs/{job_id}").json()["experience_required"] == "4-6 year(s)"
+    assert client.get("/api/jobs").json()["items"][0]["experience_required"] == "4-6 year(s)"
+
+
 def test_admin_job_list_is_authenticated_and_paginates_every_post(client: TestClient):
     assert client.get("/api/admin/jobs").status_code == 401
     login = client.post(

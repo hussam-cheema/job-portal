@@ -708,18 +708,23 @@ export default function JobFormPage() {
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Experience required (0–100)</label>
+            <label htmlFor="experience-required" className="field-label">Experience required</label>
             <div className="flex items-center gap-2">
               <input
                 className="input"
-                type="number"
-                min={0}
-                max={100}
+                id="experience-required"
+                type="text"
+                maxLength={40}
+                placeholder="e.g. 2-4 or 5+"
+                aria-describedby="experience-required-help"
                 value={form.experience_required}
                 onChange={(e) => setField("experience_required", e.target.value)}
               />
               <span className="text-sm text-[var(--muted)] whitespace-nowrap">year(s)</span>
             </div>
+            <p id="experience-required-help" className="mt-2 text-xs text-[var(--muted)]">
+              Enter a number or range of years, such as 2-4.
+            </p>
           </div>
           <div>
             <label className="field-label">Education required</label>
