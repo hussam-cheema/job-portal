@@ -2,7 +2,21 @@ import { cache } from "react";
 
 export type Observation = { year: string; value: number };
 export type ListingCounts = { total: number; government: number; private: number; unspecified: number };
-export type SiteStatistics = { collected_at: string; current_month: string; overall: ListingCounts; undated: ListingCounts; months: (ListingCounts & { month: string })[] };
+export type BreakdownItem = { name: string; value: number };
+export type ListingBreakdown = { occupations: BreakdownItem[]; provinces: BreakdownItem[] };
+export type NationalBreakdowns = {
+  dataset_id: string; period: string; verified_at: string; provider: string; definition: string; source_url: string; notes: string;
+  occupations: { items: BreakdownItem[]; unit: string; table: string; page: number; source_url: string };
+  provinces: { items: BreakdownItem[]; unit: string; table: string; page: number; source_url: string; pakistan_total: number };
+};
+export type SiteStatistics = { collected_at: string; current_month: string; overall: ListingCounts; undated: ListingCounts; months: (ListingCounts & { month: string })[]; breakdowns?: { overall: ListingBreakdown; months: Record<string, ListingBreakdown> } };
+
+export const fetchNationalBreakdowns = cache(async (): Promise<NationalBreakdowns | null> => {
+  try {
+    const res = await fetch(`${API}/api/market-reports/national-breakdowns`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(15000) });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+});
 
 export const fetchSiteStatistics = cache(async (): Promise<SiteStatistics | null> => {
   try {
@@ -18,7 +32,7 @@ export type MarketSummary = { month: string; published_at: string; unemployment:
 export type MarketReport = {
   schema_version: number; month: string; published_at: string;
   national_data_changed: boolean | null;
-  national: { series: Record<string, MarketSeries>; provider: string; source_updated: string[]; license_url: string };
+  national: { series: Record<string, MarketSeries>; provider: string; source_updated: string[]; license_url: string; breakdowns?: NationalBreakdowns };
   site_supplement: { month: string; total: number; government: number; private: number; unspecified: number; scope: string; source_url: string };
 };
 

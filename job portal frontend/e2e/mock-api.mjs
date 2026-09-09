@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import pbsBreakdowns from "./pbs-employment-fixture.mjs";
 
 const mockSiteOrigin = (process.env.MOCK_SITE_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
 
@@ -107,7 +108,8 @@ const server = createServer(async (request, response) => {
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1:4010");
   const path = requestUrl.pathname;
   if (path === "/api/market-reports") return json(response, { reports: ["2026-09", "2026-08"].map(month => ({ month, published_at: `${month}-01T00:15:00Z`, unemployment: { year: "2025", value: 5.42 } })) });
-  if (path === "/api/market-reports/site-statistics") return json(response, { collected_at: "2026-09-08T08:00:00Z", current_month: "2026-09", overall: { total: 127, government: 82, private: 45, unspecified: 0 }, undated: { total: 0, government: 0, private: 0, unspecified: 0 }, months: [{ month: "2026-09", total: 18, government: 12, private: 6, unspecified: 0 }, { month: "2026-08", total: 84, government: 56, private: 28, unspecified: 0 }, { month: "2026-07", total: 25, government: 14, private: 11, unspecified: 0 }] });
+if (path === "/api/market-reports/site-statistics") return json(response, { breakdowns: { overall: { occupations: [{ name: "Professionals", value: 30 }, { name: "Unclassified", value: 97 }], provinces: [{ name: "Punjab", value: 50 }, { name: "Sindh", value: 40 }, { name: "Pakistan / nationwide", value: 37 }] }, months: { "2026-09": { occupations: [{ name: "Professionals", value: 4 }, { name: "Unclassified", value: 14 }], provinces: [{ name: "Punjab", value: 10 }, { name: "Sindh", value: 8 }] }, "2026-08": { occupations: [{ name: "Professionals", value: 20 }, { name: "Unclassified", value: 64 }], provinces: [{ name: "Sindh", value: 34 }, { name: "Punjab", value: 50 }] } } }, collected_at: "2026-09-08T08:00:00Z", current_month: "2026-09", overall: { total: 127, government: 82, private: 45, unspecified: 0 }, undated: { total: 0, government: 0, private: 0, unspecified: 0 }, months: [{ month: "2026-09", total: 18, government: 12, private: 6, unspecified: 0 }, { month: "2026-08", total: 84, government: 56, private: 28, unspecified: 0 }, { month: "2026-07", total: 25, government: 14, private: 11, unspecified: 0 }] });
+  if (path === "/api/market-reports/national-breakdowns") return json(response, pbsBreakdowns);
   if (path.startsWith("/api/market-reports/")) {
     const month = path.split("/").at(-1);
     return ["2026-09", "2026-08"].includes(month) ? json(response, marketReport(month)) : json(response, { detail: "Report not found" }, 404);

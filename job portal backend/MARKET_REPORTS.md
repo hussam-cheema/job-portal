@@ -1,9 +1,30 @@
 # National job-market reports
 
 The public `/dashboard` is about Pakistan nationally, not site traffic or the
-site's share of recruiting. All main metrics use the official World Bank WDI
-API (source 2, country PAK), with ILO modelled-estimate attribution. A small
-separate footer contains the preceding calendar month's site listing counts.
+site's share of recruiting. Trend and rate metrics use the official World Bank
+WDI API (source 2, country PAK), with ILO attribution. Occupation and province
+graphs use the separate PBS Labour Force Survey. A small separate footer shows
+current overall/monthly website listing counts and expandable website graphs.
+
+## Occupation and province graphs
+
+- `GET /api/market-reports/national-breakdowns` serves the reviewed PBS LFS
+  2024-25 snapshot in `employment_breakdowns.py`: Tables 4.1 (printed page 37)
+  and 4.7 (printed page 43), 19th ICLS, employed persons aged 10+. Values were
+  checked against the official PDF, including rounding discrepancies.
+- PBS is a versioned, manually reviewed survey dataset, not a live monthly
+  feed. New survey releases require a reviewed dataset update. The monthly
+  publisher preserves the current PBS version inside future editions; existing
+  archives are never backfilled. The current dashboard can display this newer,
+  separately dated survey detail alongside its original monthly edition.
+- Website graphs count advertisements, not positions or employed people.
+  Occupations use explicit occupational tags only; ambiguous/missing tags stay
+  in Multiple occupation groups/Unclassified. Government/private and employer
+  names are not occupational categories. No stored job or taxonomy is changed.
+- Each advertisement counts once in each applicable province. Nationwide ads
+  have their own bucket; multi-province bars must not be summed as unique jobs.
+  Known cities override contradictory province tags. Totals and graph buckets
+  use the same lightweight job query, including expired advertisements.
 
 ## Automatic publishing
 

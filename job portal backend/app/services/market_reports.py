@@ -13,7 +13,9 @@ import httpx
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import Job, MarketReport
+from app.models import Job, MarketReport, TaxonomyTerm
+from app.constants import PAKISTAN_PROVINCE_BY_CITY
+from app.services.employment_breakdowns import national_breakdowns, new_breakdown, occupation_group, listing_provinces, serialize_breakdown
 from app.utils import normalize_job_type
 
 PKT = ZoneInfo("Asia/Karachi")
@@ -141,11 +143,13 @@ def fetch_national_data() -> dict:
                 break
             page += 1
     series = parse_observations(rows)
+    breakdowns = national_breakdowns()
     return {
         "series": series,
+        "breakdowns": breakdowns,
         "source_updated": sorted(updates),
         "data_fingerprint": hashlib.sha256(
-            json.dumps(series, sort_keys=True).encode()
+            json.dumps({"series": series, "breakdowns": breakdowns}, sort_keys=True).encode()
         ).hexdigest(),
         "provider": "World Bank World Development Indicators / ILO modelled estimates",
         "license_url": "https://datacatalog.worldbank.org/public-licenses#cc-by",
@@ -162,14 +166,7 @@ def current_site_statistics(db: Session) -> dict:
     current_month = captured.astimezone(PKT).strftime("%Y-%m")
     rows = db.execute(
         select(
-            func.extract("year", Job.published_date),
-            func.extract("month", Job.published_date),
-            Job.job_type,
-            func.count(Job.id),
-        ).group_by(
-            func.extract("year", Job.published_date),
-            func.extract("month", Job.published_date),
-            Job.job_type,
+            Job.published_date, Job.job_type, Job.tags, Job.cities, Job.provinces,
         )
     ).all()
 
@@ -178,22 +175,41 @@ def current_site_statistics(db: Session) -> dict:
 
     overall, undated = empty(), empty()
     months = {current_month: empty()}
-    for year, month, sector, count in rows:
+    for published, sector, _tags, _cities, _provinces in rows:
         normalized = normalize_job_type(sector)
         key = normalized if normalized in ("government", "private") else "unspecified"
         bucket = (
-            months.setdefault(f"{int(year):04d}-{int(month):02d}", empty())
-            if year and month
+            months.setdefault(published.strftime("%Y-%m"), empty())
+            if published
             else undated
         )
         for target in (overall, bucket):
-            target["total"] += count
-            target[key] += count
+            target["total"] += 1
+            target[key] += 1
+    province_by_city = {name.casefold(): province for name, province in db.execute(
+        select(TaxonomyTerm.name, TaxonomyTerm.province).where(TaxonomyTerm.kind == "city")
+    ).all() if province}
+    province_by_city.update({name.casefold(): province for name, province in PAKISTAN_PROVINCE_BY_CITY.items()})
+    all_breakdowns = new_breakdown()
+    monthly_breakdowns = {month: new_breakdown() for month in months}
+    for published, _sector, tags, cities, provinces in rows:
+        targets = [all_breakdowns]
+        if published:
+            targets.append(monthly_breakdowns.setdefault(published.strftime("%Y-%m"), new_breakdown()))
+        occupation = occupation_group(tags)
+        locations = listing_provinces(cities, provinces, province_by_city)
+        for target in targets:
+            target["occupations"][occupation] += 1
+            target["provinces"].update(locations)
     return {
         "collected_at": captured.isoformat().replace("+00:00", "Z"),
         "current_month": current_month,
         "overall": overall,
         "undated": undated,
+        "breakdowns": {
+            "overall": serialize_breakdown(all_breakdowns),
+            "months": {month: serialize_breakdown(value) for month, value in monthly_breakdowns.items()},
+        },
         "months": [
             {"month": month, **counts}
             for month, counts in sorted(months.items(), reverse=True)

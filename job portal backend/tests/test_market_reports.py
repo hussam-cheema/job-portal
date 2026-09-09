@@ -17,6 +17,7 @@ from app.database import Base, get_db
 from app.models import Job, MarketReport
 from app.routers.market_reports import router
 from app.services import market_reports as service
+from app.services.employment_breakdowns import national_breakdowns, listing_provinces
 
 
 def official_rows():
@@ -30,6 +31,41 @@ def official_rows():
         for key, code in service.INDICATORS.items()
         for year, value in [("2023", 0), ("2024", 5.5), ("2025", None)]
     ]
+
+
+def test_verified_pbs_breakdowns_preserve_report_values_and_rounding():
+    data = national_breakdowns()
+    assert data["period"] == "2024-25"
+    assert len(data["occupations"]["items"]) == 9
+    assert sum(row["value"] for row in data["occupations"]["items"]) == pytest.approx(100.1)
+    assert data["provinces"]["pakistan_total"] == 77.2
+    assert {row["name"]: row["value"] for row in data["provinces"]["items"]} == {
+        "Punjab": 44.7, "Sindh": 17.5, "Khyber Pakhtunkhwa": 11.3, "Balochistan": 3.8,
+    }
+    data["provinces"]["items"][0]["value"] = 0
+    assert national_breakdowns()["provinces"]["items"][0]["value"] == 44.7
+
+
+def test_website_breakdowns_use_publication_month_unique_tags_and_actual_provinces(db):
+    cases = [
+        ("2026-08-01", ["Software Engineering", "software engineering"], ["Karachi"], ["Punjab"]),
+        ("2026-08-15", ["Government"], ["Pakistan"], ["Punjab", "Sindh"]),
+        ("2026-09-01", ["Teachers", "Drivers"], ["Lahore", "Karachi", "Karachi"], []),
+        ("2026-09-02", [], [], []),
+    ]
+    for i, (published, tags, cities, provinces) in enumerate(cases):
+        db.add(Job(id=str(i), slug=str(i), title="Advertisement", description="Test",
+                   published_date=datetime.fromisoformat(published), tags=tags, cities=cities, provinces=provinces))
+    db.commit()
+    data = service.current_site_statistics(db)
+    overall = data["breakdowns"]["overall"]
+    assert sum(item["value"] for item in overall["occupations"]) == data["overall"]["total"] == 4
+    assert {item["name"]: item["value"] for item in overall["occupations"]} == {"Professionals": 1, "Unclassified": 2, "Multiple occupation groups": 1}
+    assert {item["name"]: item["value"] for item in overall["provinces"]} == {"Sindh": 2, "Punjab": 1, "Pakistan / nationwide": 1, "Location unspecified": 1}
+    august = data["breakdowns"]["months"]["2026-08"]
+    assert sum(item["value"] for item in august["occupations"]) == 2
+    assert "Punjab" not in {item["name"] for item in august["provinces"]}
+    assert listing_provinces([], ["punjab", "Punjab"], {}) == ["Punjab"]
 
 
 @pytest.fixture
@@ -196,6 +232,11 @@ def test_public_json_routes_and_invalid_months_are_read_only(db, national):
         assert stats.json()["overall"]["total"] == 0
         assert stats.json()["months"][0]["month"] == stats.json()["current_month"]
         assert stats.json()["months"][0]["total"] == 0
+        assert stats.json()["breakdowns"]["overall"] == {"occupations": [], "provinces": []}
+        breakdowns = client.get("/api/market-reports/national-breakdowns")
+        assert breakdowns.status_code == 200
+        assert breakdowns.json()["provinces"]["pakistan_total"] == 77.2
+        assert "max-age=300" in breakdowns.headers["cache-control"]
         assert client.post("/api/market-reports/site-statistics").status_code == 405
         for month in ["2026-08", "2026-13", "0000-01", "2026-09' OR '1'='1", "latest"]:
             assert client.get(f"/api/market-reports/{month}").status_code == 404

@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { MarketTrend } from "@/components/MarketCharts";
 import { SiteListingStatistics } from "@/components/SiteListingStatistics";
-import type { SiteStatistics } from "@/lib/marketReports";
+import { NationalEmploymentBreakdowns } from "@/components/EmploymentBreakdowns";
+import type { SiteStatistics, NationalBreakdowns } from "@/lib/marketReports";
 import { commonObservations, monthLabel, type MarketReport, type MarketSeries, type MarketSummary } from "@/lib/marketReports";
 import { canonicalSiteUrl } from "@/lib/siteUrl";
 import styles from "./MarketDashboard.module.css";
@@ -18,8 +19,9 @@ function Comparison({ title, items, names, note }: { title: string; items: Marke
   </section>;
 }
 
-export function MarketDashboard({ report, reports, archive = false, siteStatistics = null }: { report: MarketReport | null; reports: MarketSummary[]; archive?: boolean; siteStatistics?: SiteStatistics | null }) {
+export function MarketDashboard({ report, reports, archive = false, siteStatistics = null, nationalBreakdowns = null }: { report: MarketReport | null; reports: MarketSummary[]; archive?: boolean; siteStatistics?: SiteStatistics | null; nationalBreakdowns?: NationalBreakdowns | null }) {
   const series = report?.national.series;
+  const breakdowns = archive ? report?.national.breakdowns : nationalBreakdowns || report?.national.breakdowns;
   const sectorKeys = ["agriculture", "industry", "services"];
   const sector = series ? commonObservations(sectorKeys.map(k => series[k])) : null;
   const gender = series ? commonObservations([series.female_participation, series.male_participation]) : null;
@@ -33,7 +35,7 @@ export function MarketDashboard({ report, reports, archive = false, siteStatisti
     mainEntityOfPage: `${site}/dashboard/${report.month}`, inLanguage: "en", spatialCoverage: { "@type": "Country", name: "Pakistan" },
     author: { "@type": "Organization", name: "Pakistan Jobs Market", url: site },
     publisher: { "@type": "Organization", name: "Pakistan Jobs Market", url: site },
-    citation: Object.values(report.national.series).map(s => s.source_url),
+    citation: [...Object.values(report.national.series).map(s => s.source_url), ...(breakdowns ? [breakdowns.source_url] : [])],
   } : null;
   return <div className={`site-wrap ${styles.dashboard}`}>
     {schema && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }}/>}
@@ -41,15 +43,16 @@ export function MarketDashboard({ report, reports, archive = false, siteStatisti
       <div><p className={styles.heroKicker}>THE NATIONAL PICTURE · MONTHLY BRIEFING</p><h1>{title}</h1><p>Understand work, opportunity and participation across Pakistan. Official statistics, useful comparisons, and a clearer view of the labour market.</p>
         <div className={styles.heroLinks}><a href="#national-overview">Explore the report ↓</a><a href="#report-archive">Browse editions</a></div>
       </div>
-      <aside className={styles.edition}><span className={styles.editionDot}/> {report ? "PUBLISHED EDITION" : "MONTHLY EDITIONS"}<strong>{report ? monthLabel(report.month) : "Coming soon"}</strong><p>National coverage<br/>Official World Bank / ILO data</p><span>New edition every month · Pakistan time</span></aside>
+<aside className={styles.edition}><span className={styles.editionDot}/> {report ? "PUBLISHED EDITION" : "MONTHLY EDITIONS"}<strong>{report ? monthLabel(report.month) : "Coming soon"}</strong><p>National coverage<br/>World Bank / ILO · PBS survey data</p><span>New edition every month · Pakistan time</span></aside>
     </header>
-    <nav aria-label="Report sections" className={styles.sectionNav}><a href="#national-overview">Overview</a><a href="#market-trends">Trends</a><a href="#employment-sectors">Sectors</a><a href="#workforce">Workforce</a><a href="#methodology">Methodology</a><a href="#report-sources">Sources</a></nav>
+    <nav aria-label="Report sections" className={styles.sectionNav}><a href="#national-overview">Overview</a><a href="#market-trends">Trends</a><a href="#employment-sectors">Sectors</a>{breakdowns && <a href="#national-breakdowns">Occupations & provinces</a>}<a href="#workforce">Workforce</a><a href="#methodology">Methodology</a><a href="#report-sources">Sources</a></nav>
     {!report || !series ? <section className={styles.panel}><h2>The first national report is being prepared</h2><p>Official data must pass validation before an edition can be published. No estimated or placeholder numbers are shown here. Please check back shortly.</p></section> : <>
       <div className={styles.timingNote}><strong>A monthly edition, not a monthly survey.</strong> The figures below are annual national estimates; each shows its observation year. Retrieved on {new Date(report.published_at).toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" })}. {report.national_data_changed === false ? "The official series are unchanged since the previous edition." : "Official series can be revised between editions."} {archive && <Link href="/dashboard">See the latest edition →</Link>}</div>
       <section id="national-overview" className={styles.stats} aria-label="National key indicators">
         {[["unemployment", "Unemployment", "Of the labour force, ages 15+"], ["youth_unemployment", "Youth unemployment", "Of the youth labour force, ages 15–24"], ["participation", "Labour force participation", "Of the population ages 15+"], ["employment_ratio", "Employment-to-population", "Of the population ages 15+"]].map(([key, label, note], i) => <article key={key} className={styles.stat} style={{ "--metric-color": palette[i % 3] } as CSSProperties}><span className={styles.statLabel}>{label}</span><strong>{pct(series[key].latest.value)}</strong><p>{note}</p><a href={series[key].source_url}>{series[key].latest.year} · ILO estimate ↗</a></article>)}
       </section>
       <section id="market-trends" className={styles.panel}><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>The longer view</p><h2>How Pakistan’s labour market is changing</h2></div><span className={styles.pill}>Annual series</span></div><MarketTrend series={series}/></section>
+      {breakdowns && <NationalEmploymentBreakdowns data={breakdowns} archived={archive}/>}
       <div className={styles.twoColumns}>
         <section id="employment-sectors" className={styles.panel}><p className={styles.eyebrow}>Where people work</p><h2>Employment by sector</h2><p>Share of total employment—not advertised vacancies or GDP.</p>
           {sector ? <><span className={styles.period}>{sector.year} · ILO modelled estimates</span><div className={styles.sectorBody}><div className={styles.donut} role="img" aria-label={sectorKeys.map((k, i) => `${k}: ${pct(sector.points[i].value)}`).join(", ")} style={{ background: `conic-gradient(${palette[0]} 0% ${sector.points[0].value}%, ${palette[1]} ${sector.points[0].value}% ${sector.points[0].value + sector.points[1].value}%, ${palette[2]} ${sector.points[0].value + sector.points[1].value}% 100%)` }}><span>Pakistan<strong>{sector.year}</strong></span></div><ul className={styles.legend}>{sectorKeys.map((key, i) => <li key={key}><i style={{ background: palette[i] }}/><a href={series[key].source_url}>{key}</a><strong>{pct(sector.points[i].value)}</strong></li>)}</ul></div></> : <p>No shared year is available for the three sectors.</p>}
@@ -70,7 +73,7 @@ export function MarketDashboard({ report, reports, archive = false, siteStatisti
         <div><h3>Survey figures can differ</h3><p>Pakistan Bureau of Statistics survey results may use different age coverage, definitions and reference periods from the internationally comparable ILO estimates here. Consult the <a href="https://www.pbs.gov.pk/labour-force-statistics/">official PBS Labour Force Survey</a> for survey-specific tables. Do not splice the two series into one trend.</p></div>
       </div><p className={styles.caption}>This is an independent presentation of official statistics, not an official government publication, real-time vacancy count, hiring forecast, or guarantee of employment.</p></section>
       <section className={styles.actionStrip}><div><p className={styles.eyebrow}>From insight to action</p><h2>Make your next application count.</h2><p>Use the national context alongside the requirements of a specific role.</p></div><div><Link href="/tools/resume-builder">Build a resume →</Link><Link href="/tools/pakistan-tax-calculator">Estimate take-home pay →</Link><Link href="/blog">Read career guides →</Link></div></section>
-      <section id="report-sources" className={styles.panel}><p className={styles.eyebrow}>Open evidence</p><h2>Sources & data provenance</h2><p>All national figures come directly from the official World Bank API for Pakistan (PAK), WDI source 2, with ILO attribution. Provider dataset update: {report.national.source_updated.join(", ")}. Retrieved: <time dateTime={report.published_at}>{new Date(report.published_at).toLocaleString("en-GB", { timeZone: "Asia/Karachi" })} PKT</time>. <a href={report.national.license_url}>Data licence: CC BY 4.0</a>.</p>
+      <section id="report-sources" className={styles.panel}><p className={styles.eyebrow}>Open evidence</p><h2>Sources & data provenance</h2><p>The trend and rate indicators come from the official World Bank API for Pakistan (PAK), WDI source 2, with ILO attribution. Occupation and province charts cite the separate PBS Labour Force Survey tables beside each graph. Provider dataset update: {report.national.source_updated.join(", ")}. Retrieved: <time dateTime={report.published_at}>{new Date(report.published_at).toLocaleString("en-GB", { timeZone: "Asia/Karachi" })} PKT</time>. <a href={report.national.license_url}>Data licence: CC BY 4.0</a>.</p>
         <details className={styles.dataTable}><summary>View all 14 official indicators and downloadable source data</summary><ul className={styles.sourceList}>{Object.values(series).map(s => <li key={s.code}><a href={s.source_url}>{s.title} ↗</a><span>{s.latest.year} · {s.code}</span><a href={s.api_url}>Source JSON</a></li>)}</ul></details>
       </section>
     </>}

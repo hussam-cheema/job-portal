@@ -11,10 +11,22 @@ test("national dashboard, chart interactions, archived edition and SEO", async (
   const listings = page.getByRole("region", { name: "Website-only supplementary statistics" });
   await expect(listings).toContainText("127 listings");
   await expect(listings).toContainText("18 listings");
+  const national = page.getByRole("region", { name: "Official Pakistan occupation and province statistics" });
+  await expect(national.getByRole("heading", { name: "Employment by occupation", exact: true })).toBeVisible();
+  await expect(national.getByRole("heading", { name: "Employment by province", exact: true })).toBeVisible();
+  await expect(national.getByRole("list", { name: "Pakistan employment by occupation" }).locator("li")).toHaveCount(9);
+  await expect(national).toContainText("44.7m");
+  await expect(national).toContainText("77.2 million");
+  await expect(national.locator('a[href*="pbs.gov.pk"]')).toHaveCount(2);
+  await listings.getByText("Explore website jobs by occupation and province").click();
+  await expect(listings.getByRole("list", { name: "Website jobs by occupation" })).toContainText("97");
+  await listings.getByLabel("Graph period").selectOption("month");
+  await expect(listings.getByRole("list", { name: "Website jobs by occupation" })).toContainText("14");
   await listings.getByLabel("By publication month").selectOption("2026-08");
   await expect(listings).toContainText("84 listings");
   await expect(listings).toContainText("127 listings");
   await expect(listings).toContainText("56 government");
+  await expect(listings.getByRole("list", { name: "Website jobs by occupation" })).toContainText("64");
   await page.getByLabel("Trend indicator").selectOption("youth_unemployment");
   await expect(page.locator("#market-trends")).toContainText("11.30%");
   await page.getByText("View chart data", { exact: true }).click();
@@ -28,6 +40,7 @@ test("national dashboard, chart interactions, archived edition and SEO", async (
   const schema = JSON.parse(await page.locator('script[type="application/ld+json"]').first().textContent() || "{}");
   expect(schema["@type"]).toBe("Report");
   expect(schema.citation).toHaveLength(14);
+  await expect(page.locator("#national-breakdowns")).toHaveCount(0); // Do not backfill old immutable editions.
   const sitemap = await (await page.request.get("/sitemap.xml")).text();
   expect(sitemap).toContain("/dashboard/2026-09");
 });
@@ -68,6 +81,24 @@ test("unpublished monthly editions return 404", async ({ page }) => {
   expect(response?.status()).toBe(404);
 });
 
+test("new national and website graphs fit phone tablet and desktop", async ({ page }) => {
+  await page.goto("/dashboard");
+  const national = page.locator("#national-breakdowns");
+  const website = page.getByRole("region", { name: "Website-only supplementary statistics" });
+  await website.getByText("Explore website jobs by occupation and province").click();
+  for (const width of [360, 820, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(national.getByRole("list", { name: "Pakistan employment by occupation" })).toBeVisible();
+    await expect(website.getByRole("list", { name: "Website jobs by province" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    for (const region of [national, website]) {
+      expect(await region.evaluate(el => Array.from(el.querySelectorAll("li")).every(li => li.scrollWidth <= li.clientWidth + 1))).toBe(true);
+    }
+    await national.screenshot({ path: `test-results/national-breakdowns-${width}.png` });
+    await website.screenshot({ path: `test-results/website-breakdowns-${width}.png` });
+  }
+});
+
 test("dark theme keeps charts and the expanded admin navigation usable", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("pakjobs-theme", "dark");
@@ -75,6 +106,7 @@ test("dark theme keeps charts and the expanded admin navigation usable", async (
   });
   await page.goto("/dashboard");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByText("Explore website jobs by occupation and province").click();
   for (const width of [320, 1100, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Admin Panel", exact: true })).toBeVisible();

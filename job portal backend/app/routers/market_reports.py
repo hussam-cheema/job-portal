@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import MarketReport
+from app.services.employment_breakdowns import national_breakdowns
 from app.services.market_reports import (
     current_site_statistics,
     month_date,
@@ -24,6 +25,12 @@ def list_reports(response: Response, db: Session = Depends(get_db)):
 def site_statistics(response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "public, max-age=300"
     return current_site_statistics(db)
+
+
+@router.get("/national-breakdowns")
+def get_national_breakdowns(response: Response):
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return national_breakdowns()
 
 
 @router.get("/{month}")
