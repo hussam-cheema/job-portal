@@ -32,7 +32,7 @@ test("national dashboard, chart interactions, archived edition and SEO", async (
   expect(sitemap).toContain("/dashboard/2026-09");
 });
 
-test("admin shortcut is renamed without replacing the public Dashboard", async ({ page }) => {
+test("admin shortcut comes first without replacing the public Dashboard", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("pakjobs-admin-token", "e2e-token");
     localStorage.setItem("pakjobs-admin-user", "e2e-admin");
@@ -40,7 +40,8 @@ test("admin shortcut is renamed without replacing the public Dashboard", async (
   await page.goto("/dashboard");
   const nav = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(nav.getByRole("link", { name: "Admin Panel", exact: true })).toHaveAttribute("href", "/admin");
-  await expect(nav.getByRole("link").first()).toHaveAttribute("href", "/dashboard");
+  await expect(nav.getByRole("link").first()).toHaveAttribute("href", "/admin");
+  await expect(nav.getByRole("link").nth(1)).toHaveAttribute("href", "/dashboard");
 });
 
 for (const width of [320, 390, 768, 1024, 1100, 1440]) {
