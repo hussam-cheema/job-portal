@@ -18,7 +18,7 @@ test("national dashboard, chart interactions, archived edition and SEO", async (
   await expect(national).toContainText("44.7m");
   await expect(national).toContainText("77.2 million");
   await expect(national.locator('a[href*="pbs.gov.pk"]')).toHaveCount(2);
-  await listings.getByText("Explore website jobs by occupation and province").click();
+  await expect(listings.getByRole("heading", { name: "Website jobs by occupation and province" })).toBeVisible();
   await expect(listings.getByRole("list", { name: "Website jobs by occupation" })).toContainText("97");
   await listings.getByLabel("Graph period").selectOption("month");
   await expect(listings.getByRole("list", { name: "Website jobs by occupation" })).toContainText("14");
@@ -66,12 +66,12 @@ for (const width of [320, 390, 768, 1024, 1100, 1440]) {
       const title = document.querySelector(".site-title")!.getBoundingClientRect();
       const nav = document.querySelector(".site-actions")!.getBoundingClientRect();
       const supplement = document.querySelector('[aria-label="Website-only supplementary statistics"]')!.getBoundingClientRect();
-      const main = document.querySelector("main")!.getBoundingClientRect();
-      return { overflow: document.documentElement.scrollWidth > innerWidth + 1, overlap: title.left < nav.right && title.right > nav.left && title.top < nav.bottom && title.bottom > nav.top, fraction: supplement.height / main.height };
+      const national = document.querySelector("#report-sources")!.getBoundingClientRect();
+      return { overflow: document.documentElement.scrollWidth > innerWidth + 1, overlap: title.left < nav.right && title.right > nav.left && title.top < nav.bottom && title.bottom > nav.top, supplementaryAfterNational: supplement.top >= national.bottom };
     });
     expect(audit.overflow).toBe(false);
     expect(audit.overlap).toBe(false);
-    expect(audit.fraction).toBeLessThan(.1);
+    expect(audit.supplementaryAfterNational).toBe(true);
     if (width === 390 || width === 1440) await page.screenshot({ path: `test-results/market-${width}.png`, fullPage: true });
   });
 }
@@ -85,7 +85,7 @@ test("new national and website graphs fit phone tablet and desktop", async ({ pa
   await page.goto("/dashboard");
   const national = page.locator("#national-breakdowns");
   const website = page.getByRole("region", { name: "Website-only supplementary statistics" });
-  await website.getByText("Explore website jobs by occupation and province").click();
+  await expect(website.getByRole("heading", { name: "Website jobs by occupation and province" })).toBeVisible();
   for (const width of [360, 820, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(national.getByRole("list", { name: "Pakistan employment by occupation" })).toBeVisible();
@@ -106,7 +106,7 @@ test("dark theme keeps charts and the expanded admin navigation usable", async (
   });
   await page.goto("/dashboard");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByText("Explore website jobs by occupation and province").click();
+  await expect(page.getByRole("heading", { name: "Website jobs by occupation and province" })).toBeVisible();
   for (const width of [320, 1100, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Admin Panel", exact: true })).toBeVisible();

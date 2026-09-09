@@ -8,6 +8,7 @@ import {
   fetchBuildPublicSeo,
 } from "@/lib/api";
 import { decodeHtmlEntities, stripHtml } from "@/lib/format";
+import { canonicalSiteUrl } from "@/lib/siteUrl";
 import {
   compactSocialDescription,
   firstRichTextImage,
@@ -93,5 +94,22 @@ export default async function BlogPostPage({ params }: Props) {
   if (!post) notFound();
   const relatedResult = await fetchBuildBlogPosts({ category: post.category || undefined, tag: post.tags[0], page: 1, page_size: 5 });
   const related = relatedResult.items.filter((item) => item.id !== post.id).slice(0, 4);
-  return <BlogPostArticle initialPost={post} initialRelated={related} />;
+  const site = canonicalSiteUrl();
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: decodeHtmlEntities(post.title),
+    description: compactSocialDescription(post.excerpt || stripHtml(post.content)),
+    mainEntityOfPage: `${site}/blog/${post.slug}`,
+    image: new URL(selectSocialImage(firstRichTextImage(post.content)), site).toString(),
+    datePublished: post.published_at || post.created_at || undefined,
+    dateModified: post.updated_at || undefined,
+    author: post.author ? { "@type": /editorial team/i.test(post.author) ? "Organization" : "Person", name: decodeHtmlEntities(post.author) } : undefined,
+    publisher: { "@type": "Organization", name: "Pakistan Jobs Market", url: site },
+    inLanguage: "en-PK",
+  };
+  return <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />
+    <BlogPostArticle initialPost={post} initialRelated={related} />
+  </>;
 }

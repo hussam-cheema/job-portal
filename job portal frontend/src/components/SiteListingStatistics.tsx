@@ -26,8 +26,8 @@ export function SiteListingStatistics({ data }: { data: SiteStatistics | null })
       <div><label htmlFor="website-listing-month">By publication month</label><select id="website-listing-month" value={selected?.month || ""} onChange={event => setMonth(event.target.value)}>{data.months.map(item => <option key={item.month} value={item.month}>{monthLabel(item.month)}{item.month === data.current_month ? " · current month" : ""}</option>)}</select>{selected && <Counts counts={selected}/>}</div>
       {data.undated.total > 0 && <p>{data.undated.total} undated listings are included in overall totals only.</p>}
     </div> : <p>Current website listing statistics are temporarily unavailable.</p>}
-    {data?.breakdowns && <details className={styles.websiteBreakdowns}>
-      <summary>Explore website jobs by occupation and province</summary>
+    {data?.breakdowns && <div className={styles.websiteBreakdowns}>
+      <h3>Website jobs by occupation and province</h3>
       <div className={styles.chartToolbar}><label htmlFor="website-graph-period">Graph period<select id="website-graph-period" value={graphScope} onChange={event => setGraphScope(event.target.value)}><option value="overall">Overall · all dates</option><option value="month">Selected month · {selected ? monthLabel(selected.month) : "Unavailable"}</option></select></label></div>
       <div className={styles.twoColumns}>
         <section className={styles.panel}><h3>Website jobs by occupation</h3><p>Advertisement counts grouped from explicit occupational tags. Unclassified means no recognized occupation tag; government/private and employer names are not occupations. A multi-role advertisement is counted once.</p>
@@ -38,6 +38,6 @@ export function SiteListingStatistics({ data }: { data: SiteStatistics | null })
         </section>
       </div>
       <p>Source: current website job records. Publication month controls the monthly view. Bars are scaled to the largest category; these are not national employment statistics or vacancy counts.</p>
-    </details>}
+    </div>}
   </section>;
 }

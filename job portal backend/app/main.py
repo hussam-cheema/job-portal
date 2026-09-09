@@ -194,6 +194,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
                 career_guides_created = publish_career_guides_once(db)
                 career_guides_enriched = enrich_career_guides_once(db)
+                from app.services.september_guide_seed import publish_september_guides_once
+                september_guides = publish_september_guides_once(db)
+                if september_guides:
+                    logger.info("September policy guides created count=%s", len(september_guides))
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))

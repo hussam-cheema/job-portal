@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import pbsBreakdowns from "./pbs-employment-fixture.mjs";
 
 const mockSiteOrigin = (process.env.MOCK_SITE_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
@@ -517,6 +518,11 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
     published_at: "2026-07-18T12:00:00Z", created_at: "2026-07-18T12:00:00Z",
     updated_at: "2026-07-18T12:00:00Z",
   };
+  const guideSlugs = ["pps-salary-scale-2026-pakistan", "bps-salary-chart-2026-pakistan", "new-pension-scheme-pakistan-2026", "fpsc-age-relaxation-2026", "14-vs-16-vs-18-years-education-pakistan"];
+  const guideSlug = path.replace("/api/blog/", "");
+  if (guideSlugs.includes(guideSlug)) {
+    return json(response, { ...blogPost, id: guideSlug, slug: guideSlug, title: guideSlug.replaceAll("-", " "), author: "Pakistan Jobs Market Editorial Team", content: readFileSync(new URL(`../../job portal backend/app/content/september_guides/${guideSlug}.html`, import.meta.url), "utf8") });
+  }
   if (path === "/api/blog") return json(response, { items: [blogPost], total: 1, page: 1, page_size: 12, pages: 1 });
   if (path === "/api/blog/filters") return json(response, { categories: ["Career Advice"], tags: ["FPSC", "Exam Preparation"] });
   if (path === "/api/blog/fpsc-preparation-guide") return json(response, blogPost);
