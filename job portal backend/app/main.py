@@ -194,10 +194,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
                 career_guides_created = publish_career_guides_once(db)
                 career_guides_enriched = enrich_career_guides_once(db)
-                from app.services.september_guide_seed import publish_september_guides_once
-                september_guides = publish_september_guides_once(db)
-                if september_guides:
-                    logger.info("September policy guides created count=%s", len(september_guides))
             db.commit()
             if created:
                 logger.info("core CMS pages created count=%s", len(created))
@@ -249,6 +245,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             db.close()
     except Exception:
         logger.exception("database init failed — API will use empty fallbacks")
+
+    # An unrelated legacy migration must not prevent an approved editorial
+    # release. Use a fresh transaction even if the initialization block rolled
+    # back; the one-time marker and all five posts commit atomically together.
+    if os.getenv("JOBPORTAL_TESTING", "").lower() not in {"1", "true", "yes"}:
+        try:
+            from app.database import SessionLocal
+            from app.services.september_guide_seed import publish_september_guides_once
+
+            with SessionLocal.begin() as publication_db:
+                september_guides = publish_september_guides_once(publication_db)
+            logger.info("September policy guides created count=%s", len(september_guides))
+        except Exception:
+            logger.exception("September policy guide publication failed; transaction rolled back")
 
     if os.getenv("SEED_ON_STARTUP", "true").lower() in {"1", "true", "yes"}:
         try:

@@ -69,3 +69,30 @@ def test_existing_slug_is_never_overwritten():
         assert len(publish_september_guides_once(db)) == 4
         db.commit()
         assert db.get(BlogPost, 'existing').content == 'CMS body'
+
+
+def test_editorial_release_survives_unrelated_startup_failure(monkeypatch):
+    import asyncio
+    from sqlalchemy.orm import sessionmaker
+    from app import database, main
+
+    engine = create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(database, 'SessionLocal', factory)
+    monkeypatch.setenv('JOBPORTAL_TESTING', 'false')
+    monkeypatch.setenv('SEED_ON_STARTUP', 'false')
+    def failed_legacy_init():
+        raise RuntimeError('Unrelated legacy migration failure')
+    monkeypatch.setattr(main, 'init_db', failed_legacy_init)
+    for name in ('sync_taxonomy_pages_v1', 'sync_directory_page_slugs_v2', 'sync_job_directory_pages_v3'):
+        monkeypatch.setattr(main, name, lambda db: [])
+    for name in ('_warm_embedding_cache_in_background', '_start_newsletter_retry_worker', '_start_market_report_worker', 'flush_production_logs'):
+        monkeypatch.setattr(main, name, lambda: None)
+    async def run():
+        async with main.lifespan(main.app):
+            pass
+    asyncio.run(run())
+    with factory() as db:
+        assert db.query(BlogPost).count() == 5
+        assert db.query(SEOMeta).count() == 5
