@@ -73,3 +73,36 @@ test("watermark editor stays within mobile and tablet viewports", async ({ page 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
 });
+
+test("watermark input and control text stays dark on white in both site themes", async ({ page }) => {
+  await page.goto("/tools/add-watermark");
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+    const colors = await page.evaluate(() => {
+      const text = document.querySelector<HTMLInputElement>("#watermark-text")!;
+      const select = document.querySelector<HTMLSelectElement>("#watermark-position")!;
+      const colorLabel = document.querySelector<HTMLInputElement>("#watermark-color")!.parentElement!.querySelector("span")!;
+      const underline = document.querySelector<HTMLButtonElement>('[aria-label="Underline text"]')!;
+      return {
+        text: getComputedStyle(text).color,
+        textBackground: getComputedStyle(text).backgroundColor,
+        placeholder: getComputedStyle(text, "::placeholder").color,
+        select: getComputedStyle(select).color,
+        selectBackground: getComputedStyle(select).backgroundColor,
+        colorLabel: getComputedStyle(colorLabel).color,
+        underline: getComputedStyle(underline).color,
+        underlineBackground: getComputedStyle(underline).backgroundColor,
+      };
+    });
+    expect(colors).toEqual({
+      text: "rgb(17, 24, 39)",
+      textBackground: "rgb(255, 255, 255)",
+      placeholder: "rgb(100, 116, 139)",
+      select: "rgb(17, 24, 39)",
+      selectBackground: "rgb(255, 255, 255)",
+      colorLabel: "rgb(17, 24, 39)",
+      underline: "rgb(17, 24, 39)",
+      underlineBackground: "rgb(255, 255, 255)",
+    });
+  }
+});

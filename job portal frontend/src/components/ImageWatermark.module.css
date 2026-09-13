@@ -13,15 +13,16 @@
 .dropzone .fileInfo { color: var(--accent); font-weight: 700; }
 .visuallyHidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .field { display: grid; gap: .55rem; color: var(--navy-900); font-weight: 750; min-width: 0; }
-.field > input[type=text], .field select { width: 100%; min-width: 0; min-height: 3rem; padding: .65rem .8rem; background: var(--card); border: 1px solid var(--border); border-radius: .75rem; color: var(--navy-900); }
+.field > input[type=text], .field select { width: 100%; min-width: 0; min-height: 3rem; padding: .65rem .8rem; background: #fff; border: 1px solid #cbd5e1; border-radius: .75rem; color: #111827; color-scheme: light; }
+.field > input[type=text]::placeholder { color: #64748b; opacity: 1; }
 .field > input[type=range] { width: 100%; accent-color: var(--accent); }
 .field .value { color: var(--accent); font-weight: 800; }
 .twoColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.colorRow { display: flex; align-items: center; gap: .7rem; min-height: 3rem; padding: .35rem .6rem; border: 1px solid var(--border); background: var(--card); border-radius: .75rem; font-variant-numeric: tabular-nums; }
+.colorRow { display: flex; align-items: center; gap: .7rem; min-height: 3rem; padding: .35rem .6rem; border: 1px solid #cbd5e1; background: #fff; border-radius: .75rem; color: #111827; font-variant-numeric: tabular-nums; }
 .colorRow input { width: 2.4rem; height: 2.15rem; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .formatButtons { display: flex; flex-wrap: wrap; gap: .7rem; }
-.formatButtons button { display: inline-flex; gap: .5rem; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .7rem; border: 1px solid var(--border); background: var(--card); color: var(--navy-900); font-weight: 700; }
-.formatButtons button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.formatButtons button { display: inline-flex; gap: .5rem; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .7rem; border: 1px solid #cbd5e1; background: #fff; color: #111827; font-weight: 700; }
+.formatButtons button.active { border-color: #3b82f6; background: #dbeafe; color: #1d4ed8; }
 .formatButtons button:focus-visible, .dropzone button:focus-visible, .previewPanel button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .error { margin: 0; padding: .8rem 1rem; border: 1px solid #e8a7a7; border-radius: .7rem; background: #fff4f4; color: #9d2929; }
 .previewPanel { display: grid; gap: 1rem; }
