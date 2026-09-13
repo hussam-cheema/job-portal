@@ -58,7 +58,9 @@ const toolCategories = [
       { id: "tool-student-api", category_id: "tool-category-students", slug: "api", title: "API", content: "<p>Build student projects with published jobs and blog data.</p>", tool_kind: "student_api", sort_order: 3, is_published: true },
     ],
   },
-  { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [] },
+  { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [
+    { id: "tool-watermark", category_id: "tool-category-images", slug: "add-watermark", title: "Add Watermark to Image", content: "<p>Edit a watermark locally.</p>", tool_kind: "image_watermark", sort_order: 0, is_published: true },
+  ] },
   {
     id: "tool-category-documents", slug: "document-tools", title: "Document Tools", content: "", icon_key: "document", color_index: 4, sort_order: 3, is_published: true,
     tools: [{ id: "tool-converter", category_id: "tool-category-documents", slug: "docx-pdf-converter", title: "DOCX and PDF Converter", content: "<p>Convert documents.</p>", tool_kind: "document_converter", sort_order: 0, is_published: true }],

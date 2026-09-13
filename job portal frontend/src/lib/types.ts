@@ -283,6 +283,7 @@ export type ToolKind =
   | "government_salary_calculator"
   | "cgpa_calculator"
   | "document_converter"
+  | "image_watermark"
   | "resume_builder"
   | "cover_letter"
   | "student_api";

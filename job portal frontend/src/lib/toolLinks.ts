@@ -12,6 +12,7 @@ export function toolExperienceLabel(tool: Pick<ToolPage, "tool_kind">) {
   }
   if (tool.tool_kind === "content") return "Utility";
   if (tool.tool_kind === "document_converter") return "Document utility";
+  if (tool.tool_kind === "image_watermark") return "Image editor";
   if (tool.tool_kind === "student_api") return "Developer API";
   return "Interactive calculator";
 }

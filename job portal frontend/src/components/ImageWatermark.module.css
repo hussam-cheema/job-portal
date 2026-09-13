@@ -1,0 +1,39 @@
+.shell { margin: 1.5rem 0; padding: clamp(1.25rem, 3vw, 2.5rem); background: var(--card); border: 1px solid var(--border); border-radius: 1.5rem; box-shadow: 0 20px 55px rgba(30, 60, 120, .07); min-width: 0; }
+.intro { max-width: 56rem; margin-bottom: 1.75rem; }
+.intro h2 { margin: .3rem 0 .5rem; font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; }
+.intro p:last-child { color: var(--muted); line-height: 1.65; }
+.layout { display: grid; grid-template-columns: minmax(280px, .83fr) minmax(0, 1.17fr); gap: clamp(1rem, 2.5vw, 2rem); align-items: start; min-width: 0; }
+.controls, .previewPanel { border: 1px solid var(--border); background: var(--navy-100); border-radius: 1.2rem; padding: clamp(1rem, 2vw, 1.5rem); min-width: 0; }
+.controls { display: grid; gap: 1.2rem; }
+.dropzone { display: grid; justify-items: start; gap: .65rem; padding: 1.25rem; border: 2px dashed var(--accent); border-radius: 1rem; background: var(--card); overflow-wrap: anywhere; }
+.dropzone.dragging { background: var(--accent-soft); }
+.dropzone strong { font-size: 1.1rem; }
+.dropzone p { margin: 0; color: var(--muted); line-height: 1.5; }
+.dropzone small, .field small { color: var(--muted); }
+.dropzone .fileInfo { color: var(--accent); font-weight: 700; }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.field { display: grid; gap: .55rem; color: var(--navy-900); font-weight: 750; min-width: 0; }
+.field > input[type=text], .field select { width: 100%; min-width: 0; min-height: 3rem; padding: .65rem .8rem; background: var(--card); border: 1px solid var(--border); border-radius: .75rem; color: var(--navy-900); }
+.field > input[type=range] { width: 100%; accent-color: var(--accent); }
+.field .value { color: var(--accent); font-weight: 800; }
+.twoColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.colorRow { display: flex; align-items: center; gap: .7rem; min-height: 3rem; padding: .35rem .6rem; border: 1px solid var(--border); background: var(--card); border-radius: .75rem; font-variant-numeric: tabular-nums; }
+.colorRow input { width: 2.4rem; height: 2.15rem; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.formatButtons { display: flex; flex-wrap: wrap; gap: .7rem; }
+.formatButtons button { display: inline-flex; gap: .5rem; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .7rem; border: 1px solid var(--border); background: var(--card); color: var(--navy-900); font-weight: 700; }
+.formatButtons button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.formatButtons button:focus-visible, .dropzone button:focus-visible, .previewPanel button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.error { margin: 0; padding: .8rem 1rem; border: 1px solid #e8a7a7; border-radius: .7rem; background: #fff4f4; color: #9d2929; }
+.previewPanel { display: grid; gap: 1rem; }
+.previewHeading { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.previewHeading h3 { margin: 0 0 .2rem; font-size: 1.15rem; font-weight: 800; }
+.previewHeading p { margin: 0; color: var(--muted); font-size: .9rem; }
+.previewHeading span { flex: none; color: var(--muted); font-size: .85rem; }
+.previewArea { display: grid; place-items: center; min-height: 19rem; padding: 1rem; overflow: hidden; border: 1px solid var(--border); border-radius: .85rem; background: repeating-conic-gradient(#e6ebf2 0% 25%, #f7f9fc 0% 50%) 50% / 20px 20px; }
+.previewArea canvas { display: block; max-width: 100%; max-height: 36rem; width: auto; height: auto; object-fit: contain; box-shadow: 0 12px 26px rgba(20, 37, 70, .17); }
+.placeholder { padding: 2rem; text-align: center; color: #62728a; }
+.previewPanel button { justify-self: start; }
+.previewPanel button:disabled { opacity: .55; cursor: not-allowed; }
+.privacy { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.55; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .previewArea { min-height: 15rem; } }
+@media (max-width: 480px) { .shell { padding: 1rem; border-radius: 1rem; } .controls, .previewPanel { padding: 1rem; } .twoColumns { grid-template-columns: 1fr; } .previewHeading { align-items: flex-start; flex-direction: column; } .previewPanel button { width: 100%; justify-self: stretch; } }

@@ -119,6 +119,23 @@ DEFAULT_TOOLS = (
         ),
     },
     {
+        "category_slug": "image-editing-tools",
+        "slug": "add-watermark",
+        "title": "Add Watermark to Image",
+        "tool_kind": "image_watermark",
+        "content": (
+            "<h2>Add a text watermark to an image</h2>"
+            "<p>Choose one PNG, JPEG or WebP image, type your watermark and adjust its "
+            "colour, size, weight, underline, placement and opacity. Preview each change "
+            "before downloading a full-resolution PNG.</p>"
+            "<p>The editor runs in your browser: your image is not uploaded to Pakistan Jobs "
+            "Market. Files must be under 10 MB and no larger than 12 megapixels. Animated "
+            "images and SVG are not accepted. Exporting a new PNG removes the source "
+            "file's metadata, including camera location details. Check the result before "
+            "sharing or publishing it.</p>"
+        ),
+    },
+    {
         "category_slug": "tools-for-students",
         "slug": "resume-builder",
         "title": "Resume Builder",
