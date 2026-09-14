@@ -320,6 +320,27 @@ export type ToolAdminResponse = {
   tools: ToolPage[];
 };
 
+export type ToolAnalyticsRow = {
+  id: string;
+  category_id: string;
+  category_title: string;
+  slug: string;
+  title: string;
+  tool_kind: ToolKind;
+  is_published: boolean;
+  opens: number;
+  uses: number;
+};
+
+export type ToolAnalytics = {
+  month: string;
+  timezone: string;
+  total_opens: number;
+  total_uses: number;
+  tools: ToolAnalyticsRow[];
+  generated_at: string;
+};
+
 export type DocumentConversionStatus =
   | "queued"
   | "converting"

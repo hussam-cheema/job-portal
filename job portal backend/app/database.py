@@ -191,6 +191,7 @@ def _reset_app_tables() -> None:
         "job_qna",
         "job_attachments",
         "contact_messages",
+        "tool_usage_events",
         "tool_pages",
         "tool_categories",
         "pages",

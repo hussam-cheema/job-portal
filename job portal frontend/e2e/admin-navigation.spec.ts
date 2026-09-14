@@ -9,6 +9,7 @@ const dashboardLinks = [
   ["Manage blog posts", "/admin/blog", "Blog posts"],
   ["Contact messages", "/admin/messages", "Contact messages"],
   ["Infrastructure analytics", "/admin/infrastructure", "Infrastructure analytics"],
+  ["Tools Analytics", "/admin/tools-analytics", "Tools Analytics"],
   ["SEO monitor", "/admin/seo", "SEO command center"],
   ["Newsletter subscription", "/admin/newsletter", "Newsletter subscription"],
   ["Tags / categories", "/admin/taxonomy", "Tags / categories"],
@@ -685,7 +686,7 @@ test("modern header and admin workspace keep their responsive layout", async ({ 
   await expect(header).toBeVisible();
   await expect(headerActions).toHaveCSS("display", "flex");
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(16);
+  await expect(sidebar.locator(".admin-nav-icon")).toHaveCount(17);
 
   const headerBox = await header.boundingBox();
   const sidebarBox = await sidebar.boundingBox();

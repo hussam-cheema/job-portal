@@ -287,6 +287,30 @@ class ToolPage(Base):
     )
 
 
+class ToolUsageEvent(Base):
+    """Privacy-safe, deduplicated tool-open and interaction sessions."""
+
+    __tablename__ = "tool_usage_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "tool_id", "visitor_hash", "event_type", "window_start",
+            name="uq_tool_usage_event_window",
+        ),
+        Index("ix_tool_usage_type_time_tool", "event_type", "occurred_at", "tool_id"),
+        Index("ix_tool_usage_client_time", "client_hash", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tool_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tool_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    visitor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class BlogPost(Base):
     __tablename__ = "blog_posts"
     __table_args__ = (

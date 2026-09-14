@@ -157,7 +157,28 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
   if (path === "/api/admin/tools") {
     return json(response, { categories: toolCategories, tools: toolPages });
   }
+  if (path === "/api/admin/tools/analytics") {
+    const month = requestUrl.searchParams.get("month") || "2026-09";
+    const tools = toolCategories.flatMap((category) => category.tools.map((tool, index) => ({
+      id: tool.id,
+      category_id: category.id,
+      category_title: category.title,
+      slug: tool.slug,
+      title: tool.title,
+      tool_kind: tool.tool_kind,
+      is_published: tool.is_published,
+      opens: index === 0 ? 12 : 0,
+      uses: index === 0 ? 7 : 0,
+    })));
+    return json(response, {
+      month, timezone: "Asia/Karachi", total_opens: 48, total_uses: 28,
+      tools, generated_at: new Date().toISOString(),
+    });
+  }
   if (path === "/api/tools") return json(response, toolCategories);
+  if (path.startsWith("/api/tools/") && path.endsWith("/usage") && request.method === "POST") {
+    return json(response, { ok: true, counted: true }, 201);
+  }
   if (path === "/api/tools/document-converter/jobs" && request.method === "POST") {
     return json(response, {
       job_id: "e2e-conversion",

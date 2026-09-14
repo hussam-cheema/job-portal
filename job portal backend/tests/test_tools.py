@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth import ensure_admin_user
 from app.database import Base, get_db
 from app.main import app
+from app.routers.analytics import _month_bounds
 from app.seed import ensure_default_tools
 
 
@@ -158,3 +159,59 @@ def test_tool_slugs_are_unique_and_categories_with_tools_are_protected(tools_cli
         headers=headers,
     )
     assert protected.status_code == 409
+
+
+def test_tool_analytics_counts_engaged_sessions_and_includes_new_tools(tools_client: TestClient):
+    assert tools_client.get("/api/admin/tools/analytics").status_code == 401
+    headers = _admin_headers(tools_client)
+    current_month = _month_bounds(None)[0]
+    category = next(
+        item for item in tools_client.get("/api/admin/tools", headers=headers).json()["categories"]
+        if item["slug"] == "image-editing-tools"
+    )
+    created = tools_client.post(
+        "/api/admin/tool-pages",
+        headers=headers,
+        json={
+            "category_id": category["id"], "title": "New Image Tool",
+            "slug": "new-image-tool", "tool_kind": "content", "is_published": True,
+        },
+    )
+    assert created.status_code == 200
+    initial = tools_client.get(f"/api/admin/tools/analytics?month={current_month}", headers=headers)
+    assert initial.status_code == 200
+    new_row = next(item for item in initial.json()["tools"] if item["id"] == created.json()["id"])
+    assert new_row["opens"] == new_row["uses"] == 0
+
+    endpoint = "/api/tools/new-image-tool/usage"
+    first_open = {"visitor_id": "browser-one-123", "event_type": "open"}
+    assert tools_client.post(endpoint, json=first_open).json()["counted"] is True
+    assert tools_client.post(endpoint, json=first_open).json()["counted"] is False
+    assert tools_client.post(endpoint, json={**first_open, "event_type": "interaction"}).json()["counted"] is True
+    assert tools_client.post(endpoint, json={**first_open, "event_type": "interaction"}).json()["counted"] is False
+    assert tools_client.post(endpoint, json={"visitor_id": "browser-two-456", "event_type": "open"}).json()["counted"] is True
+    assert tools_client.post(endpoint, json={"visitor_id": "browser-bot-789", "event_type": "open"}, headers={"User-Agent": "Googlebot"}).json()["counted"] is False
+
+    report = tools_client.get(f"/api/admin/tools/analytics?month={current_month}", headers=headers).json()
+    new_row = next(item for item in report["tools"] if item["id"] == created.json()["id"])
+    assert (new_row["opens"], new_row["uses"]) == (2, 1)
+    assert report["total_opens"] == 2
+    assert report["total_uses"] == 1
+    assert report["timezone"] == "Asia/Karachi"
+    assert len(report["tools"]) == 9
+    assert tools_client.get("/api/admin/tools/analytics?month=bad", headers=headers).status_code == 400
+
+    previous_month = "2025-01" if current_month != "2025-01" else "2024-01"
+    older = tools_client.get(f"/api/admin/tools/analytics?month={previous_month}", headers=headers).json()
+    assert older["total_opens"] == older["total_uses"] == 0
+
+    updated = tools_client.put(
+        f"/api/admin/tool-pages/{created.json()['id']}",
+        headers=headers,
+        json={"slug": "renamed-image-tool"},
+    )
+    assert updated.status_code == 200
+    renamed = tools_client.get(f"/api/admin/tools/analytics?month={current_month}", headers=headers).json()
+    renamed_row = next(item for item in renamed["tools"] if item["id"] == created.json()["id"])
+    assert renamed_row["slug"] == "renamed-image-tool"
+    assert (renamed_row["opens"], renamed_row["uses"]) == (2, 1)

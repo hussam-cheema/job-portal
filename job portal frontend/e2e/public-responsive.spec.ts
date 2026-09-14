@@ -19,6 +19,7 @@ const adminPaths = [
   "/admin/pages/new",
   "/admin/messages",
   "/admin/analytics",
+  "/admin/tools-analytics",
   "/admin/infrastructure",
   "/admin/seo",
   "/admin/newsletter",

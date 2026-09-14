@@ -26,6 +26,7 @@ import type {
   ToolAdminResponse,
   ToolCategory,
   ToolPage,
+  ToolAnalytics,
   ToolSEOFields,
   DocumentConversionJob,
   DocumentConversionJobCreated,
@@ -582,6 +583,23 @@ export async function trackVisit(
   }
 }
 
+export async function trackToolEvent(
+  visitorId: string,
+  slug: string,
+  eventType: "open" | "interaction",
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/tools/${encodeURIComponent(slug)}/usage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitor_id: visitorId, event_type: eventType }),
+      keepalive: true,
+    });
+  } catch {
+    // Usage analytics must never interrupt a calculation, editor, or download.
+  }
+}
+
 export async function fetchPage(slug: string): Promise<PageItem | null> {
   return getJson<PageItem | null>(`/api/pages/${slug}`, null);
 }
@@ -967,6 +985,14 @@ export function adminListTools(token: string): Promise<ToolAdminResponse> {
     headers: authHeaders(token),
     cache: "no-store",
   }, "Failed to load tools");
+}
+
+export function adminToolAnalytics(token: string, month: string): Promise<ToolAnalytics> {
+  return requestJson<ToolAnalytics>(
+    `/api/admin/tools/analytics?month=${encodeURIComponent(month)}`,
+    { headers: authHeaders(token), cache: "no-store" },
+    "Tool analytics could not be loaded",
+  );
 }
 
 export function adminSaveToolCategory(

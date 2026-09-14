@@ -586,6 +586,37 @@ class ToolAdminResponse(BaseModel):
     tools: list[ToolPageOut] = Field(default_factory=list)
 
 
+class ToolUsageIn(BaseModel):
+    visitor_id: str = Field(..., min_length=8, max_length=100)
+    event_type: Literal["open", "interaction"]
+
+
+class ToolUsageOut(BaseModel):
+    ok: bool = True
+    counted: bool
+
+
+class ToolAnalyticsRow(BaseModel):
+    id: str
+    category_id: str
+    category_title: str
+    slug: str
+    title: str
+    tool_kind: str
+    is_published: bool
+    opens: int
+    uses: int
+
+
+class ToolAnalyticsOut(BaseModel):
+    month: str
+    timezone: str = "Asia/Karachi"
+    total_opens: int
+    total_uses: int
+    tools: list[ToolAnalyticsRow] = Field(default_factory=list)
+    generated_at: datetime
+
+
 class DirectoryPageLinkOut(BaseModel):
     id: str
     slug: str

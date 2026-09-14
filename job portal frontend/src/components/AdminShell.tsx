@@ -15,6 +15,7 @@ const LINKS: Array<{ href: string; label: string; icon: UiIconName; group: strin
   { href: "/admin/taxonomy", label: "Tags / categories", icon: "tags", group: "Content" },
   { href: "/admin/cities", label: "Cities", icon: "tags", group: "Content" },
   { href: "/admin/tools", label: "Other Tools", icon: "tools", group: "Content" },
+  { href: "/admin/tools-analytics", label: "Tools Analytics", icon: "analytics", group: "Content" },
   { href: "/admin/pages", label: "Pages", icon: "page", group: "Content" },
   { href: "/admin/pages/new", label: "Create page", icon: "plus", group: "Content" },
   { href: "/admin/messages", label: "Messages", icon: "mail", group: "Audience" },
