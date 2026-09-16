@@ -389,6 +389,20 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
             "cities": ["Lahore"],
         },
         {
+            "title": "Punjab Province Vacancy",
+            "description": "<p>Open throughout Punjab.</p>",
+            "published_date": "2026-08-11T00:00:00",
+            "source": "Punjab Department",
+            "provinces": ["Punjab"],
+        },
+        {
+            "title": "Karachi City Vacancy",
+            "description": "<p>Open only in Karachi.</p>",
+            "published_date": "2026-08-11T00:00:00",
+            "source": "Sindh Department",
+            "cities": ["Karachi"],
+        },
+        {
             "title": "Nationwide Vacancy",
             "description": "<p>Open throughout Pakistan.</p>",
             "published_date": "2026-08-12T00:00:00",
@@ -412,14 +426,30 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
     quetta_titles = {
         item["title"] for item in client.get("/api/jobs?city=Quetta").json()["items"]
     }
+    hyderabad_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Hyderabad").json()["items"]
+    }
+    multan_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Multan").json()["items"]
+    }
+    sindh_titles = {
+        item["title"] for item in client.get("/api/jobs?province=Sindh").json()["items"]
+    }
     dawn_titles = {
         item["title"] for item in client.get("/api/jobs?newspaper=dawn").json()["items"]
     }
 
-    assert karachi_titles == set()
-    assert lahore_titles == {"Lahore City Vacancy"}
-    assert punjab_titles == {"Lahore City Vacancy"}
-    assert "Nationwide Vacancy" not in quetta_titles
+    assert karachi_titles == {
+        "Sindh Province Vacancy", "Karachi City Vacancy", "Nationwide Vacancy"
+    }
+    assert lahore_titles == {
+        "Lahore City Vacancy", "Punjab Province Vacancy", "Nationwide Vacancy"
+    }
+    assert punjab_titles == lahore_titles
+    assert quetta_titles == {"Nationwide Vacancy"}
+    assert hyderabad_titles == {"Sindh Province Vacancy", "Nationwide Vacancy"}
+    assert multan_titles == {"Punjab Province Vacancy", "Nationwide Vacancy"}
+    assert sindh_titles == karachi_titles
     pakistan_titles = {
         item["title"] for item in client.get("/api/jobs?city=Pakistan").json()["items"]
     }
@@ -428,15 +458,19 @@ def test_location_hierarchy_nationwide_and_newspaper_filters(client: TestClient)
 
     directory = client.get("/api/site-directory").json()["taxonomies"]
     karachi = next(item for item in directory["cities"] if item["slug"] == "karachi")
+    lahore = next(item for item in directory["cities"] if item["slug"] == "lahore")
+    hyderabad = next(item for item in directory["cities"] if item["slug"] == "hyderabad")
     sindh = next(item for item in directory["provinces"] if item["slug"] == "sindh")
     pakistan = next(item for item in directory["cities"] if item["slug"] == "pakistan")
-    assert karachi["count"] == 0
-    assert sindh["count"] >= 1
-    assert pakistan["count"] >= 1
+    assert karachi["count"] == len(karachi_titles)
+    assert lahore["count"] == len(lahore_titles)
+    assert hyderabad["count"] == len(hyderabad_titles)
+    assert sindh["count"] == len(sindh_titles)
+    assert pakistan["count"] == len(pakistan_titles)
     assert any(item["slug"] == "dawn" for item in directory["newspapers"])
 
 
-def test_job_location_is_corrected_and_unknown_location_uses_only_pakistan(client: TestClient):
+def test_job_location_is_corrected_and_unknown_location_is_pakistan_wide(client: TestClient):
     login = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin-password"}
     )
@@ -480,8 +514,57 @@ def test_job_location_is_corrected_and_unknown_location_uses_only_pakistan(clien
     pakistan_titles = {
         item["title"] for item in client.get("/api/jobs?city=Pakistan").json()["items"]
     }
-    assert "Location Not Disclosed Role" not in lahore_titles
+    assert "Location Not Disclosed Role" in lahore_titles
     assert "Location Not Disclosed Role" in pakistan_titles
+
+
+def test_new_city_inherits_province_wide_and_pakistan_wide_jobs(client: TestClient):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    city = client.post(
+        "/api/admin/taxonomy",
+        headers=headers,
+        json={
+            "kind": "city",
+            "name": "Testabad",
+            "slug": "testabad",
+            "province": "Punjab",
+        },
+    )
+    assert city.status_code == 200, city.text
+
+    for title, location in (
+        ("Punjab-wide Test Role", {"provinces": ["Punjab"]}),
+        ("Pakistan-wide Test Role", {"cities": ["Pakistan"]}),
+        ("Testabad-only Role", {"cities": ["Testabad"]}),
+    ):
+        response = client.post(
+            "/api/admin/jobs",
+            headers=headers,
+            json={
+                "title": title,
+                "description": f"<p>{title}</p>",
+                "published_date": "2026-08-12T00:00:00",
+                **location,
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    testabad_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Testabad").json()["items"]
+    }
+    lahore_titles = {
+        item["title"] for item in client.get("/api/jobs?city=Lahore").json()["items"]
+    }
+    assert testabad_titles == {
+        "Punjab-wide Test Role", "Pakistan-wide Test Role", "Testabad-only Role"
+    }
+    assert lahore_titles == {"Punjab-wide Test Role", "Pakistan-wide Test Role"}
+    directory = client.get("/api/site-directory").json()["taxonomies"]["cities"]
+    testabad = next(item for item in directory if item["slug"] == "testabad")
+    assert testabad["count"] == len(testabad_titles)
 
 
 def test_near_duplicate_organization_names_reuse_one_canonical_page(client: TestClient):

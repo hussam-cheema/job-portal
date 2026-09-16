@@ -90,6 +90,25 @@ def _list_field(value) -> list[str]:
     return as_list(value)
 
 
+def _location_list_contains(column, value: str):
+    """Match one complete JSON string without treating city names as LIKE patterns."""
+    escaped = (
+        value.casefold()
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return func.lower(cast(column, String)).like(f'%"{escaped}"%', escape="\\")
+
+
+def _job_has_no_specific_city():
+    # JSON arrays cast to text on both SQLite (tests) and PostgreSQL (production).
+    return or_(
+        Job.cities.is_(None),
+        func.lower(func.trim(cast(Job.cities, String))).in_(["[]", "null", ""]),
+    )
+
+
 def _source_type(job: Any) -> str:
     jt = (job.job_type or "").lower()
     if jt in {"government", "govt", "gov"}:
@@ -395,14 +414,29 @@ def list_jobs(
                 ),
                 requested_city,
             )
-            # A city landing page must contain only jobs explicitly assigned to
-            # that city. Province-wide jobs remain available on the province
-            # page and must not be duplicated across every city in that province.
-            filters.append(
-                func.lower(cast(Job.cities, String)).like(
-                    f'%"{canonical_city.casefold()}"%'
+            city_filters = [_location_list_contains(Job.cities, canonical_city)]
+            if canonical_city.casefold() != PAKISTAN_ALL_CITIES.casefold():
+                # A Pakistan-wide vacancy belongs on every city page. A
+                # province-only vacancy belongs to its province's cities, but
+                # city-specific vacancies must not spread across that province.
+                city_filters.append(
+                    _location_list_contains(Job.cities, PAKISTAN_ALL_CITIES)
                 )
-            )
+                city_province = PAKISTAN_PROVINCE_BY_CITY.get(canonical_city)
+                if not city_province:
+                    city_province = db.execute(
+                        select(TaxonomyTerm.province).where(
+                            TaxonomyTerm.kind == "city",
+                            TaxonomyTerm.is_active.is_(True),
+                            func.lower(TaxonomyTerm.name) == canonical_city.casefold(),
+                        )
+                    ).scalar_one_or_none()
+                if city_province:
+                    city_filters.append(
+                        _job_has_no_specific_city()
+                        & _location_list_contains(Job.provinces, city_province)
+                    )
+            filters.append(or_(*city_filters))
         if province:
             requested_province = province.strip()
             canonical_province = next(
@@ -414,9 +448,8 @@ def list_jobs(
                 requested_province,
             )
             province_filters = [
-                func.lower(cast(Job.provinces, String)).like(
-                    f'%"{canonical_province.casefold()}"%'
-                ),
+                _location_list_contains(Job.provinces, canonical_province),
+                _location_list_contains(Job.cities, PAKISTAN_ALL_CITIES),
             ]
             linked_cities = list(PAKISTAN_CITIES_BY_PROVINCE.get(canonical_province, []))
             linked_cities.extend(
@@ -430,9 +463,7 @@ def list_jobs(
                 if row.name not in linked_cities
             )
             province_filters.extend(
-                func.lower(cast(Job.cities, String)).like(
-                    f'%"{linked_city.casefold()}"%'
-                )
+                _location_list_contains(Job.cities, linked_city)
                 for linked_city in linked_cities
             )
             filters.append(or_(*province_filters))

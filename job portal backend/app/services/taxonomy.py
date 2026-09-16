@@ -251,7 +251,7 @@ def canonicalize_job_locations(
 
     Explicit cities own the province selection: a Karachi job cannot retain a
     stale Punjab value. Blank or legacy full-country selections collapse to the
-    dedicated Pakistan location instead of polluting every local city page.
+    dedicated Pakistan-wide marker, which is displayed on all location pages.
     """
     if city_rows is None:
         ensure_default_taxonomy(db)

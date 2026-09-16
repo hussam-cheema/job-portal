@@ -20,10 +20,8 @@ PAKISTAN_CITIES: list[str] = sorted(
     ]
 )
 
-# A deliberate, non-geographic catch-all for vacancies whose advertisement does
-# not identify a city or province. It has its own /locations/pakistan page and
-# must never make an unknown-location vacancy appear on every individual city
-# page.
+# A countrywide marker (also used when an advertisement names no location).
+# These jobs appear on the Pakistan page and on every city/province page.
 PAKISTAN_ALL_CITIES = "Pakistan"
 
 # Provinces plus the three territory-level regions used by nationwide
