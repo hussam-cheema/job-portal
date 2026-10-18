@@ -4541,7 +4541,7 @@ def test_qna_global_chunk_selection_prefers_higher_ranked_video(
     assert rows[0]["answer"] == "The official age limit is 30 years."
 
 
-def test_deepseek_qna_disables_thinking_and_retries_empty_json(
+def test_deepseek_qna_enables_thinking_and_retries_empty_json(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import httpx
@@ -4591,13 +4591,13 @@ def test_deepseek_qna_disables_thinking_and_retries_empty_json(
         "resolve_task_llm",
         lambda *_args, **_kwargs: {
             "provider": "deepseek",
-            "model": "deepseek-v4-pro",
-            "model_label": "DeepSeek-V4-Pro-0813",
+            "model": "deepseek-v4-flash",
+            "model_label": "DeepSeek-V4.1-Flash-1017",
             "api_key": "test-key",
             "base_url": "https://api.deepseek.com/v1",
             "temperature": 0.1,
             "max_tokens": 4096,
-            "thinking": False,
+            "thinking": True,
             "response_format": "json_object",
             "empty_response_retries": 1,
         },
@@ -4608,8 +4608,8 @@ def test_deepseek_qna_disables_thinking_and_retries_empty_json(
     )
 
     assert content.startswith('{"qna"')
-    assert payloads[0]["model"] == "deepseek-v4-pro"
-    assert payloads[0]["thinking"] == {"type": "disabled"}
+    assert payloads[0]["model"] == "deepseek-v4-flash"
+    assert payloads[0]["thinking"] == {"type": "enabled"}
     assert payloads[0]["response_format"] == {"type": "json_object"}
     assert "response_format" not in payloads[1]
 
@@ -4623,8 +4623,10 @@ def test_qna_production_config_matches_the_requested_pipeline_contract():
     youtube = config["youtube_qna"]
 
     assert task["provider"] == "deepseek"
-    assert task["model"] == "DeepSeek-V4-Pro-0813"
-    assert task["api_model"] == "deepseek-v4-pro"
+    assert task["model"] == "DeepSeek-V4.1-Flash-1017"
+    assert task["api_model"] == "deepseek-v4-flash"
+    assert task["thinking"] is True
+    assert task["response_format"] == "json_object"
     assert youtube["max_youtube_search_results"] == 5
     assert youtube["max_youtube_videos"] == 5
     assert youtube["min_title_similarity"] == 0.8
@@ -4642,8 +4644,10 @@ def test_requested_deepseek_release_uses_the_official_api_model_id(
     resolved = resolve_task_llm("qna_extraction")
 
     assert resolved["provider"] == "deepseek"
-    assert resolved["model_label"] == "DeepSeek-V4-Pro-0813"
-    assert resolved["model"] == "deepseek-v4-pro"
+    assert resolved["model_label"] == "DeepSeek-V4.1-Flash-1017"
+    assert resolved["model"] == "deepseek-v4-flash"
+    assert resolved["thinking"] is True
+    assert resolved["response_format"] == "json_object"
 
 
 def test_sitemap_data_includes_newly_created_job(client: TestClient):

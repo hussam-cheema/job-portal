@@ -53,13 +53,11 @@ llm:
   tasks:
     qna_extraction:
       provider: deepseek
-      model: "DeepSeek-V4-Pro-0813"
-      # DeepSeek's official OpenAI-compatible API exposes the Pro release under
-      # this stable request ID; keep the requested release label above for audit.
-      api_model: "deepseek-v4-pro"
-      # Structured extraction is faster and more reliable without spending the
-      # output budget on V4's default thinking trace.
-      thinking: false
+      model: "DeepSeek-V4.1-Flash-1017"
+      # Keep the dated release label for audit while using DeepSeek's stable
+      # Flash alias so new Flash releases are picked up without a code change.
+      api_model: "deepseek-v4-flash"
+      thinking: true
       response_format: json_object
       empty_response_retries: 1
       fallback: [openai, grok, ollama, glm, meta, claude]
@@ -72,8 +70,8 @@ llm:
       model: "gpt-4o-mini"
     deepseek:
       enabled: true
-      model: "DeepSeek-V4-Pro-0813"
-      api_model: "deepseek-v4-pro"
+      model: "DeepSeek-V4.1-Flash-1017"
+      api_model: "deepseek-v4-flash"
     meta:
       enabled: false
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -105,7 +103,7 @@ youtube_qna:
   extract_comments: true
   # When captions are missing, download a bounded public audio stream and use
   # the configured OpenAI transcription endpoint to create the script. Q&A
-  # extraction itself remains on DeepSeek-V4-Pro-0813.
+  # extraction itself remains on the configured DeepSeek Flash model.
   transcribe_audio_when_captions_missing: true
   audio_transcription_model: "gpt-4o-mini-transcribe"
   audio_transcription_timeout_seconds: 120

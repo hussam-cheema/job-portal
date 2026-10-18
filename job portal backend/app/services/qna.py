@@ -910,6 +910,16 @@ def fetch_qna_for_job_title(
             ),
         ),
     )
+    qna_model_label = str(
+        cfg(
+            "llm",
+            "tasks",
+            "qna_extraction",
+            "model",
+            default="DeepSeek Flash",
+        )
+        or "DeepSeek Flash"
+    )
     max_search_results = (
         max_videos
         if youtube_video_count is not None
@@ -1123,7 +1133,7 @@ def fetch_qna_for_job_title(
                 error = (
                     f"Matched {len(videos)} of {videos_compared} recent YouTube videos at or "
                     f"above {min_sim * 100:g}% cosine similarity and retrieved source "
-                    f"content from {len(usable_sources)}, but DeepSeek-V4-Pro-0813 found "
+                    f"content from {len(usable_sources)}, but {qna_model_label} found "
                     "no fully grounded question-and-answer pairs."
                     if videos
                     else (
