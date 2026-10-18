@@ -84,7 +84,10 @@ def test_default_tool_directory_is_seeded_without_n_plus_one_shape(tools_client:
     assert categories[1]["tools"][1]["tool_kind"] == "resume_builder"
     assert categories[1]["tools"][2]["tool_kind"] == "cover_letter"
     assert categories[1]["tools"][3]["tool_kind"] == "student_api"
-    assert [tool["slug"] for tool in categories[2]["tools"]] == ["add-watermark"]
+    assert [tool["slug"] for tool in categories[2]["tools"]] == [
+        "add-watermark",
+        "remove-watermark",
+    ]
     assert categories[2]["tools"][0]["tool_kind"] == "image_watermark"
     assert categories[3]["tools"][0]["slug"] == "docx-pdf-converter"
     assert categories[3]["tools"][0]["tool_kind"] == "document_converter"
@@ -198,7 +201,7 @@ def test_tool_analytics_counts_engaged_sessions_and_includes_new_tools(tools_cli
     assert report["total_opens"] == 2
     assert report["total_uses"] == 1
     assert report["timezone"] == "Asia/Karachi"
-    assert len(report["tools"]) == 9
+    assert len(report["tools"]) == 10
     assert tools_client.get("/api/admin/tools/analytics?month=bad", headers=headers).status_code == 400
 
     previous_month = "2025-01" if current_month != "2025-01" else "2024-01"

@@ -136,6 +136,25 @@ DEFAULT_TOOLS = (
         ),
     },
     {
+        "category_slug": "image-editing-tools",
+        "slug": "remove-watermark",
+        "title": "Remove Watermark from Image",
+        "tool_kind": "image_watermark_removal",
+        "content": (
+            "<h2>Remove the Pakistan Jobs Market watermark</h2>"
+            "<p>Choose one to three PNG, JPEG or WebP images. The tool detects the "
+            "centered red site watermark, repairs the covered pixels and downloads each "
+            "cleaned image as a full-resolution PNG.</p>"
+            "<p>Processing happens entirely in your browser; the images are not uploaded "
+            "to Pakistan Jobs Market. Each image must be under 10 MB and no larger than "
+            "12 megapixels. Animated images and SVG are not accepted. Automatic detection "
+            "is designed for the site watermark. Other watermark styles, very busy "
+            "backgrounds or heavily compressed copies can require manual retouching. "
+            "Content directly hidden beneath the watermark cannot always be reconstructed "
+            "exactly; the repaired band is rebuilt from surrounding pixels.</p>"
+        ),
+    },
+    {
         "category_slug": "tools-for-students",
         "slug": "resume-builder",
         "title": "Resume Builder",

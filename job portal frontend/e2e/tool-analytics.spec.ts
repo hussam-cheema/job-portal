@@ -7,10 +7,11 @@ test("admin sees monthly metrics for every tool, including zero-use tools", asyn
   });
   await page.goto("/admin/tools-analytics");
   await expect(page.getByRole("heading", { name: "Tools Analytics", exact: true })).toBeVisible();
-  await expect(page.getByTestId("tool-analytics-row")).toHaveCount(8);
+  await expect(page.getByTestId("tool-analytics-row")).toHaveCount(9);
   await expect(page.getByText("Pakistan Tax Calculator", { exact: true })).toBeVisible();
   await expect(page.getByText("DOCX and PDF Converter", { exact: true })).toBeVisible();
   await expect(page.getByText("Add Watermark to Image", { exact: true })).toBeVisible();
+  await expect(page.getByText("Remove Watermark from Image", { exact: true })).toBeVisible();
   await expect(page.getByText(/New tools appear here automatically/)).toBeVisible();
   const month = page.getByLabel("Month · Pakistan time");
   await month.fill("2026-08");
@@ -44,7 +45,7 @@ test("tool analytics remains readable on phone and tablet widths", async ({ page
     await page.setViewportSize({ width, height: 800 });
     await page.goto("/admin/tools-analytics");
     await expect(page.getByRole("heading", { name: "Tools Analytics", exact: true })).toBeVisible();
-    await expect(page.getByTestId("tool-analytics-row")).toHaveCount(8);
+    await expect(page.getByTestId("tool-analytics-row")).toHaveCount(9);
     const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(documentWidth).toBeLessThanOrEqual(width);
   }
