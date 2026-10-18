@@ -3589,7 +3589,8 @@ def test_qna_does_not_scan_beyond_the_five_recent_candidates_when_sources_are_em
     )
 
     assert len(searches) == 1
-    assert searches[0]["max_results"] == 5
+    assert searches[0]["max_results"] == 25
+    assert searches[0]["order"] == "relevance"
     assert searches[0]["raise_on_failure"] is True
     assert "audio transcript could be retrieved" in result["error"]
     assert result["videos_compared"] == 1
@@ -3633,7 +3634,10 @@ def test_qna_no_match_keeps_existing_rows_and_returns_visible_error(
     )
 
     assert result["count"] == 0
-    assert "none met the 80% raw cosine similarity threshold" in result["error"]
+    assert (
+        "none met the title-keyword and 45% semantic similarity threshold"
+        in result["error"]
+    )
     assert [row.id for row in result["items"]] == ["existing-qna"]
     assert db.query(JobQnA).filter(JobQnA.job_id == "job-no-match").count() == 1
     db.close()
@@ -3692,9 +3696,10 @@ def test_qna_collects_all_selected_videos_before_combined_extraction(
     assert result["count"] == 1
     assert result["videos_scanned"] == 2
     assert result["error"] is None
-    assert searched["max_results"] == 5
+    assert searched["max_results"] == 25
+    assert searched["order"] == "relevance"
     assert searched["raise_on_failure"] is True
-    assert searched["query"] == "FIA Inspector jobs in government"
+    assert searched["query"] == "FIA inspector"
     assert ranking["raw_cosine_only"] is True
     assert ranking["preserve_order"] is True
     assert extracted_titles == [
@@ -3769,16 +3774,219 @@ def test_qna_runtime_options_override_default_threshold_videos_and_comments(
     )
 
     assert result["count"] == 1
-    assert captured["query"] == (
-        "NADRA Jobs 2026 – Deputy Assistant Director (Technical) | Apply Online"
-    )
-    assert captured["search"]["max_results"] == 12
+    assert captured["query"] == "NADRA deputy assistant director technical 2026"
+    assert captured["search"]["max_results"] == 25
+    assert captured["search"]["order"] == "relevance"
     assert captured["collection"]["max_comments"] == 75
     assert len(captured["selected_videos"]) == 1
     db.close()
 
 
-def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
+def test_ppsc_compact_search_queries_preserve_organization_advertisement_and_year():
+    from app.services.qna import _qna_search_queries, _title_anchors
+
+    title = (
+        "PPSC Advertisement No. 11/2026 – "
+        "299 Vacancies Across 7 Punjab Departments"
+    )
+    anchors = _title_anchors(title, "PPSC")
+
+    assert anchors["organization"] == "PPSC"
+    assert anchors["advertisement"] == {"number": "11", "year": "2026"}
+    assert anchors["year"] == "2026"
+    assert anchors["province"] == "Punjab"
+    assert anchors["quantity"] == "299"
+    assert _qna_search_queries(title, "PPSC") == [
+        "PPSC Advertisement No. 11/2026",
+        "PPSC 299 vacancies 2026 Punjab",
+        "PPSC jobs 2026 Punjab",
+    ]
+
+
+def test_ppsc_keyword_matcher_accepts_matching_ad_and_rejects_wrong_number():
+    from app.services.qna import _candidate_title_match, _title_anchors
+
+    title = (
+        "PPSC Advertisement No. 11/2026 – "
+        "299 Vacancies Across 7 Punjab Departments"
+    )
+    anchors = _title_anchors(title, "PPSC")
+    matching = _candidate_title_match(
+        anchors,
+        "PPSC Jobs 2026 🚨 299 Vacancies Announced | "
+        "Advertisement No 11 | 2026 Eligibility & Last Date",
+    )
+    wrong_advertisement = _candidate_title_match(
+        anchors,
+        "PPSC Jobs 2026 | Advertisement No. 10 | 2000+ New Vacancies",
+    )
+
+    assert matching["accepted"] is True
+    assert matching["organization_match"] is True
+    assert matching["advertisement_match"] is True
+    assert matching["quantity_match"] is True
+    assert matching["keyword_coverage"] >= 0.8
+    assert wrong_advertisement["accepted"] is False
+    assert wrong_advertisement["rejection_reason"] == "advertisement_number_conflict"
+
+
+def test_ppsc_qna_pipeline_uses_compact_query_and_keyword_anchors(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    job_title = (
+        "PPSC Advertisement No. 11/2026 – "
+        "299 Vacancies Across 7 Punjab Departments"
+    )
+    matching = {
+        "video_id": "ppsc-11",
+        "title": (
+            "PPSC Jobs 2026 | 299 Vacancies Announced | "
+            "Advertisement No 11 | Eligibility & Last Date"
+        ),
+        "url": "https://youtu.be/ppsc-11",
+    }
+    wrong_advertisement = {
+        "video_id": "ppsc-10",
+        "title": "PPSC Jobs 2026 | Advertisement No. 10 | 2000+ Vacancies",
+        "url": "https://youtu.be/ppsc-10",
+    }
+    queries: list[tuple[str, dict[str, object]]] = []
+    selected: list[dict[str, object]] = []
+
+    def search(query, **kwargs):
+        queries.append((query, kwargs))
+        return [matching, wrong_advertisement]
+
+    def rank(_title, rows, **_kwargs):
+        scores = {"ppsc-11": 0.55, "ppsc-10": 0.95}
+        return [
+            {**row, "title_similarity": scores[str(row["video_id"])]}
+            for row in rows
+        ]
+
+    def collect(rows, **_kwargs):
+        selected.extend(rows)
+        return [
+            {
+                **matching,
+                "video_index": 1,
+                "title_similarity": 0.55,
+                "transcript": "Applications close on 26 October 2026.",
+                "comments": [],
+            }
+        ]
+
+    monkeypatch.setattr(qna_service, "search_youtube", search)
+    monkeypatch.setattr(qna_service, "rank_by_similarity", rank)
+    monkeypatch.setattr(qna_service, "_collect_video_sources", collect)
+    monkeypatch.setattr(
+        qna_service,
+        "extract_qna_from_sources",
+        lambda **_kwargs: [
+            {
+                "question": "What is the last date to apply?",
+                "answer": "Applications close on 26 October 2026.",
+                "source": "transcript",
+                "video_index": 1,
+            }
+        ],
+    )
+
+    try:
+        result = qna_service.fetch_qna_for_job_title(
+            db,
+            job_id="ppsc-11-2026",
+            job_title=job_title,
+            job_source="PPSC",
+            min_similarity_percent=20,
+            youtube_video_count=10,
+        )
+
+        assert queries[0][0] == "PPSC Advertisement No. 11/2026"
+        assert queries[0][1]["max_results"] == 25
+        assert queries[0][1]["order"] == "relevance"
+        assert [row["video_id"] for row in selected] == ["ppsc-11"]
+        assert result["count"] == 1
+        assert result["videos_compared"] == 2
+        assert result["matched_videos"][0]["similarity_percent"] == 55.0
+    finally:
+        db.close()
+
+
+def test_qna_search_falls_back_when_primary_query_has_no_results(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import qna as qna_service
+
+    replies = {
+        "PPSC Advertisement No. 11/2026": [],
+        "PPSC 299 vacancies 2026 Punjab": [
+            {
+                "video_id": "fallback-ppsc",
+                "title": "PPSC Jobs 2026 | 299 New Vacancies",
+                "url": "https://youtu.be/fallback-ppsc",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        qna_service,
+        "search_youtube",
+        lambda query, **_kwargs: replies[query],
+    )
+
+    anchors = qna_service._title_anchors(
+        "PPSC Advertisement No. 11/2026 – 299 Vacancies Across Punjab",
+        "PPSC",
+    )
+    candidates, attempted = qna_service._search_qna_candidates(
+        list(replies),
+        anchors,
+        max_results=25,
+        timeout_seconds=5,
+    )
+
+    assert [row["video_id"] for row in candidates] == ["fallback-ppsc"]
+    assert attempted == [
+        "PPSC Advertisement No. 11/2026",
+        "PPSC 299 vacancies 2026 Punjab",
+    ]
+
+
+def test_ytdlp_fallback_uses_supported_youtube_search_syntax(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from types import SimpleNamespace
+
+    from app.services import youtube as youtube_service
+
+    captured: dict[str, object] = {}
+
+    def run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(youtube_service.subprocess, "run", run)
+
+    videos = youtube_service._search_ytdlp(
+        "PPSC jobs 2026",
+        10,
+        5,
+        "relevance",
+    )
+
+    assert videos == []
+    assert captured["command"][1] == "ytsearch10:PPSC jobs 2026"
+    assert "ytsearchdate" not in " ".join(captured["command"])
+
+
+def test_nadra_compact_search_uses_keyword_anchors_and_ranks_specific_match_first(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import math
@@ -3811,8 +4019,9 @@ def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
     }
 
     def search(query, **kwargs):
-        assert query == title
-        assert kwargs["max_results"] == 5
+        assert query == "NADRA deputy assistant director technical 2026"
+        assert kwargs["max_results"] == 25
+        assert kwargs["order"] == "relevance"
         return videos
 
     def vectors(texts, *, query_first=False):
@@ -3827,11 +4036,11 @@ def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
 
     def collect(rows, **_kwargs):
         selected.extend(rows)
-        technical = rows[-1]
+        technical = next(row for row in rows if row["video_id"] == "technical")
         return [
             {
                 **technical,
-                "video_index": len(rows),
+                    "video_index": 1,
                 "transcript": "Candidates must submit applications through the NADRA portal.",
                 "comments": [],
             }
@@ -3848,7 +4057,7 @@ def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
                 "question": "How must candidates apply?",
                 "answer": "Candidates must submit applications through the NADRA portal.",
                 "source": "transcript",
-                "video_index": 4,
+                    "video_index": 1,
             }
         ],
     )
@@ -3862,16 +4071,15 @@ def test_nadra_full_title_search_uses_raw_cosine_and_keeps_newest_match_order(
     )
 
     assert [row["video_id"] for row in selected] == [
-        "newest",
-        "general",
-        "legal",
         "technical",
+        "newest",
+        "legal",
     ]
     assert result["videos_compared"] == 5
-    assert result["videos_scanned"] == 4
+    assert result["videos_scanned"] == 3
     assert result["count"] == 1
     assert result["items"][0].youtube_url == "https://youtu.be/technical"
-    assert result["matched_videos"][-1]["similarity_percent"] == 93.0
+    assert result["matched_videos"][0]["similarity_percent"] == 93.0
     db.close()
 
 
@@ -4627,9 +4835,9 @@ def test_qna_production_config_matches_the_requested_pipeline_contract():
     assert task["api_model"] == "deepseek-v4-flash"
     assert task["thinking"] is True
     assert task["response_format"] == "json_object"
-    assert youtube["max_youtube_search_results"] == 5
+    assert youtube["max_youtube_search_results"] == 25
     assert youtube["max_youtube_videos"] == 5
-    assert youtube["min_title_similarity"] == 0.8
+    assert youtube["min_title_similarity"] == 0.45
     assert "timeout_seconds" not in youtube
     assert youtube["max_comments"] == 50
     assert youtube["max_qna"] == 20

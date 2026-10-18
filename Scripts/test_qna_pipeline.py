@@ -21,16 +21,17 @@ def check() -> str:
     args = parser.parse_args()
 
     add_backend_to_path()
-    from app.services.embeddings import rank_by_similarity
     from app.services.qna import (
-        _canonical_job_title,
         _collect_video_source,
         _diverse_qna,
         _extract_qna_batch,
         _question_tokens,
+        _qna_search_queries,
+        _rank_qna_title_candidates,
+        _search_qna_candidates,
         _source_chunks,
+        _title_anchors,
     )
-    from app.services.youtube import search_youtube
 
     title = args.title.strip()
     max_qna = int(config("youtube_qna", "max_qna", default=20) or 20)
@@ -52,36 +53,32 @@ def check() -> str:
     started = time.monotonic()
 
     # 1. Search and independently verify configured similarity filtering.
-    query = _canonical_job_title(title)
-    raw_videos = search_youtube(
-        query,
+    anchors = _title_anchors(title)
+    raw_videos, search_queries = _search_qna_candidates(
+        _qna_search_queries(title),
+        anchors,
         max_results=max_search,
-        timeout_seconds=15,
-        raise_on_failure=True,
+        timeout_seconds=15.0,
     )
-    ranked = rank_by_similarity(
+    ranked, diagnostics = _rank_qna_title_candidates(
         title,
         raw_videos,
-        key="title",
-        score_key="title_similarity",
-        preserve_order=True,
+        anchors,
+        min_similarity,
     )
-    videos = [
-        video
-        for video in ranked
-        if float(video.get("title_similarity") or 0) >= min_similarity
-    ][:max_videos]
+    videos = ranked[:max_videos]
     if not videos:
         top = ", ".join(
             f"{row.get('title')}={float(row.get('title_similarity') or 0):.4f}"
-            for row in ranked[:5]
+            for row in diagnostics[:5]
         )
         raise CheckFailed(
             f"Check 1 failed: no video met {min_similarity:.2f}. Top scores: {top}"
         )
     print(
         f"[PASS 1/4] similarity search: {len(raw_videos)} searched; "
-        f"{len(videos)} selected at >= {min_similarity:.2f}"
+        f"{len(videos)} selected at >= {min_similarity:.2f}; "
+        f"queries={search_queries}"
     )
     for index, video in enumerate(videos, start=1):
         print(

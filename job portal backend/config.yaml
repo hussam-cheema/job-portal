@@ -92,9 +92,9 @@ youtube_qna:
   # example maximum age, age relaxation, and post-specific age limits) while
   # still removing semantic duplicates.
   max_qna_per_topic: 4
-  # Search the five newest YouTube candidates for the job title.
-  max_youtube_search_results: 5
-  # Retain at most five recent titles that pass the semantic/title-keyword score.
+  # Search a wider relevance-ranked pool before applying title anchors.
+  max_youtube_search_results: 25
+  # Retain at most five titles that pass the keyword and semantic anchors.
   max_youtube_videos: 5
   max_comments: 50
   # Keep every available reply beneath each selected top-level comment so
@@ -112,9 +112,10 @@ youtube_qna:
   source_timeout_seconds: 180
   source_collection_timeout_seconds: 180
   source_workers: 5
-  # Require at least 80% raw embedding cosine similarity by default. The admin
-  # input can override this with any whole percentage from 1 to 100.
-  min_title_similarity: 0.8
+  # Semantic similarity remains a minimum, but the title matcher also requires
+  # organization and supporting keyword anchors. The admin input can override
+  # this with any whole percentage from 1 to 100.
+  min_title_similarity: 0.45
   # YOUTUBE_API_KEY in .env
 
 # Semantic embeddings used to compare job titles with YouTube titles.

@@ -15,6 +15,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.config import cfg
+from app.constants import PAKISTAN_PROVINCES
 from app.logging_config import get_logger
 from app.models import JobQnA
 from app.services.embeddings import rank_by_similarity
@@ -199,6 +200,401 @@ def _safe_json(text: str) -> dict[str, Any]:
 
 _DEFAULT_SOURCE_CHUNK_CHARS = 24000
 _SOURCE_CHUNK_OVERLAP_CHARS = 1200
+
+_ORGANIZATION_ALIASES = {
+    "PPSC": ("PPSC", "Punjab Public Service Commission"),
+    "FPSC": ("FPSC", "Federal Public Service Commission"),
+    "FIA": ("FIA", "Federal Investigation Agency"),
+    "NADRA": ("NADRA", "National Database and Registration Authority"),
+    "NTS": ("NTS", "National Testing Service"),
+    "KPSC": ("KPSC", "Khyber Pakhtunkhwa Public Service Commission"),
+}
+_ORGANIZATION_ACRONYM_NOISE = {
+    "ADD",
+    "ADV",
+    "BPS",
+    "NEW",
+    "NO",
+    "PDF",
+    "THE",
+}
+_TITLE_QUERY_STOPWORDS = {
+    "across",
+    "ad",
+    "add",
+    "advertisement",
+    "adv",
+    "apply",
+    "career",
+    "careers",
+    "department",
+    "departments",
+    "government",
+    "in",
+    "job",
+    "jobs",
+    "latest",
+    "new",
+    "no",
+    "number",
+    "online",
+    "pakistan",
+    "private",
+    "recruitment",
+    "the",
+    "vacancies",
+    "vacancy",
+}
+_ADVERTISEMENT_PATTERN = re.compile(
+    r"\b(?:advertisement|adv|add|ad)\.?\s*"
+    r"(?:no\.?|number)?\s*(\d{1,4})"
+    r"(?:\s*[/-]\s*(20\d{2}|\d{2}))?",
+    re.IGNORECASE,
+)
+_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
+_QUANTITY_PATTERN = re.compile(
+    r"\b(\d{2,5})\s*(?:vacancies|vacancy|posts?|positions?|jobs?)\b",
+    re.IGNORECASE,
+)
+
+
+def _title_tokens(value: str) -> list[str]:
+    return [
+        token
+        for token in re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).split()
+        if token
+    ]
+
+
+def _phrase_present(tokens: list[str], phrase: str) -> bool:
+    phrase_tokens = _title_tokens(phrase)
+    if not phrase_tokens or len(phrase_tokens) > len(tokens):
+        return False
+    width = len(phrase_tokens)
+    return any(tokens[index : index + width] == phrase_tokens for index in range(len(tokens) - width + 1))
+
+
+def _organization_anchor(job_title: str, job_source: str | None = None) -> str | None:
+    values = [str(job_title or ""), str(job_source or "")]
+    for value in values:
+        tokens = _title_tokens(value)
+        for acronym, aliases in _ORGANIZATION_ALIASES.items():
+            if any(_phrase_present(tokens, alias) for alias in aliases):
+                return acronym
+        for acronym in re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", value):
+            if acronym not in _ORGANIZATION_ACRONYM_NOISE:
+                return acronym
+    return None
+
+
+def _advertisement_anchor(value: str) -> dict[str, str] | None:
+    match = _ADVERTISEMENT_PATTERN.search(str(value or ""))
+    if not match:
+        return None
+    number = match.group(1)
+    year = match.group(2)
+    if year and len(year) == 2:
+        year = f"20{year}"
+    return {"number": number, "year": year or ""}
+
+
+def _year_anchor(value: str) -> str | None:
+    match = _YEAR_PATTERN.search(str(value or ""))
+    return match.group(1) if match else None
+
+
+def _province_anchor(value: str) -> str | None:
+    tokens = _title_tokens(value)
+    return next(
+        (province for province in PAKISTAN_PROVINCES if _phrase_present(tokens, province)),
+        None,
+    )
+
+
+def _quantity_anchor(value: str) -> str | None:
+    match = _QUANTITY_PATTERN.search(str(value or ""))
+    return match.group(1) if match else None
+
+
+def _title_anchors(job_title: str, job_source: str | None = None) -> dict[str, Any]:
+    advertisement = _advertisement_anchor(job_title)
+    organization = _organization_anchor(job_title, job_source)
+    province = _province_anchor(job_title)
+    normalized_tokens = _title_tokens(job_title)
+    province_tokens = set(_title_tokens(province or ""))
+    important_tokens = [
+        token
+        for token in normalized_tokens
+        if token not in _TITLE_QUERY_STOPWORDS
+        and not token.isdigit()
+        and token.casefold() != str(organization or "").casefold()
+        and token not in province_tokens
+    ]
+    return {
+        "organization": organization,
+        "advertisement": advertisement,
+        "year": _year_anchor(job_title) or (advertisement or {}).get("year") or None,
+        "province": province,
+        "quantity": _quantity_anchor(job_title),
+        "important_tokens": list(dict.fromkeys(important_tokens))[:8],
+    }
+
+
+def _qna_search_queries(job_title: str, job_source: str | None = None) -> list[str]:
+    anchors = _title_anchors(job_title, job_source)
+    organization = anchors["organization"]
+    advertisement = anchors["advertisement"] or {}
+    year = anchors["year"]
+    province = anchors["province"]
+    quantity = anchors["quantity"]
+    queries: list[str] = []
+    if organization and advertisement.get("number"):
+        ad_label = advertisement["number"]
+        if advertisement.get("year"):
+            ad_label += f"/{advertisement['year']}"
+        queries.append(f"{organization} Advertisement No. {ad_label}")
+    if organization and quantity:
+        queries.append(
+            " ".join(
+                part
+                for part in (organization, quantity, "vacancies", year, province)
+                if part
+            )
+        )
+    if organization and anchors["important_tokens"]:
+        queries.append(
+            " ".join(
+                part
+                for part in (
+                    organization,
+                    *anchors["important_tokens"][:5],
+                    year,
+                    province,
+                )
+                if part
+            )
+        )
+    if organization:
+        queries.append(
+            " ".join(
+                part for part in (organization, "jobs", year, province) if part
+            )
+        )
+    if not queries:
+        query_tokens = [
+            *anchors["important_tokens"],
+            *([year] if year else []),
+            *([province] if province else []),
+        ]
+        if query_tokens:
+            queries.append(" ".join(dict.fromkeys(query_tokens)))
+        else:
+            queries.append(_canonical_job_title(job_title))
+    return list(dict.fromkeys(query for query in queries if query.strip()))
+
+
+def _candidate_title_match(anchors: dict[str, Any], candidate_title: str) -> dict[str, Any]:
+    candidate_tokens = _title_tokens(candidate_title)
+    organization = anchors.get("organization")
+    organization_match = bool(
+        organization
+        and any(
+            _phrase_present(candidate_tokens, alias)
+            for alias in _ORGANIZATION_ALIASES.get(
+                str(organization),
+                (str(organization),),
+            )
+        )
+    )
+
+    candidate_advertisement = _advertisement_anchor(candidate_title)
+    job_advertisement = anchors.get("advertisement") or {}
+    advertisement_match = bool(
+        job_advertisement
+        and candidate_advertisement
+        and job_advertisement.get("number") == candidate_advertisement.get("number")
+        and (
+            not job_advertisement.get("year")
+            or not candidate_advertisement.get("year")
+            or job_advertisement.get("year") == candidate_advertisement.get("year")
+        )
+    )
+    advertisement_conflict = bool(
+        job_advertisement
+        and candidate_advertisement
+        and not advertisement_match
+    )
+
+    candidate_years = set(_YEAR_PATTERN.findall(str(candidate_title or "")))
+    year = str(anchors.get("year") or "")
+    year_match = bool(year and year in candidate_years)
+    year_conflict = bool(year and candidate_years and not year_match)
+    province = anchors.get("province")
+    province_match = bool(province and _phrase_present(candidate_tokens, str(province)))
+    quantity = anchors.get("quantity")
+    quantity_match = bool(quantity and re.search(rf"\b{re.escape(quantity)}\b", str(candidate_title or "")))
+    important_tokens = set(anchors.get("important_tokens") or [])
+    token_overlap = len(important_tokens.intersection(candidate_tokens))
+
+    support_count = sum(
+        (
+            advertisement_match,
+            year_match,
+            province_match,
+            quantity_match,
+            token_overlap > 0,
+        )
+    )
+    accepted = True
+    rejection_reason = None
+    if organization and not organization_match:
+        accepted = False
+        rejection_reason = "organization_mismatch"
+    elif advertisement_conflict:
+        accepted = False
+        rejection_reason = "advertisement_number_conflict"
+    elif year_conflict and not advertisement_match:
+        accepted = False
+        rejection_reason = "year_conflict"
+    elif organization and support_count == 0:
+        accepted = False
+        rejection_reason = "no_supporting_keyword"
+    elif not organization and important_tokens and token_overlap < min(2, len(important_tokens)):
+        accepted = False
+        rejection_reason = "insufficient_keyword_overlap"
+
+    weights = {
+        "organization": 0.30 if organization else 0.0,
+        "advertisement": 0.30 if job_advertisement else 0.0,
+        "year": 0.20 if year else 0.0,
+        "province": 0.10 if province else 0.0,
+        "quantity": 0.10 if quantity else 0.0,
+        "tokens": 0.20 if important_tokens else 0.0,
+    }
+    earned = (
+        (weights["organization"] if organization_match else 0.0)
+        + (weights["advertisement"] if advertisement_match else 0.0)
+        + (weights["year"] if year_match else 0.0)
+        + (weights["province"] if province_match else 0.0)
+        + (weights["quantity"] if quantity_match else 0.0)
+        + (
+            weights["tokens"]
+            * min(1.0, token_overlap / len(important_tokens))
+            if important_tokens
+            else 0.0
+        )
+    )
+    available = sum(weights.values())
+    keyword_coverage = earned / available if available else 0.0
+    return {
+        "accepted": accepted,
+        "rejection_reason": rejection_reason,
+        "organization_match": organization_match,
+        "advertisement_match": advertisement_match,
+        "advertisement_conflict": advertisement_conflict,
+        "year_match": year_match,
+        "year_conflict": year_conflict,
+        "province_match": province_match,
+        "quantity_match": quantity_match,
+        "token_overlap": token_overlap,
+        "keyword_coverage": round(keyword_coverage, 4),
+    }
+
+
+def _search_qna_candidates(
+    queries: list[str],
+    anchors: dict[str, Any],
+    *,
+    max_results: int,
+    timeout_seconds: float,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    candidates: list[dict[str, Any]] = []
+    attempted: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        attempted.append(query)
+        rows = search_youtube(
+            query,
+            max_results=max_results,
+            order="relevance",
+            timeout_seconds=timeout_seconds,
+            raise_on_failure=True,
+        )
+        plausible = 0
+        for row in rows:
+            video_id = str(row.get("video_id") or "")
+            if video_id and video_id in seen:
+                continue
+            if video_id:
+                seen.add(video_id)
+            candidates.append(row)
+            if _candidate_title_match(anchors, str(row.get("title") or ""))["accepted"]:
+                plausible += 1
+        if plausible:
+            break
+    return candidates[:50], attempted
+
+
+def _rank_qna_title_candidates(
+    job_title: str,
+    candidates: list[dict[str, Any]],
+    anchors: dict[str, Any],
+    min_similarity: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ranked = rank_by_similarity(
+        job_title,
+        candidates,
+        key="title",
+        score_key="title_similarity",
+        raw_cosine_only=True,
+        preserve_order=True,
+    )
+    matched: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, Any]] = []
+    for candidate in ranked:
+        raw_similarity = float(candidate.get("title_similarity") or 0.0)
+        details = _candidate_title_match(anchors, str(candidate.get("title") or ""))
+        accepted = details["accepted"] and raw_similarity >= min_similarity
+        reason = details["rejection_reason"]
+        if details["accepted"] and raw_similarity < min_similarity:
+            reason = "below_similarity_threshold"
+        diagnostics.append(
+            {
+                "video_id": candidate.get("video_id"),
+                "title": str(candidate.get("title") or "")[:160],
+                "raw_similarity": round(raw_similarity, 4),
+                "accepted": accepted,
+                "reason": reason,
+                "keyword_coverage": details["keyword_coverage"],
+            }
+        )
+        if not accepted:
+            continue
+        enriched = dict(candidate)
+        enriched["match_score"] = round(
+            (0.60 * raw_similarity) + (0.40 * float(details["keyword_coverage"])),
+            4,
+        )
+        enriched["match_reasons"] = {
+            key: details[key]
+            for key in (
+                "organization_match",
+                "advertisement_match",
+                "year_match",
+                "province_match",
+                "quantity_match",
+                "token_overlap",
+            )
+        }
+        matched.append(enriched)
+    matched.sort(
+        key=lambda row: (
+            float(row.get("match_score") or 0.0),
+            float(row.get("title_similarity") or 0.0),
+        ),
+        reverse=True,
+    )
+    return matched, diagnostics
 
 
 def _canonical_job_title(value: str) -> str:
@@ -887,6 +1283,7 @@ def fetch_qna_for_job_title(
     *,
     job_id: str,
     job_title: str,
+    job_source: str | None = None,
     replace_existing: bool = True,
     min_similarity_percent: int | None = None,
     youtube_video_count: int | None = None,
@@ -920,13 +1317,12 @@ def fetch_qna_for_job_title(
         )
         or "DeepSeek Flash"
     )
-    max_search_results = (
-        max_videos
-        if youtube_video_count is not None
-        else min(
+    max_search_results = min(
+        50,
+        max(
             max_videos,
-            int(conf.get("max_youtube_search_results") or max_videos),
-        )
+            int(conf.get("max_youtube_search_results") or 25),
+        ),
     )
     max_comments = min(
         500,
@@ -977,49 +1373,33 @@ def fetch_qna_for_job_title(
     topic_counts: dict[str, int] = {}
     selected_intents: set[str] = set()
     try:
-        # Search the exact saved title. Stripping words such as "Jobs" and
-        # "Apply Online" changed YouTube's newest-first result set and could
-        # exclude an exact role video before embeddings were ever generated.
-        # The runtime input controls how many newest candidates are compared.
-        raw_videos = search_youtube(
-            job_title.strip(),
+        anchors = _title_anchors(job_title, job_source)
+        search_queries = _qna_search_queries(job_title, job_source)
+        raw_videos, attempted_queries = _search_qna_candidates(
+            search_queries,
+            anchors,
             max_results=max_search_results,
             timeout_seconds=15.0,
-            raise_on_failure=True,
         )
         videos_compared = len(raw_videos)
-        # Generate one embedding for the full job title and one for every
-        # returned video title in a single provider batch. The configured input
-        # percentage applies to raw cosine similarity—no lexical calibration or
-        # hidden score transformation is used by this gate.
-        ranked = rank_by_similarity(
+        ranked_videos, title_diagnostics = _rank_qna_title_candidates(
             job_title,
             raw_videos,
-            key="title",
-            score_key="title_similarity",
-            raw_cosine_only=True,
-            preserve_order=True,
+            anchors,
+            min_sim,
         )
-        videos = [
-            video
-            for video in ranked
-            if float(video.get("title_similarity") or 0) >= min_sim
-        ][:max_videos]
+        videos = ranked_videos[:max_videos]
         search_succeeded = True
         logger.info(
-            "qna_title_filter job_id=%s threshold=%.2f candidates=%s matched=%s scores=%s",
+            "qna_title_filter job_id=%s threshold=%.2f candidates=%s matched=%s "
+            "anchors=%s queries=%s scores=%s",
             job_id,
             min_sim,
             len(raw_videos),
             len(videos),
-            [
-                {
-                    "video_id": video.get("video_id"),
-                    "score": video.get("title_similarity"),
-                    "title": str(video.get("title") or "")[:120],
-                }
-                for video in ranked
-            ],
+            anchors,
+            attempted_queries,
+            title_diagnostics,
         )
 
         videos_scanned = len(videos)
@@ -1138,7 +1518,8 @@ def fetch_qna_for_job_title(
                     if videos
                     else (
                         f"Compared {videos_compared} recent YouTube videos; none met the "
-                        f"{min_sim * 100:g}% raw cosine similarity threshold."
+                        f"title-keyword and {min_sim * 100:g}% semantic similarity "
+                        "threshold."
                     )
                 )
             return {

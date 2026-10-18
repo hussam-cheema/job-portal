@@ -739,6 +739,7 @@ def admin_fetch_qna(
             db,
             job_id=job.id,
             job_title=job.title,
+            job_source=job.source,
             min_similarity_percent=(
                 options.min_similarity_percent if options is not None else None
             ),

@@ -44,6 +44,7 @@ def search_youtube(
     query: str,
     max_results: int | None = None,
     *,
+    order: str = "relevance",
     timeout_seconds: float = 10,
     raise_on_failure: bool = False,
 ) -> list[dict[str, Any]]:
@@ -51,19 +52,25 @@ def search_youtube(
     if not conf.get("enabled", True):
         return []
     max_results = max_results or int(conf.get("max_youtube_search_results") or 50)
+    search_order = order if order in {"date", "relevance"} else "relevance"
 
     api_error: Exception | None = None
     if _has_api_key():
         try:
-            videos = _search_api(query, max_results, timeout_seconds)
-            logger.info("youtube_search_api query=%s count=%s", query, len(videos))
+            videos = _search_api(query, max_results, timeout_seconds, search_order)
+            logger.info(
+                "youtube_search_api query=%s order=%s count=%s",
+                query,
+                search_order,
+                len(videos),
+            )
             return videos
         except Exception as exc:
             api_error = exc
             logger.exception("youtube_api_search_failed — fallback yt-dlp")
 
     try:
-        return _search_ytdlp(query, max_results, timeout_seconds)
+        return _search_ytdlp(query, max_results, timeout_seconds, search_order)
     except FileNotFoundError as exc:
         logger.warning("yt_dlp_not_installed")
         fallback_error: Exception = exc
@@ -76,7 +83,12 @@ def search_youtube(
     return []
 
 
-def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
+def _search_api(
+    query: str,
+    max_results: int,
+    timeout_seconds: float,
+    order: str = "relevance",
+) -> list[dict[str, Any]]:
     # The YouTube Search API accepts at most 50 results in one request.
     max_results = max(1, min(int(max_results), 50))
     response = httpx.get(
@@ -86,7 +98,7 @@ def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[di
             "part": "snippet",
             "type": "video",
             "maxResults": max_results,
-            "order": "date",
+            "order": order,
             "relevanceLanguage": "en",
             "key": env("YOUTUBE_API_KEY"),
         },
@@ -113,10 +125,15 @@ def _search_api(query: str, max_results: int, timeout_seconds: float) -> list[di
     return videos
 
 
-def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[dict[str, Any]]:
+def _search_ytdlp(
+    query: str,
+    max_results: int,
+    timeout_seconds: float,
+    order: str = "relevance",
+) -> list[dict[str, Any]]:
     cmd = [
         "yt-dlp",
-        f"ytsearchdate{max_results}:{query}",
+        f"ytsearch{max_results}:{query}",
         "--dump-json",
         "--flat-playlist",
         "--no-download",
@@ -164,6 +181,11 @@ def _search_ytdlp(query: str, max_results: int, timeout_seconds: float) -> list[
                     or ""
                 ),
             }
+        )
+    if order == "date":
+        videos.sort(
+            key=lambda video: str(video.get("published_at") or ""),
+            reverse=True,
         )
     return videos[:max_results]
 
