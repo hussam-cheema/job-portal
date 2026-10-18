@@ -4749,7 +4749,8 @@ def test_qna_global_chunk_selection_prefers_higher_ranked_video(
     assert rows[0]["answer"] == "The official age limit is 30 years."
 
 
-def test_deepseek_qna_enables_thinking_and_retries_empty_json(
+def test_deepseek_qna_escalates_budget_then_disables_thinking_after_empty_json(
+    caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
     import httpx
@@ -4758,7 +4759,38 @@ def test_deepseek_qna_enables_thinking_and_retries_empty_json(
 
     payloads: list[dict] = []
     responses = [
-        {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]},
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "reasoning_content": "reasoning consumed the first budget",
+                    },
+                    "finish_reason": "length",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 8192,
+                "completion_tokens_details": {"reasoning_tokens": 8192},
+            },
+        },
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "reasoning_content": "reasoning consumed the larger budget",
+                    },
+                    "finish_reason": "length",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 16384,
+                "completion_tokens_details": {"reasoning_tokens": 16384},
+            },
+        },
         {
             "choices": [
                 {
@@ -4804,10 +4836,10 @@ def test_deepseek_qna_enables_thinking_and_retries_empty_json(
             "api_key": "test-key",
             "base_url": "https://api.deepseek.com/v1",
             "temperature": 0.1,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "thinking": True,
             "response_format": "json_object",
-            "empty_response_retries": 1,
+            "empty_response_retries": 2,
         },
     )
 
@@ -4816,10 +4848,20 @@ def test_deepseek_qna_enables_thinking_and_retries_empty_json(
     )
 
     assert content.startswith('{"qna"')
+    assert len(payloads) == 3
     assert payloads[0]["model"] == "deepseek-v4-flash"
     assert payloads[0]["thinking"] == {"type": "enabled"}
     assert payloads[0]["response_format"] == {"type": "json_object"}
-    assert "response_format" not in payloads[1]
+    assert payloads[0]["max_tokens"] == 8192
+    assert payloads[1]["thinking"] == {"type": "enabled"}
+    assert payloads[1]["response_format"] == {"type": "json_object"}
+    assert payloads[1]["max_tokens"] == 16384
+    assert payloads[2]["thinking"] == {"type": "disabled"}
+    assert payloads[2]["response_format"] == {"type": "json_object"}
+    assert payloads[2]["max_tokens"] == 8192
+    assert "finish_reason=length" in caplog.text
+    assert "reasoning_chars=35" in caplog.text
+    assert "completion_tokens=8192" in caplog.text
 
 
 def test_qna_production_config_matches_the_requested_pipeline_contract():
@@ -4841,6 +4883,8 @@ def test_qna_production_config_matches_the_requested_pipeline_contract():
     assert "timeout_seconds" not in youtube
     assert youtube["max_comments"] == 50
     assert youtube["max_qna"] == 20
+    assert config["llm"]["max_tokens"] == 16384
+    assert task["empty_response_retries"] == 2
 
 
 def test_requested_deepseek_release_uses_the_official_api_model_id(

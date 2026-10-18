@@ -1436,8 +1436,8 @@ def fetch_qna_for_job_title(
         ]
         if videos and not usable_sources:
             error = (
-                f"Matched {len(videos)} of {videos_compared} recent YouTube videos at or "
-                f"above {min_sim * 100:g}% cosine similarity, but no captions, comments, "
+                f"Matched {len(videos)} of {videos_compared} scanned YouTube candidates at "
+                f"or above {min_sim * 100:g}% cosine similarity, but no captions, comments, "
                 "or audio transcript could be retrieved from them."
             )
         elif usable_sources:
@@ -1511,13 +1511,13 @@ def fetch_qna_for_job_title(
             ]
             if not error:
                 error = (
-                    f"Matched {len(videos)} of {videos_compared} recent YouTube videos at or "
-                    f"above {min_sim * 100:g}% cosine similarity and retrieved source "
+                    f"Matched {len(videos)} of {videos_compared} scanned YouTube candidates "
+                    f"at or above {min_sim * 100:g}% cosine similarity and retrieved source "
                     f"content from {len(usable_sources)}, but {qna_model_label} found "
                     "no fully grounded question-and-answer pairs."
                     if videos
                     else (
-                        f"Compared {videos_compared} recent YouTube videos; none met the "
+                        f"Scanned {videos_compared} YouTube candidates; none met the "
                         f"title-keyword and {min_sim * 100:g}% semantic similarity "
                         "threshold."
                     )

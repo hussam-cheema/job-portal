@@ -353,7 +353,7 @@ test("existing R2 images load inside the job editor through the media proxy", as
 test("YouTube Q&A replacement shows the newly stored grounded pairs", async ({ page }) => {
   await page.goto("/admin/jobs/closed-role");
   await page.getByLabel("Cosine similarity percentage").fill("73");
-  await page.getByLabel("YouTube videos to compare").fill("12");
+  await page.getByLabel("Maximum matched YouTube videos").fill("12");
   await page.getByLabel("Comments per video").fill("75");
   const qnaRequestPromise = page.waitForRequest((request) =>
     request.url().endsWith("/api/admin/jobs/closed-role/fetch-qna")
@@ -375,7 +375,7 @@ test("YouTube Q&A replacement shows the newly stored grounded pairs", async ({ p
     page.getByText("A: The written test begins with an MCQ stage.", { exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText("Compared 5 newest YouTube videos; 1 met the raw cosine threshold.")
+    page.getByText("Scanned 5 YouTube candidates; 1 met the keyword and cosine threshold.")
   ).toBeVisible();
   await expect(
     page.getByText(/91\.4% cosine; transcript available; 12 comment threads/)

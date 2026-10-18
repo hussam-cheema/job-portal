@@ -137,51 +137,96 @@ def chat_completion(
             "Authorization": f"Bearer {resolved['api_key'] or 'not-needed'}",
             "Content-Type": "application/json",
         }
-        payload: dict[str, Any] = {
-            "model": resolved["model"],
-            "messages": messages,
-            "temperature": temp,
-            "max_tokens": resolved["max_tokens"],
-        }
-        if provider == "deepseek":
-            payload["thinking"] = {
-                "type": "enabled" if resolved.get("thinking") else "disabled"
-            }
-        if resolved.get("response_format") == "json_object":
-            payload["response_format"] = {"type": "json_object"}
-
+        base_max_tokens = max(1, int(resolved["max_tokens"]))
+        thinking_configured = bool(resolved.get("thinking"))
+        json_mode = resolved.get("response_format") == "json_object"
         retries = int(resolved.get("empty_response_retries") or 0)
+        empty_attempts: list[dict[str, Any]] = []
         with httpx.Client(timeout=max(1.0, timeout_seconds)) as client:
             for attempt in range(retries + 1):
+                final_attempt = retries > 0 and attempt == retries
+                attempt_thinking = thinking_configured and not final_attempt
+                attempt_max_tokens = base_max_tokens
+                if attempt == 1 and retries > 1:
+                    attempt_max_tokens = min(base_max_tokens * 2, 32768)
+                attempt_messages = list(messages)
+                if attempt:
+                    attempt_messages.append(
+                        {
+                            "role": "user",
+                            "content": "Return the requested non-empty JSON object now.",
+                        }
+                    )
+                payload: dict[str, Any] = {
+                    "model": resolved["model"],
+                    "messages": attempt_messages,
+                    "temperature": temp,
+                    "max_tokens": attempt_max_tokens,
+                }
+                if provider == "deepseek":
+                    payload["thinking"] = {
+                        "type": "enabled" if attempt_thinking else "disabled"
+                    }
+                if json_mode:
+                    payload["response_format"] = {"type": "json_object"}
+
                 resp = client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
                 choice = (data.get("choices") or [{}])[0]
                 message = choice.get("message") or {}
                 content = message.get("content")
-                if content is not None and str(content).strip():
-                    return content if isinstance(content, str) else str(content)
-                logger.warning(
-                    "empty_chat_completion provider=%s model=%s finish_reason=%s attempt=%s",
+                reasoning_content = message.get("reasoning_content") or ""
+                usage = data.get("usage") or {}
+                completion_details = usage.get("completion_tokens_details") or {}
+                logger.info(
+                    "chat_completion_response provider=%s model=%s attempt=%s "
+                    "finish_reason=%s content_chars=%s reasoning_chars=%s "
+                    "prompt_tokens=%s completion_tokens=%s reasoning_tokens=%s "
+                    "max_tokens=%s thinking=%s json_mode=%s",
                     provider,
                     resolved["model"],
-                    choice.get("finish_reason"),
                     attempt + 1,
+                    choice.get("finish_reason"),
+                    len(str(content or "").strip()),
+                    len(str(reasoning_content)),
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                    completion_details.get("reasoning_tokens"),
+                    attempt_max_tokens,
+                    str(attempt_thinking).lower(),
+                    str(json_mode).lower(),
                 )
-                if attempt < retries:
-                    # DeepSeek documents that JSON mode can occasionally return
-                    # empty content. Retry once without the response-format flag;
-                    # the extraction prompt still explicitly requires JSON.
-                    payload.pop("response_format", None)
-                    payload["messages"] = [
-                        *messages,
-                        {
-                            "role": "user",
-                            "content": "Return the requested non-empty JSON object now.",
-                        },
-                    ]
+                if content is not None and str(content).strip():
+                    return content if isinstance(content, str) else str(content)
+                empty_attempts.append(
+                    {
+                        "finish_reason": choice.get("finish_reason"),
+                        "reasoning_chars": len(str(reasoning_content)),
+                        "completion_tokens": usage.get("completion_tokens"),
+                        "reasoning_tokens": completion_details.get("reasoning_tokens"),
+                        "max_tokens": attempt_max_tokens,
+                        "thinking": attempt_thinking,
+                    }
+                )
+                logger.warning(
+                    "empty_chat_completion provider=%s model=%s attempt=%s "
+                    "finish_reason=%s reasoning_chars=%s completion_tokens=%s "
+                    "reasoning_tokens=%s max_tokens=%s thinking=%s json_mode=%s",
+                    provider,
+                    resolved["model"],
+                    attempt + 1,
+                    choice.get("finish_reason"),
+                    len(str(reasoning_content)),
+                    usage.get("completion_tokens"),
+                    completion_details.get("reasoning_tokens"),
+                    attempt_max_tokens,
+                    str(attempt_thinking).lower(),
+                    str(json_mode).lower(),
+                )
         raise RuntimeError(
-            f"{provider} returned an empty completion after {retries + 1} attempt(s)"
+            f"{provider} returned an empty completion after {retries + 1} attempt(s); "
+            f"attempts={empty_attempts}"
         )
     except Exception:
         logger.exception("chat_completion failed provider=%s", provider)

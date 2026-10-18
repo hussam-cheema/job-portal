@@ -196,7 +196,7 @@ export default function JobFormPage() {
   const [qnaError, setQnaError] = useState<string | null>(null);
   const [qnaMessage, setQnaMessage] = useState<string | null>(null);
   const [qnaPipeline, setQnaPipeline] = useState<{
-    videosCompared: number;
+    candidatesScanned: number;
     matchedVideos: QnAMatchedVideo[];
   } | null>(null);
   const [qnaLoading, setQnaLoading] = useState(false);
@@ -511,7 +511,7 @@ export default function JobFormPage() {
         ),
         max_youtube_videos: optionalWholeNumber(
           qnaVideoCount,
-          "YouTube video count",
+          "Maximum matched video count",
           1,
           50
         ),
@@ -524,7 +524,7 @@ export default function JobFormPage() {
       });
       setQna(result.items || []);
       setQnaPipeline({
-        videosCompared: result.videos_compared || 0,
+        candidatesScanned: result.videos_compared || 0,
         matchedVideos: result.matched_videos || [],
       });
       if (result.error) {
@@ -977,25 +977,31 @@ export default function JobFormPage() {
                   step={1}
                   inputMode="numeric"
                   aria-label="Cosine similarity percentage"
-                  placeholder="Set matching percentage (default: 80%)"
+                  placeholder="Set matching percentage (default: 45%)"
                   value={qnaSimilarityPercent}
                   onChange={(event) => setQnaSimilarityPercent(event.target.value)}
                 />
               </label>
               <label className="grid gap-2 sm:grid-cols-[minmax(190px,0.75fr)_minmax(0,1.4fr)] sm:items-start sm:gap-6">
-                <span className="field-label mb-0 sm:pt-3">YouTube videos</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={50}
-                  step={1}
-                  inputMode="numeric"
-                  aria-label="YouTube videos to compare"
-                  placeholder="Set number of videos (default: 5)"
-                  value={qnaVideoCount}
-                  onChange={(event) => setQnaVideoCount(event.target.value)}
-                />
+                <span className="field-label mb-0 sm:pt-3">Maximum matched videos</span>
+                <span className="block">
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step={1}
+                    inputMode="numeric"
+                    aria-label="Maximum matched YouTube videos"
+                    placeholder="Default: 5 matched videos"
+                    value={qnaVideoCount}
+                    onChange={(event) => setQnaVideoCount(event.target.value)}
+                  />
+                  <span className="mt-2 block text-xs text-[var(--muted)]">
+                    The module scans up to 25 relevance-ranked candidates, then processes
+                    at most this many videos that pass the matching criteria.
+                  </span>
+                </span>
               </label>
               <label className="grid gap-2 sm:grid-cols-[minmax(190px,0.75fr)_minmax(0,1.4fr)] sm:items-start sm:gap-6">
                 <span className="field-label mb-0 sm:pt-3">Comments per video</span>
@@ -1032,12 +1038,12 @@ export default function JobFormPage() {
           </div>
           {qnaError && <p className="field-error mt-2">{qnaError}</p>}
           {qnaMessage && <p className="mt-2 text-sm font-medium text-[var(--success)]">{qnaMessage}</p>}
-          {qnaPipeline && qnaPipeline.videosCompared > 0 && (
+          {qnaPipeline && qnaPipeline.candidatesScanned > 0 && (
             <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--navy-850)] p-4 text-sm">
               <p className="font-medium text-[var(--navy-100)]">
-                Compared {qnaPipeline.videosCompared} newest YouTube video
-                {qnaPipeline.videosCompared === 1 ? "" : "s"}; {qnaPipeline.matchedVideos.length}{" "}
-                met the raw cosine threshold.
+                Scanned {qnaPipeline.candidatesScanned} YouTube candidate
+                {qnaPipeline.candidatesScanned === 1 ? "" : "s"};{" "}
+                {qnaPipeline.matchedVideos.length} met the keyword and cosine threshold.
               </p>
               {qnaPipeline.matchedVideos.length > 0 && (
                 <ul className="mt-3 space-y-2">
