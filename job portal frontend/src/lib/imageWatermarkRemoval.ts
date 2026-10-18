@@ -266,3 +266,136 @@ export function removeSiteWatermark(
   if (result.detected) context.putImageData(imageData, 0, 0);
   return result;
 }
+
+export function removeMaskedWatermarkPixels(
+  imageData: ImageData,
+  selectedMask: Uint8Array,
+): WatermarkRemovalResult {
+  const { width, height, data } = imageData;
+  if (selectedMask.length !== width * height) {
+    throw new Error("The selected repair area does not match this image.");
+  }
+  const source = new Uint8ClampedArray(data);
+  const mask = new Uint8Array(selectedMask);
+  const expand = Math.max(2, Math.round(Math.min(width, height) * 0.0025));
+  const expanded = new Uint8Array(mask.length);
+  let repairedPixels = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!mask[y * width + x]) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      for (let dy = -expand; dy <= expand; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -expand; dx <= expand; dx += 1) {
+          if (dx * dx + dy * dy > expand * expand) continue;
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          const index = ny * width + nx;
+          if (!expanded[index]) {
+            expanded[index] = 1;
+            repairedPixels += 1;
+          }
+        }
+      }
+    }
+  }
+  if (!repairedPixels) {
+    return { detected: false, repairedPixels: 0, bounds: null };
+  }
+
+  const maxDistance = Math.max(32, Math.round(Math.max(width, height) * 0.08));
+  const directions = [
+    [-1, 0], [1, 0], [0, -1], [0, 1],
+    [-1, -1], [1, -1], [-1, 1], [1, 1],
+  ] as const;
+  const sample = { red: 0, green: 0, blue: 0, alpha: 0 };
+
+  for (let y = Math.max(0, minY - expand); y <= Math.min(height - 1, maxY + expand); y += 1) {
+    for (let x = Math.max(0, minX - expand); x <= Math.min(width - 1, maxX + expand); x += 1) {
+      const index = y * width + x;
+      if (!expanded[index]) continue;
+      const reds: number[] = [];
+      const greens: number[] = [];
+      const blues: number[] = [];
+      const alphas: number[] = [];
+      for (const [dx, dy] of directions) {
+        for (let distance = 1; distance <= maxDistance; distance += 1) {
+          const nx = x + dx * distance;
+          const ny = y + dy * distance;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) break;
+          const neighbour = ny * width + nx;
+          if (expanded[neighbour]) continue;
+          const offset = neighbour * 4;
+          reds.push(source[offset]);
+          greens.push(source[offset + 1]);
+          blues.push(source[offset + 2]);
+          alphas.push(source[offset + 3]);
+          break;
+        }
+      }
+      if (!reds.length) continue;
+      reds.sort((a, b) => a - b);
+      greens.sort((a, b) => a - b);
+      blues.sort((a, b) => a - b);
+      alphas.sort((a, b) => a - b);
+      const middle = Math.floor(reds.length / 2);
+      sample.red = reds[middle];
+      sample.green = greens[middle];
+      sample.blue = blues[middle];
+      sample.alpha = alphas[middle];
+      const offset = index * 4;
+      data[offset] = sample.red;
+      data[offset + 1] = sample.green;
+      data[offset + 2] = sample.blue;
+      data[offset + 3] = sample.alpha;
+    }
+  }
+
+  // One small smoothing pass removes the hard edge of the brush selection.
+  const smoothed = new Uint8ClampedArray(data);
+  for (let y = Math.max(1, minY - expand); y <= Math.min(height - 2, maxY + expand); y += 1) {
+    for (let x = Math.max(1, minX - expand); x <= Math.min(width - 2, maxX + expand); x += 1) {
+      const index = y * width + x;
+      if (!expanded[index]) continue;
+      let redTotal = 0;
+      let greenTotal = 0;
+      let blueTotal = 0;
+      let samples = 0;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const offset = ((y + dy) * width + (x + dx)) * 4;
+          const weight = dx === 0 && dy === 0 ? 2 : 1;
+          redTotal += data[offset] * weight;
+          greenTotal += data[offset + 1] * weight;
+          blueTotal += data[offset + 2] * weight;
+          samples += weight;
+        }
+      }
+      const offset = index * 4;
+      smoothed[offset] = Math.round(redTotal / samples);
+      smoothed[offset + 1] = Math.round(greenTotal / samples);
+      smoothed[offset + 2] = Math.round(blueTotal / samples);
+    }
+  }
+  data.set(smoothed);
+
+  return {
+    detected: true,
+    repairedPixels,
+    bounds: {
+      x: minX,
+      y: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
+    },
+  };
+}

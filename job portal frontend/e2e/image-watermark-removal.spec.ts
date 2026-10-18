@@ -10,7 +10,7 @@ async function watermarkedImage(
   page: import("@playwright/test").Page,
   format: "png" | "jpeg" | "webp",
   background: string,
-  watermark = true,
+  watermark: "site" | "generic" | "none" = "site",
 ): Promise<GeneratedImage> {
   return page.evaluate(({ format, background, watermark }) => {
     const canvas = document.createElement("canvas");
@@ -30,7 +30,7 @@ async function watermarkedImage(
         100 + index * 28,
       );
     }
-    if (watermark) {
+    if (watermark === "site") {
       const font = "bold 48px Arial";
       context.font = font;
       const text = "Pakistan Jobs Market";
@@ -46,6 +46,17 @@ async function watermarkedImage(
       context.strokeText(text, x, y);
       context.fillStyle = "rgba(255, 0, 0, 0.318)";
       context.fillText(text, x, y);
+    } else if (watermark === "generic") {
+      context.save();
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate(-0.12);
+      context.textAlign = "center";
+      context.font = "bold 54px Arial";
+      context.fillStyle = "rgba(255, 255, 255, 0.82)";
+      context.fillText("SAMPLE", 0, -10);
+      context.font = "bold 28px Arial";
+      context.fillText("WATERMARK", 0, 30);
+      context.restore();
     }
     const output = canvas.toDataURL(`image/${format}`, 0.92);
     const source = context.getImageData(0, 0, canvas.width, canvas.height);
@@ -142,7 +153,7 @@ test("removes the site watermark from three images and downloads a cleaned PNG",
 test("rejects more than three files and leaves an unwatermarked image unchanged", async ({ page }) => {
   await page.goto("/tools/remove-watermark");
   const input = page.locator("#watermark-removal-files");
-  const source = await watermarkedImage(page, "png", "#ffffff", false);
+  const source = await watermarkedImage(page, "png", "#ffffff", "none");
   const file = {
     name: "plain.png",
     mimeType: "image/png",
@@ -153,11 +164,37 @@ test("rejects more than three files and leaves an unwatermarked image unchanged"
   await input.setInputFiles([file, file, file, file]);
   await expect(alert).toContainText("no more than 3");
   await input.setInputFiles(file);
-  await expect(alert).toContainText("No Pakistan Jobs Market watermark was detected");
+  await expect(alert).toContainText("No site watermark was detected automatically");
   await expect(page.getByText("No site watermark detected")).toBeVisible();
   expect(await countPreviewRedPixels(
     page.getByTestId("image-watermark-removal").locator("article img"),
   )).toBe(source.redPixels);
+});
+
+test("manual brush removes a non-site watermark", async ({ page }) => {
+  await page.goto("/tools/remove-watermark");
+  const generic = await watermarkedImage(page, "png", "#164b6f", "generic");
+  await page.locator("#watermark-removal-files").setInputFiles({
+    name: "generic-watermark.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(generic.base64, "base64"),
+  });
+  await expect(page.getByText("No site watermark detected")).toBeVisible();
+  await page.getByRole("button", { name: "Mark watermark manually" }).click();
+
+  const canvas = page.getByLabel("Paint over the watermark to remove");
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  for (const yRatio of [0.44, 0.48, 0.52, 0.56, 0.6]) {
+    await page.mouse.move(bounds!.x + bounds!.width * 0.2, bounds!.y + bounds!.height * yRatio);
+    await page.mouse.down();
+    await page.mouse.move(bounds!.x + bounds!.width * 0.8, bounds!.y + bounds!.height * yRatio, {
+      steps: 12,
+    });
+    await page.mouse.up();
+  }
+  await page.getByRole("button", { name: "Remove marked watermark" }).click();
+  await expect(page.getByText("Manually removed", { exact: false })).toBeVisible();
 });
 
 test("watermark removal stays within mobile and tablet viewports", async ({ page }) => {
@@ -166,5 +203,30 @@ test("watermark removal stays within mobile and tablet viewports", async ({ page
     await page.goto("/tools/remove-watermark");
     await expect(page.getByRole("button", { name: "Browse images" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  }
+});
+
+test("browse button and drop-zone heading keep visible contrast in both themes", async ({ page }) => {
+  await page.goto("/tools/remove-watermark");
+  const button = page.getByRole("button", { name: "Browse images" });
+  const heading = page.getByText("Choose 1 to 3 images", { exact: true });
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);
+    const styles = await button.evaluate((element) => {
+      const buttonStyle = getComputedStyle(element);
+      const dropzone = element.closest("[data-testid=watermark-removal-dropzone]")!;
+      const headingElement = dropzone.querySelector("strong")!;
+      return {
+        buttonBackground: buttonStyle.backgroundColor,
+        buttonColor: buttonStyle.color,
+        headingColor: getComputedStyle(headingElement).color,
+        dropzoneBackground: getComputedStyle(dropzone).backgroundColor,
+      };
+    });
+    expect(styles.buttonBackground).not.toBe("rgba(0, 0, 0, 0)");
+    expect(styles.buttonColor).toBe("rgb(255, 255, 255)");
+    expect(styles.headingColor).not.toBe(styles.dropzoneBackground);
+    await expect(button).toBeVisible();
+    await expect(heading).toBeVisible();
   }
 });
