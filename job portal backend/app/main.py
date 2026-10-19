@@ -46,6 +46,7 @@ from app.routers import (
 from app.seed import (
     ensure_default_pages,
     ensure_default_tools,
+    remove_retired_watermark_removal_tool,
     seed_if_empty,
     sync_core_page_content_v2,
     sync_core_page_content_v3,
@@ -164,6 +165,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         init_db()
         logger.info("database ready")
         from app.database import SessionLocal
+
+        try:
+            with SessionLocal.begin() as retirement_db:
+                retired_watermark_tools = remove_retired_watermark_removal_tool(
+                    retirement_db
+                )
+            if retired_watermark_tools:
+                logger.info("retired watermark removal tool deleted")
+        except Exception:
+            logger.exception("retired watermark removal cleanup failed")
 
         db = SessionLocal()
         try:

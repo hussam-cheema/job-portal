@@ -16,10 +16,19 @@ from app.constants import (
     PAKISTAN_NEWSPAPERS,
     PAKISTAN_PROVINCES,
 )
-from app.models import Job, JobQnA, Page, SiteSetting, TaxonomyTerm, ToolCategory, ToolPage
+from app.models import (
+    Job,
+    JobQnA,
+    Page,
+    SiteSetting,
+    TaxonomyTerm,
+    ToolCategory,
+    ToolPage,
+    ToolUsageEvent,
+)
 from app.page_types import page_slug_namespace
 from app.services.directory_pages import ensure_directory_pages
-from app.services.seo import upsert_job_seo, upsert_page_seo, upsert_tool_seo
+from app.services.seo import delete_seo, upsert_job_seo, upsert_page_seo, upsert_tool_seo
 from app.services.taxonomy import ensure_default_taxonomy
 from app.utils import as_list, slugify
 
@@ -133,27 +142,6 @@ DEFAULT_TOOLS = (
             "images and SVG are not accepted. Exporting a new PNG removes the source "
             "file's metadata, including camera location details. Check the result before "
             "sharing or publishing it.</p>"
-        ),
-    },
-    {
-        "category_slug": "image-editing-tools",
-        "slug": "remove-watermark",
-        "title": "Remove Watermark from Image",
-        "tool_kind": "image_watermark_removal",
-        "content": (
-            "<h2>Remove the Pakistan Jobs Market watermark</h2>"
-            "<p>Choose one to three PNG, JPEG or WebP images. The centered red site "
-            "watermark is detected automatically. For any other watermark, paint over "
-            "it with the repair brush and apply content-aware fill. Each cleaned image "
-            "can be downloaded as a full-resolution PNG.</p>"
-            "<p>Processing happens entirely in your browser; the images are not uploaded "
-            "to Pakistan Jobs Market. Each image must be under 10 MB and no larger than "
-            "12 megapixels. Animated images and SVG are not accepted. Automatic detection "
-            "is optimized for the site watermark; the manual brush supports other "
-            "watermark styles. Very busy backgrounds or heavily compressed copies may "
-            "still require careful coverage and retouching. "
-            "Content directly hidden beneath the watermark cannot always be reconstructed "
-            "exactly; the repaired band is rebuilt from surrounding pixels.</p>"
         ),
     },
     {
@@ -710,6 +698,33 @@ def ensure_default_tools(db) -> list[object]:
         )
     db.flush()
     return created
+
+
+def remove_retired_watermark_removal_tool(db) -> int:
+    """Remove the retired watermark-removal tool from an existing deployment once."""
+    marker_key = "retired_watermark_removal_tool_v1"
+    if db.get(SiteSetting, marker_key) is not None:
+        return 0
+
+    tool = db.execute(
+        select(ToolPage).where(ToolPage.slug == "remove-watermark").limit(1)
+    ).scalar_one_or_none()
+    if tool:
+        db.query(ToolUsageEvent).filter(
+            ToolUsageEvent.tool_id == tool.id
+        ).delete(synchronize_session=False)
+        delete_seo(db, "tool", tool.id)
+        db.delete(tool)
+
+    db.add(
+        SiteSetting(
+            key=marker_key,
+            value="removed" if tool else "not_found",
+            updated_at=datetime.utcnow(),
+        )
+    )
+    db.flush()
+    return 1 if tool else 0
 
 
 def ensure_default_pages(db) -> list[Page]:

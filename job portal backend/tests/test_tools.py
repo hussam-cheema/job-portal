@@ -19,8 +19,9 @@ from sqlalchemy.pool import StaticPool
 from app.auth import ensure_admin_user
 from app.database import Base, get_db
 from app.main import app
+from app.models import SiteSetting, ToolCategory, ToolPage
 from app.routers.analytics import _month_bounds
-from app.seed import ensure_default_tools
+from app.seed import ensure_default_tools, remove_retired_watermark_removal_tool
 
 
 @pytest.fixture()
@@ -61,6 +62,42 @@ def _admin_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def test_retired_watermark_removal_tool_is_deleted_once():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = Session()
+    category = ToolCategory(
+        id="retired-image-category",
+        slug="image-editing-tools",
+        title="Image Editing Tools",
+        content="",
+        icon_key="image",
+        color_index=3,
+        sort_order=0,
+        is_published=True,
+    )
+    tool = ToolPage(
+        id="retired-watermark-removal",
+        category_id=category.id,
+        slug="remove-watermark",
+        title="Remove Watermark from Image",
+        content="",
+        tool_kind="image_watermark_removal",
+        sort_order=0,
+        is_published=True,
+    )
+    db.add_all([category, tool])
+    db.commit()
+
+    assert remove_retired_watermark_removal_tool(db) == 1
+    db.commit()
+    assert db.get(ToolPage, tool.id) is None
+    assert db.get(SiteSetting, "retired_watermark_removal_tool_v1").value == "removed"
+    assert remove_retired_watermark_removal_tool(db) == 0
+    db.close()
+
+
 def test_default_tool_directory_is_seeded_without_n_plus_one_shape(tools_client: TestClient):
     response = tools_client.get("/api/tools")
     assert response.status_code == 200
@@ -84,10 +121,7 @@ def test_default_tool_directory_is_seeded_without_n_plus_one_shape(tools_client:
     assert categories[1]["tools"][1]["tool_kind"] == "resume_builder"
     assert categories[1]["tools"][2]["tool_kind"] == "cover_letter"
     assert categories[1]["tools"][3]["tool_kind"] == "student_api"
-    assert [tool["slug"] for tool in categories[2]["tools"]] == [
-        "add-watermark",
-        "remove-watermark",
-    ]
+    assert [tool["slug"] for tool in categories[2]["tools"]] == ["add-watermark"]
     assert categories[2]["tools"][0]["tool_kind"] == "image_watermark"
     assert categories[3]["tools"][0]["slug"] == "docx-pdf-converter"
     assert categories[3]["tools"][0]["tool_kind"] == "document_converter"
@@ -201,7 +235,7 @@ def test_tool_analytics_counts_engaged_sessions_and_includes_new_tools(tools_cli
     assert report["total_opens"] == 2
     assert report["total_uses"] == 1
     assert report["timezone"] == "Asia/Karachi"
-    assert len(report["tools"]) == 10
+    assert len(report["tools"]) == 9
     assert tools_client.get("/api/admin/tools/analytics?month=bad", headers=headers).status_code == 400
 
     previous_month = "2025-01" if current_month != "2025-01" else "2024-01"

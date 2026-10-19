@@ -12,7 +12,7 @@ test("tools admin keeps the directory above the editor at desktop and tablet wid
 
   await expect(page.getByRole("heading", { name: "Other Tools", exact: true })).toBeVisible();
   await expect(page.getByText("4 Categories", { exact: false })).toBeVisible();
-  await expect(page.getByText("9 Tools", { exact: false })).toBeVisible();
+  await expect(page.getByText("8 Tools", { exact: false })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Find a category or tool" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Basic information" })).toBeVisible();
 
@@ -59,12 +59,18 @@ test("Other Tools navigation opens a dynamic four-branch directory", async ({ pa
   await expect(constellation.locator('a[href="/tools/api"]')).toContainText("API");
   await expect(constellation.getByRole("link", { name: "DOCX and PDF Converter" })).toBeVisible();
   await expect(constellation.getByRole("link", { name: "Add Watermark to Image" })).toHaveAttribute("href", "/tools/add-watermark");
-  await expect(constellation.getByRole("link", { name: "Remove Watermark from Image" })).toHaveAttribute("href", "/tools/remove-watermark");
   await expect(page.getByText("Tools coming soon")).toHaveCount(0);
   const seoContent = page.locator(".tools-seo-content");
   await expect(seoContent.getByRole("heading", { name: "Free calculators and career tools for Pakistan" })).toBeVisible();
   await expect(seoContent.getByRole("link", { name: "latest jobs in Pakistan" })).toHaveAttribute("href", "/");
   await expect(seoContent.getByRole("link", { name: "career guides" })).toHaveAttribute("href", "/blog");
+});
+
+test("retired watermark remover is no longer listed or served", async ({ page }) => {
+  await page.goto("/tools");
+  await expect(page.getByRole("link", { name: "Remove Watermark from Image" })).toHaveCount(0);
+  const response = await page.goto("/tools/remove-watermark");
+  expect(response?.status()).toBe(404);
 });
 
 test("student tool shortcuts open the builders and student API", async ({ page }) => {

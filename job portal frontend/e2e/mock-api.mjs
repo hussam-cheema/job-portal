@@ -60,7 +60,6 @@ const toolCategories = [
   },
   { id: "tool-category-images", slug: "image-editing-tools", title: "Image Editing Tools", content: "", icon_key: "image", color_index: 3, sort_order: 2, is_published: true, tools: [
     { id: "tool-watermark", category_id: "tool-category-images", slug: "add-watermark", title: "Add Watermark to Image", content: "<p>Edit a watermark locally.</p>", tool_kind: "image_watermark", sort_order: 0, is_published: true },
-    { id: "tool-watermark-removal", category_id: "tool-category-images", slug: "remove-watermark", title: "Remove Watermark from Image", content: "<p>Remove the site watermark locally.</p>", tool_kind: "image_watermark_removal", sort_order: 1, is_published: true },
   ] },
   {
     id: "tool-category-documents", slug: "document-tools", title: "Document Tools", content: "", icon_key: "document", color_index: 4, sort_order: 3, is_published: true,

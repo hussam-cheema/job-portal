@@ -284,7 +284,6 @@ export type ToolKind =
   | "cgpa_calculator"
   | "document_converter"
   | "image_watermark"
-  | "image_watermark_removal"
   | "resume_builder"
   | "cover_letter"
   | "student_api";
