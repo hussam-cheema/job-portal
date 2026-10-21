@@ -39,7 +39,7 @@ from app.schemas import (
     QnAFetchResult,
 )
 from app.services.qna import fetch_qna_for_job_title, is_acceptable_qna_answer
-from app.services.directory_pages import ensure_job_directory_pages
+from app.services.directory_pages import category_terms, ensure_job_directory_pages
 from app.services.newsletter import process_pending_job_alerts, queue_new_job_alert
 from app.services.seo import delete_seo, upsert_job_seo
 from app.services.storage import delete_objects
@@ -402,8 +402,16 @@ def list_jobs(
                     )
                 )
         if category:
-            like = f"%{category.strip()}%"
-            filters.append(cast(Job.tags, String).ilike(like))
+            terms = category_terms(category)
+            if terms:
+                filters.append(
+                    or_(
+                        *[
+                            cast(Job.tags, String).ilike(f"%{term}%")
+                            for term in terms
+                        ]
+                    )
+                )
         if city:
             requested_city = city.strip()
             canonical_city = next(

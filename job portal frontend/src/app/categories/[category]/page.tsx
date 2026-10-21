@@ -1,13 +1,15 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { fetchDirectoryPage, fetchDirectoryPages, fetchFilters, fetchJobs } from "@/lib/api";
 import type { JobListResponse } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { JobFilters } from "@/components/JobFilters";
 import { Pagination } from "@/components/Pagination";
-import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
-import { decodeHtmlEntities } from "@/lib/format";
+import {
+  directoryPageMetadata,
+  normalizeDirectoryTitle,
+} from "@/lib/directoryPageMetadata";
 import { wrapRichTextTables } from "@/lib/richText";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +39,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     fetchDirectoryPages(),
   ]);
   if (!cmsPage?.taxonomy_value) notFound();
+  if (cmsPage.slug !== raw) permanentRedirect(`/categories/${cmsPage.slug}`);
   const category = cmsPage.taxonomy_value;
   const q = pick(values, "q");
   const sector = pick(values, "sector");
@@ -53,6 +56,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     page,
     page_size: 30,
   });
+  if (page > 1 && (!data.pages || page > data.pages)) {
+    permanentRedirect(basePath);
+  }
 
   return (
     <div className="site-wrap py-10">
@@ -64,7 +70,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           Category
         </p>
         <h1 className="text-3xl font-semibold text-[var(--navy-100)]">
-          {decodeHtmlEntities(cmsPage.title)}
+          {normalizeDirectoryTitle(cmsPage.title)}
         </h1>
         {cmsPage.content && (
           <div

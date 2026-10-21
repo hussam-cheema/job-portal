@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { JobDirectoryList } from "@/components/JobDirectoryList";
 import { fetchDirectoryPage } from "@/lib/api";
-import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
-import { decodeHtmlEntities } from "@/lib/format";
+import {
+  directoryPageMetadata,
+  normalizeDirectoryTitle,
+} from "@/lib/directoryPageMetadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,17 +27,30 @@ export default async function LocationPage({ params, searchParams }: Props) {
     searchParams,
   ]);
   if (!cmsPage?.taxonomy_value) notFound();
-  const page = Math.max(1, Number(typeof search.page === "string" ? search.page : 1) || 1);
+  const requestedPage =
+    typeof search.page === "string" ? search.page.trim() : undefined;
+  const page = Math.max(1, Number(requestedPage || 1) || 1);
+  const basePath = `/locations/${cmsPage.slug}`;
+  const onlyCanonicalPageParam =
+    Object.keys(search).every((key) => key === "page") &&
+    (requestedPage === undefined ||
+      (typeof search.page === "string" && /^\d+$/.test(requestedPage)));
+  if (
+    Object.keys(search).length > 0 &&
+    (!onlyCanonicalPageParam || page === 1 || requestedPage !== String(page))
+  ) {
+    permanentRedirect(page > 1 ? `${basePath}?page=${page}` : basePath);
+  }
   const location = cmsPage.taxonomy_value;
   const isProvince = cmsPage.page_type === "province";
 
   return (
     <JobDirectoryList
-      title={decodeHtmlEntities(cmsPage.title)}
+      title={normalizeDirectoryTitle(cmsPage.title)}
       eyebrow={isProvince ? "Province or territory" : "City"}
       query={isProvince ? { province: location } : { city: location }}
       page={page}
-      basePath={`/locations/${cmsPage.slug}`}
+      basePath={basePath}
       content={cmsPage.content}
     />
   );

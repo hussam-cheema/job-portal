@@ -35,6 +35,11 @@ from app.constants import (
     PAKISTAN_PROVINCES,
 )
 from app.utils import as_list, slugify
+from app.services.directory_pages import (
+    canonical_directory_pages,
+    directory_taxonomy_key,
+    normalize_directory_page_title,
+)
 
 logger = get_logger("jobportal.seo_tools")
 
@@ -126,8 +131,8 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/blog", "changefreq": "daily", "priority": 0.8},
         {"loc": f"{base}/dashboard", "changefreq": "monthly", "priority": 0.9},
         {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
-        {"loc": f"{base}/resume-builder", "changefreq": "monthly", "priority": 0.6},
-        {"loc": f"{base}/cover-letter", "changefreq": "monthly", "priority": 0.6},
+        {"loc": f"{base}/tools/resume-builder", "changefreq": "monthly", "priority": 0.6},
+        {"loc": f"{base}/tools/cover-letter", "changefreq": "monthly", "priority": 0.6},
         {"loc": f"{base}/tools", "changefreq": "weekly", "priority": 0.8},
         {"loc": f"{base}/jobs-by-cities", "changefreq": "weekly", "priority": 0.7},
         {"loc": f"{base}/jobs-by-provinces", "changefreq": "weekly", "priority": 0.7},
@@ -152,6 +157,22 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         ).all()
         job_tags: set[str] = set()
         qualifications: set[str] = set()
+        active_keys: dict[str, set[str]] = {
+            "category": set(),
+            "city": set(),
+            "province": set(),
+            "organization": set(),
+            "newspaper": set(),
+        }
+        dynamic_cities_by_province: dict[str, list[str]] = {}
+        for city_name, province_name in db.execute(
+            select(TaxonomyTerm.name, TaxonomyTerm.province).where(
+                TaxonomyTerm.kind == "city",
+                TaxonomyTerm.is_active.is_(True),
+                TaxonomyTerm.province.is_not(None),
+            )
+        ).all():
+            dynamic_cities_by_province.setdefault(province_name, []).append(city_name)
         for job in jobs:
             urls.append(
                 {
@@ -165,8 +186,31 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     "priority": 0.8,
                 }
             )
-            job_tags.update(
+            job_values = {
                 value.strip() for value in as_list(job.tags) if value and value.strip()
+            }
+            job_tags.update(job_values)
+            active_keys["category"].update(
+                directory_taxonomy_key("category", value) for value in job_values
+            )
+            if job.source and job.source.strip():
+                active_keys["organization"].add(
+                    directory_taxonomy_key("organization", job.source)
+                )
+            if job.newspaper and job.newspaper.strip():
+                active_keys["newspaper"].add(
+                    directory_taxonomy_key("newspaper", job.newspaper)
+                )
+            expanded_cities, expanded_provinces = _expanded_job_locations(
+                job, dynamic_cities_by_province
+            )
+            active_keys["city"].update(
+                directory_taxonomy_key("city", value)
+                for value in expanded_cities
+            )
+            active_keys["province"].update(
+                directory_taxonomy_key("province", value)
+                for value in expanded_provinces
             )
             if job.education_required and job.education_required.strip():
                 qualifications.add(job.education_required.strip())
@@ -188,11 +232,20 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                         "priority": 0.5,
                     }
                 )
-        for page in db.execute(
-            select(Page.slug, Page.page_type, Page.updated_at).where(
-                Page.is_published.is_(True)
-            )
-        ).all():
+        pages = db.execute(
+            select(
+                Page.slug,
+                Page.title,
+                Page.page_type,
+                Page.taxonomy_value,
+                Page.updated_at,
+            ).where(Page.is_published.is_(True))
+        ).all()
+        directory_pages = canonical_directory_pages(
+            [page for page in pages if page.page_type != "standard"],
+            active_keys=active_keys,
+        )
+        for page in [page for page in pages if page.page_type == "standard"] + directory_pages:
             path = public_page_path(page.page_type, page.slug)
             if page.page_type == "standard" and page.slug in DIRECT_PAGE_SLUGS:
                 continue  # already added static
@@ -330,24 +383,35 @@ def _directory_page_values(
     include_empty: bool = True,
 ) -> list[dict[str, Any]]:
     """Expose only published CMS pages while retaining live job counts."""
-    count_by_value = {
-        value["name"].casefold(): value["count"]
-        for value in _directory_values(raw_values)
-    }
+    count_by_value: dict[str, int] = {}
+    for value in raw_values:
+        key = directory_taxonomy_key(page_type, value)
+        if key:
+            count_by_value[key] = count_by_value.get(key, 0) + 1
+    canonical_pages = canonical_directory_pages(
+        [page for page in pages if page.page_type == page_type]
+    )
     return [
         {
-            "name": page.title,
+            "name": normalize_directory_page_title(page.title),
             "slug": page.slug,
-            "count": count_by_value.get((page.taxonomy_value or "").casefold(), 0),
+            "count": count_by_value.get(
+                directory_taxonomy_key(page_type, page.taxonomy_value), 0
+            ),
             "page_id": page.id,
             "taxonomy_value": page.taxonomy_value,
         }
-        for page in sorted(pages, key=lambda item: item.title.casefold())
-        if page.page_type == page_type
-        and page.taxonomy_value
+        for page in sorted(
+            canonical_pages,
+            key=lambda item: normalize_directory_page_title(item.title).casefold(),
+        )
+        if page.taxonomy_value
         and (
             include_empty
-            or count_by_value.get((page.taxonomy_value or "").casefold(), 0) > 0
+            or count_by_value.get(
+                directory_taxonomy_key(page_type, page.taxonomy_value), 0
+            )
+            > 0
         )
     ]
 
@@ -538,10 +602,16 @@ def build_site_directory(db: Session) -> dict[str, Any]:
             for page in pages
         ],
         "taxonomies": {
-            "job_categories": _directory_page_values(pages, "category", job_tags),
+            "job_categories": _directory_page_values(
+                pages, "category", job_tags, include_empty=False
+            ),
             "job_tags": _directory_values(job_tags),
-            "cities": _directory_page_values(pages, "city", cities),
-            "provinces": _directory_page_values(pages, "province", provinces),
+            "cities": _directory_page_values(
+                pages, "city", cities, include_empty=False
+            ),
+            "provinces": _directory_page_values(
+                pages, "province", provinces, include_empty=False
+            ),
             "organizations": _directory_page_values(
                 pages, "organization", organizations, include_empty=False
             ),

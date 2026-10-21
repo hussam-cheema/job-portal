@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { permanentRedirect } from "next/navigation";
 import { fetchFilters, fetchJobs } from "@/lib/api";
 import type { JobListResponse } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: Props) {
   const { tag } = await params;
   const label = labelFromSlug(tag);
   return {
-    title: `${label} Jobs in Pakistan | Pakistan Jobs Market`,
+    title: { absolute: `${label} Jobs in Pakistan | Pakistan Jobs Market` },
     description: `Browse Pakistan job openings tagged ${label}.`,
     alternates: { canonical: `/tags/${tag}` },
     robots: { index: true, follow: true },
@@ -54,6 +55,9 @@ export default async function TagPage({ params, searchParams }: Props) {
       page,
       page_size: 30,
     });
+  if (page > 1 && (!data.pages || page > data.pages)) {
+    permanentRedirect(basePath);
+  }
 
   return (
     <div className="site-wrap py-10">

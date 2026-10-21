@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { permanentRedirect } from "next/navigation";
 import { JobCard } from "@/components/JobCard";
 import { Pagination } from "@/components/Pagination";
 import { fetchDirectoryPages, fetchJobs } from "@/lib/api";
@@ -24,6 +25,14 @@ export async function JobDirectoryList({
     fetchJobs({ ...query, page, page_size: 30 }),
     fetchDirectoryPages(),
   ]);
+  if (page > 1 && (!data.pages || page > data.pages)) {
+    if (data.pages > 0 && basePath) {
+      permanentRedirect(
+        data.pages === 1 ? basePath : `${basePath}?page=${data.pages}`,
+      );
+    }
+    permanentRedirect(basePath || "/browse");
+  }
   const paginationQuery = Object.fromEntries(
     Object.entries(query).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string" && Boolean(entry[1]),

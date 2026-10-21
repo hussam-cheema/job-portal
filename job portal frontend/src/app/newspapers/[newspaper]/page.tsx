@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JobDirectoryList } from "@/components/JobDirectoryList";
 import { fetchDirectoryPage } from "@/lib/api";
-import { directoryPageMetadata } from "@/lib/directoryPageMetadata";
-import { decodeHtmlEntities } from "@/lib/format";
+import {
+  directoryPageMetadata,
+  normalizeDirectoryTitle,
+} from "@/lib/directoryPageMetadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +30,7 @@ export default async function NewspaperPage({ params, searchParams }: Props) {
   const page = Math.max(1, Number(typeof search.page === "string" ? search.page : 1) || 1);
   return (
     <JobDirectoryList
-      title={decodeHtmlEntities(cmsPage.title)}
+      title={normalizeDirectoryTitle(cmsPage.title)}
       eyebrow="Newspaper"
       query={{ newspaper: cmsPage.taxonomy_value }}
       page={page}

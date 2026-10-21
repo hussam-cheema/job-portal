@@ -202,6 +202,7 @@ ABOUT_HTML = """
 for people looking for current employment opportunities across Pakistan. Our purpose is simple:
 to make it easier to find useful government, private-sector, newspaper and company career
 announcements in one searchable place.</p>
+<p><strong>Last updated:</strong> 21 October 2026</p>
 
 <h2>Helping people find jobs in Pakistan</h2>
 <p>Searching for work often means checking many newspaper pages, recruitment portals, public
@@ -227,6 +228,17 @@ application deadline, education, experience, location and original application o
   <li><strong>Interview Q&amp;A:</strong> some job pages may contain questions and answers extracted
   from relevant public video transcripts or comments to support further research.</li>
 </ul>
+
+<h2>How listings and supplementary answers are prepared</h2>
+<p>We organize listings from public recruitment sources and link to the source or application page
+when it is available. Directory pages bring together related jobs by category, city, province,
+employer or newspaper. Results can include nationwide and province-wide vacancies that are also
+open to candidates in a selected location.</p>
+<p>Some job pages include supplementary interview questions and answers prepared with automated
+language tools from publicly available video transcripts or comments. That material can be
+incomplete, subjective or outdated, so it is study support rather than official recruitment
+guidance. Candidates should always confirm every eligibility rule, deadline, fee and application
+step with the recruiting organization.</p>
 
 <h2>Free tools for applications, study and salary planning</h2>
 <p>The Tools hub brings together interactive resources designed for Pakistan. It includes the
@@ -277,7 +289,7 @@ PRIVACY_HTML = """
 <p><strong>Pakistan Jobs Market</strong> respects the privacy of visitors, subscribers and people
 who contact us. This Privacy Policy explains what information may be collected when you use this
 website, why it is used, how it may be protected and the choices available to you.</p>
-<p><strong>Effective date:</strong> 5 September 2026</p>
+<p><strong>Effective date:</strong> 21 October 2026</p>
 
 <h2>Information we may collect</h2>
 <p>You can browse public job listings and career content without creating an account. Depending on
@@ -304,7 +316,8 @@ the feature you use, we may collect the following limited information:</p>
 <p>We use information only for legitimate website operations, including delivering requested job
 alerts, responding to messages, preventing abuse, diagnosing errors, protecting the service,
 understanding aggregate usage and improving content and performance. We do not ask visitors to
-submit a CV or sensitive financial credentials in order to browse the website.</p>
+submit a CV or sensitive financial credentials in order to browse the website. We do not sell or
+rent personal information.</p>
 
 <h2>Resume Builder, Cover Letter Builder and calculators</h2>
 <p>Information entered in the Resume Builder or Cover Letter Builder is processed in your browser
@@ -417,6 +430,7 @@ sources in good faith as an informational resource for job seekers. Sources may 
 newspapers such as <em>Daily Jang</em>, <em>Express</em>, <em>Nawa-i-Waqt</em>, <em>The News</em>,
 <em>Dawn</em> and <em>The Nation</em>, as well as government institutions, public service
 commissions and private-company career pages.</p>
+<p><strong>Last updated:</strong> 21 October 2026</p>
 
 <h2>Not an employer or recruitment agency</h2>
 <p>Pakistan Jobs Market is not the employer, recruiting organization, testing authority or
@@ -450,9 +464,10 @@ services or privacy practices. Opening a third-party link is at the visitor's di
 
 <h2>Interview Q&amp;A and automated assistance</h2>
 <p>Some job pages may display interview questions and answers extracted or organized with automated
-tools from publicly available video transcripts or comments. Such material may contain opinions,
-outdated statements, language errors or incomplete context. It is supplementary study material,
-not official recruitment guidance, and should be checked against authoritative sources.</p>
+tools, including language models, from publicly available video transcripts or comments. Such
+material may contain opinions, outdated statements, language errors or incomplete context. It is
+supplementary study material, not official recruitment guidance, and should be checked against
+authoritative sources before it is used in an application or interview.</p>
 
 <h2>Career tools and ATS score</h2>
 <p>The Resume Builder follows common ATS-readable practices and provides an on-device readiness
@@ -1000,6 +1015,31 @@ def sync_student_api_core_pages_v6(db) -> list[Page]:
     return changed
 
 
+def sync_editorial_page_refresh_v7(db) -> list[Page]:
+    """Refresh About, Privacy and Disclaimer disclosures in one release."""
+    marker_key = "core_pages_editorial_refresh_v7"
+    if db.get(SiteSetting, marker_key):
+        return []
+
+    defaults = {slug: (title, content) for slug, title, content in DEFAULT_PAGES}
+    changed: list[Page] = []
+    for slug in ("about", "privacy", "disclaimer"):
+        title, content = defaults[slug]
+        page = db.execute(select(Page).where(Page.slug == slug)).scalar_one_or_none()
+        if not page:
+            continue
+        page.title = title
+        page.content = content
+        page.is_published = True
+        page.updated_at = datetime.utcnow()
+        upsert_page_seo(db, page, seo_override=DEFAULT_PAGE_SEO[slug])
+        changed.append(page)
+
+    db.add(SiteSetting(key=marker_key, value="true", updated_at=datetime.utcnow()))
+    db.flush()
+    return changed
+
+
 def sync_homepage_branding_seo_v1(db) -> list[str]:
     """Apply the new public brand and homepage SEO once, without overwriting future edits."""
     marker_key = "homepage_branding_seo_v1"
@@ -1078,6 +1118,7 @@ def seed_if_empty() -> None:
         sync_privacy_adsense_disclosures_v4(db)
         sync_expanded_tools_core_pages_v5(db)
         sync_student_api_core_pages_v6(db)
+        sync_editorial_page_refresh_v7(db)
         sync_homepage_branding_seo_v1(db)
         ensure_default_taxonomy(db)
 

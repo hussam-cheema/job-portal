@@ -5,6 +5,22 @@ import { decodeHtmlEntities, stripHtml } from "@/lib/format";
 import { publicPagePath } from "@/lib/pagePath";
 import type { PageType } from "@/lib/types";
 
+const SITE_NAME = "Pakistan Jobs Market";
+
+export function normalizeDirectoryTitle(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/\bJobs(?:\s+Jobs)+\b/gi, "Jobs")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function absoluteDirectoryTitle(value: string): string {
+  const title = normalizeDirectoryTitle(value);
+  return title.toLocaleLowerCase().endsWith(SITE_NAME.toLocaleLowerCase())
+    ? title
+    : `${title} | ${SITE_NAME}`;
+}
+
 export async function directoryPageMetadata(
   pageType: Exclude<PageType, "standard"> | "location",
   slug: string,
@@ -20,15 +36,15 @@ export async function directoryPageMetadata(
       page.title,
   );
   const path = publicPagePath(page);
-  const title = decodeHtmlEntities(seo?.meta_title || page.title);
+  const title = normalizeDirectoryTitle(seo?.meta_title || page.title);
   return {
-    title,
+    title: { absolute: absoluteDirectoryTitle(title) },
     description,
     keywords: seo?.meta_keywords?.split(",").map((value) => value.trim()).filter(Boolean),
     alternates: { canonical: path },
     robots: { index: true, follow: true },
     openGraph: {
-      title: decodeHtmlEntities(seo?.og_title || title),
+      title: normalizeDirectoryTitle(seo?.og_title || title),
       description: decodeHtmlEntities(seo?.og_description || description),
       type: "website",
       url: path,

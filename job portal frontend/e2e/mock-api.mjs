@@ -587,6 +587,17 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
         ? ["city", "province"].includes(entry.page_type)
         : entry.page_type === requestedType),
     );
+    if (!page && requestedType === "category" && requestedSlug === "accounting-finance") {
+      return json(response, {
+        id: "category-accounting-finance",
+        slug: "accounting-finance",
+        title: "Accounting & Finance Jobs",
+        content: "<p>Browse accounting and finance opportunities.</p>",
+        page_type: "category",
+        taxonomy_value: "Accounting & Finance",
+        is_published: true,
+      });
+    }
     return page ? json(response, page) : json(response, { detail: "Directory page not found" }, 404);
   }
   if (path.startsWith("/api/pages/jobs-by-")) {

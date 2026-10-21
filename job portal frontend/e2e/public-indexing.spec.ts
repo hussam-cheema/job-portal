@@ -38,6 +38,52 @@ test("public pages expose self-canonicals and private pages are noindex", async 
   );
 });
 
+test("legacy Search Console URLs permanently resolve in one hop", async ({ request }) => {
+  const redirects: Record<string, string> = {
+    "/&": "/",
+    "/$": "/",
+    "/categories-office": "/categories/office",
+    "/categories/accounting": "/categories/accounting-finance",
+    "/categories/fia-jobs": "/jobs-by-categories",
+    "/categories/office-jobs": "/categories/office",
+    "/categories/pakistan-navy-jobs": "/categories/pakistan-navy",
+    "/categories/ppsc-jobs": "/categories/ppsc",
+    "/companies/punjab-university": "/companies/cemb",
+    "/cover-letter": "/tools/cover-letter",
+    "/jobs/assistant-manager-jobs-2026-public-sector-organization":
+      "/jobs/assistant-manager-jobs-2026-public-sector-organization-nescompaec",
+    "/jobs/public-sector-organization-jobs-2026-nescom-job-2026":
+      "/jobs/assistant-manager-jobs-2026-public-sector-organization-nescompaec",
+    "/jobs/sindh-information-department-jobs-2026-situations-vacant-44-posts":
+      "/jobs/sindh-information-department-government-jobs-2026-situations-vacant-44-posts",
+    "/resume-builder": "/tools/resume-builder",
+  };
+
+  for (const [source, destination] of Object.entries(redirects)) {
+    const response = await request.get(source, { maxRedirects: 0 });
+    expect(response.status(), source).toBe(301);
+    const location = response.headers()["location"] || "";
+    expect(location, source).toBeTruthy();
+    expect(new URL(location, "http://localhost").pathname, source).toBe(destination);
+  }
+});
+
+test("directory queries collapse to canonical URLs instead of empty soft 404s", async ({
+  page,
+}) => {
+  await page.goto("/locations/lahore?city=Lahore&page=3");
+  await expect(page).toHaveURL(/\/locations\/lahore$/);
+
+  await page.goto("/privacy");
+  await expect(page).toHaveTitle("Privacy Policy | Pakistan Jobs Market");
+
+  await page.goto("/about");
+  await expect(page).toHaveTitle("About Pakistan Jobs Market | Jobs in Pakistan");
+
+  await page.goto("/disclaimer");
+  await expect(page).toHaveTitle("Job Listing Disclaimer | Pakistan Jobs Market");
+});
+
 test("published CMS pages have a real public route and canonical metadata", async ({ page }) => {
   await page.goto("/p/custom-seo-page");
 

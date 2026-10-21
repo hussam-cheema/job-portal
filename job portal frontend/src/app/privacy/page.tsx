@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ManagedPage } from "@/components/ManagedPage";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Pakistan Jobs Market",
+  title: { absolute: "Privacy Policy | Pakistan Jobs Market" },
   description: "Read how Pakistan Jobs Market collects, uses, protects and retains contact, subscription, analytics and technical information.",
   keywords: [
     "Pakistan Jobs Market privacy policy",
@@ -18,9 +18,9 @@ export const metadata: Metadata = {
 
 const FALLBACK = `
   <p><strong>Pakistan Jobs Market</strong> respects visitor and subscriber privacy. You can browse public listings without creating an account.</p>
-  <p><strong>Effective date:</strong> 5 September 2026</p>
+  <p><strong>Effective date:</strong> 21 October 2026</p>
   <h2>Information we may collect</h2><p>We may process an email address submitted for job alerts, contact-form details, essential preferences, and limited technical information such as requested pages, browser data, IP address, timestamps and error records.</p>
-  <h2>How information is used</h2><p>Information supports requested alerts, responses to messages, abuse prevention, security, diagnostics, aggregate analytics and service improvement. We do not sell personal data.</p>
+  <h2>How information is used</h2><p>Information supports requested alerts, responses to messages, abuse prevention, security, diagnostics, aggregate analytics and service improvement. We do not sell or rent personal information.</p>
   <h2>Resume Builder and ATS score</h2><p>Information entered in the Resume Builder and the resulting ATS-readiness score are processed in your browser to create the preview, score and downloads. Pakistan Jobs Market does not receive or store that resume content or score. Closing or refreshing the page may remove the information unless your browser preserves it independently.</p>
   <h2>Email alerts and choices</h2><p>Subscribers receive messages about newly published jobs and can use the unsubscribe link in an alert to remove their active subscription.</p>
   <h2>Student API access</h2><p>For the subscriber-only student API, we process the subscribed email, short-lived verification state, one-way code and key hashes, a short key prefix, access status, lifetime quota and request counts, timestamps, and hashed network identifiers used for abuse prevention. Readable codes and full keys are not stored. Unsubscribing disables the key; a minimal inactive quota and security ledger may be retained to prevent abuse and repeated quota creation.</p>

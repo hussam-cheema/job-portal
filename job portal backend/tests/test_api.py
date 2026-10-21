@@ -859,7 +859,9 @@ def test_directory_pages_control_title_slug_content_seo_and_deletion(client: Tes
     # Empty organization/newspaper Pages stay editable and directly reachable,
     # but do not occupy homepage/directory links until a job uses the value.
     assert nation_links == []
-    assert any(
+    # Empty directory pages stay directly editable and reachable, but must
+    # never be advertised in a sitemap as thin/soft-404 content.
+    assert not any(
         item["loc"].endswith("/newspapers/nation-jobs")
         for item in client.get("/api/sitemap-data").json()["urls"]
     )
@@ -1098,6 +1100,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         PRIVACY_HTML,
         sync_core_page_content_v2,
         sync_core_page_content_v3,
+        sync_editorial_page_refresh_v7,
         sync_expanded_tools_core_pages_v5,
         sync_privacy_adsense_disclosures_v4,
         sync_homepage_branding_seo_v1,
@@ -1140,6 +1143,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         assert len(sync_core_page_content_v3(session)) == 3
         assert len(sync_privacy_adsense_disclosures_v4(session)) == 1
         assert len(sync_expanded_tools_core_pages_v5(session)) == 3
+        assert len(sync_editorial_page_refresh_v7(session)) == 3
         assert len(sync_homepage_branding_seo_v1(session)) == len(HOMEPAGE_BRANDING)
         session.commit()
 
@@ -1153,9 +1157,13 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
             if page.slug == "about":
                 assert "ATS-standard resume tools" in page.content
                 assert "Government Salary Calculator" in page.content
+                assert "Last updated:</strong> 21 October 2026" in page.content
             elif page.slug == "privacy":
                 assert "Resume Builder or Cover Letter Builder" in page.content
                 assert "short-lived access token" in page.content
+                assert "Effective date:</strong> 21 October 2026" in page.content
+                assert "We do not sell or" in page.content
+                assert "rent personal information" in page.content
                 assert "Third-party vendors, including Google, use cookies" in page.content
                 assert "https://adssettings.google.com/" in page.content
                 assert "https://www.aboutads.info/choices/" in page.content
@@ -1164,6 +1172,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
                 assert "does not guarantee parsing" in page.content
                 assert "Calculator results are informational estimates" in page.content
                 assert "DOCX/PDF Converter" in page.content
+                assert "including language models" in page.content
             seo = (
                 session.query(SEOMeta)
                 .filter(
@@ -1185,6 +1194,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         assert sync_core_page_content_v3(session) == []
         assert sync_privacy_adsense_disclosures_v4(session) == []
         assert sync_expanded_tools_core_pages_v5(session) == []
+        assert sync_editorial_page_refresh_v7(session) == []
         assert sync_homepage_branding_seo_v1(session) == []
     finally:
         session.close()
@@ -1917,6 +1927,104 @@ def test_taxonomy_controls_job_categories(client: TestClient):
     legal = next(term for term in client.get("/api/admin/taxonomy", headers=auth).json() if term["slug"] == "legal")
     assert client.delete(f"/api/admin/taxonomy/{legal['id']}", headers=auth).status_code == 200
     assert all(term["slug"] != "legal" for term in client.get("/api/taxonomy").json())
+
+
+def test_legacy_category_aliases_resolve_without_empty_soft_404_pages(
+    client: TestClient,
+):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin-password"},
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    term = client.post(
+        "/api/admin/taxonomy",
+        headers=auth,
+        json={"name": "PPSC", "slug": "ppsc"},
+    )
+    assert term.status_code == 200
+    created = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "PPSC Legacy Category Alias Role",
+            "description": "<p>A current PPSC vacancy.</p>",
+            "published_date": "2026-10-21T00:00:00",
+            "source": "PPSC",
+            "job_type": "government",
+            "cities": ["Lahore"],
+            "tags": ["PPSC"],
+        },
+    )
+    assert created.status_code == 200
+
+    alias = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "PPSC Jobs Jobs",
+            "slug": "ppsc-jobs",
+            "content": "<p>Legacy duplicate category page.</p>",
+            "page_type": "category",
+            "taxonomy_value": "PPSC Jobs",
+            "is_published": True,
+        },
+    )
+    assert alias.status_code == 200
+
+    # The API returns the unsuffixed record so the frontend can issue one
+    # permanent redirect instead of rendering an empty soft-404 alias.
+    resolved = client.get("/api/pages/directory/category/ppsc-jobs")
+    assert resolved.status_code == 200
+    assert resolved.json()["slug"] == "ppsc"
+
+    filtered = client.get("/api/jobs", params={"category": "PPSC Jobs"})
+    assert filtered.status_code == 200
+    assert any(
+        item["title"] == "PPSC Legacy Category Alias Role"
+        for item in filtered.json()["items"]
+    )
+
+    category_links = [
+        item
+        for item in client.get("/api/pages/directory-links").json()
+        if item["page_type"] == "category"
+        and item["taxonomy_value"] in {"PPSC", "PPSC Jobs"}
+    ]
+    assert [item["slug"] for item in category_links] == ["ppsc"]
+
+    sitemap_urls = {
+        item["loc"] for item in client.get("/api/sitemap-data").json()["urls"]
+    }
+    assert any(url.endswith("/categories/ppsc") for url in sitemap_urls)
+    assert not any(url.endswith("/categories/ppsc-jobs") for url in sitemap_urls)
+
+    accounting_page = next(
+        page
+        for page in client.get("/api/admin/pages", headers=auth).json()
+        if page["page_type"] == "category" and page["slug"] == "accounting"
+    )
+    assert client.put(
+        f"/api/admin/pages/{accounting_page['id']}",
+        headers=auth,
+        json={"is_published": False},
+    ).status_code == 200
+    finance_page = client.post(
+        "/api/admin/pages",
+        headers=auth,
+        json={
+            "title": "Accounting & Finance Jobs",
+            "slug": "accounting-finance",
+            "content": "<p>Current accounting and finance jobs.</p>",
+            "page_type": "category",
+            "taxonomy_value": "Accounting & Finance",
+            "is_published": True,
+        },
+    )
+    assert finance_page.status_code == 200
+    accounting = client.get("/api/pages/directory/category/accounting")
+    assert accounting.status_code == 200
+    assert accounting.json()["slug"] == "accounting-finance"
 
 
 def test_taxonomy_controls_job_cities(client: TestClient):
@@ -4933,6 +5041,16 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
     assert any(url.endswith("/qualifications/bs-computer-science") for url in urls)
     assert any(url.endswith("/categories/software-engineering") for url in urls)
     assert any(url.endswith("/tags/software-engineering") for url in urls)
+    assert any(url.endswith("/tools/resume-builder") for url in urls)
+    assert any(url.endswith("/tools/cover-letter") for url in urls)
+    assert not any(
+        url.endswith("/resume-builder") and not url.endswith("/tools/resume-builder")
+        for url in urls
+    )
+    assert not any(
+        url.endswith("/cover-letter") and not url.endswith("/tools/cover-letter")
+        for url in urls
+    )
 
 
 def test_sitemap_data_only_includes_published_custom_pages(client: TestClient):

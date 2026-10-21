@@ -50,6 +50,7 @@ from app.seed import (
     seed_if_empty,
     sync_core_page_content_v2,
     sync_core_page_content_v3,
+    sync_editorial_page_refresh_v7,
     sync_expanded_tools_core_pages_v5,
     sync_student_api_core_pages_v6,
     sync_privacy_adsense_disclosures_v4,
@@ -191,6 +192,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             privacy_adsense_synced = sync_privacy_adsense_disclosures_v4(db)
             expanded_tools_content_synced = sync_expanded_tools_core_pages_v5(db)
             student_api_content_synced = sync_student_api_core_pages_v6(db)
+            editorial_content_synced = sync_editorial_page_refresh_v7(db)
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             data_quality_repairs = repair_job_data_quality(db)
@@ -230,6 +232,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info(
                     "student API core-page disclosures published count=%s",
                     len(student_api_content_synced),
+                )
+            if editorial_content_synced:
+                logger.info(
+                    "editorial core pages refreshed count=%s",
+                    len(editorial_content_synced),
                 )
             if branding_synced:
                 logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))

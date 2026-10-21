@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Iterable
 from uuid import uuid4
@@ -11,6 +12,85 @@ from app.models import Page
 from app.page_types import DIRECTORY_PAGE_PATHS, page_slug_namespace
 from app.services.seo import upsert_page_seo
 from app.utils import as_list, slugify
+
+
+_CATEGORY_JOBS_SUFFIX = re.compile(r"\s+jobs?\s*$", re.IGNORECASE)
+_REPEATED_JOBS = re.compile(r"\bJobs(?:\s+Jobs)+\b", re.IGNORECASE)
+
+
+def category_terms(value: Any) -> list[str]:
+    """Return useful category variants without the legacy display suffix."""
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    canonical = _CATEGORY_JOBS_SUFFIX.sub("", raw).strip()
+    return list(dict.fromkeys(term for term in (raw, canonical) if term))
+
+
+def normalize_directory_page_title(value: Any) -> str:
+    """Collapse legacy labels such as "PPSC Jobs Jobs"."""
+    return _REPEATED_JOBS.sub("Jobs", str(value or "")).strip()
+
+
+def directory_taxonomy_key(page_type: str, value: Any) -> str:
+    """Build a stable key for grouping equivalent directory page values."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if page_type == "category":
+        raw = _CATEGORY_JOBS_SUFFIX.sub("", raw).strip()
+    return slugify(raw).casefold()
+
+
+def canonical_directory_pages(
+    pages: Iterable[Any],
+    active_keys: dict[str, set[str]] | None = None,
+) -> list[Any]:
+    """Choose one public Page for each directory value.
+
+    Category records created by older taxonomy migrations sometimes contain a
+    redundant "Jobs" suffix. Prefer the unsuffixed route so sitemaps and
+    discovery hubs never advertise both aliases.
+    """
+    selected: dict[tuple[str, str], Any] = {}
+    for page in pages:
+        page_type = str(getattr(page, "page_type", "") or "")
+        taxonomy_value = getattr(page, "taxonomy_value", None)
+        if page_type not in DIRECTORY_PAGE_PATHS or not taxonomy_value:
+            continue
+        key = directory_taxonomy_key(page_type, taxonomy_value)
+        if not key:
+            continue
+        if active_keys is not None and page_type in active_keys:
+            if key not in active_keys[page_type]:
+                continue
+
+        current = selected.get((page_type, key))
+        if current is None:
+            selected[(page_type, key)] = page
+            continue
+
+        def preference(candidate: Any) -> tuple[bool, bool, bool, str]:
+            candidate_value = str(candidate.taxonomy_value or "").strip()
+            return (
+                page_type == "category"
+                and bool(_CATEGORY_JOBS_SUFFIX.search(candidate_value)),
+                str(candidate.slug or "").casefold().endswith("-jobs"),
+                not bool(getattr(candidate, "is_published", True)),
+                str(candidate.slug or ""),
+            )
+
+        if preference(page) < preference(current):
+            selected[(page_type, key)] = page
+
+    return sorted(
+        selected.values(),
+        key=lambda page: (
+            str(page.page_type),
+            str(page.taxonomy_value).casefold(),
+            str(page.slug),
+        ),
+    )
 
 
 def _canonical_values(values: Iterable[Any]) -> list[str]:
@@ -28,6 +108,7 @@ def _page_copy(page_type: str, value: str) -> tuple[str, str, dict[str, str]]:
         title = f"Jobs in {value}"
     else:
         title = value if value.casefold().endswith(" jobs") else f"{value} Jobs"
+    title = normalize_directory_page_title(title)
     subject = {
         "city": f"job opportunities in {value}",
         "province": f"job opportunities across {value}",

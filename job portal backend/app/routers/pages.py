@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
@@ -14,6 +14,10 @@ from app.models import Job, Page, User
 from app.page_types import DIRECTORY_PAGE_PATHS, VALID_PAGE_TYPES, page_slug_namespace
 from app.schemas import DirectoryPageLinkOut, PageIn, PageOut, PageUpdate
 from app.seed import ensure_default_pages, sync_taxonomy_pages_v1
+from app.services.directory_pages import (
+    canonical_directory_pages,
+    directory_taxonomy_key,
+)
 from app.services.seo import delete_seo, upsert_page_seo
 from app.services.job_data_quality import organization_aliases, organizations_equivalent
 from app.utils import slugify
@@ -78,18 +82,6 @@ def list_pages(db: Session = Depends(get_db), published_only: bool = True):
 def list_directory_page_links(db: Session = Depends(get_db)):
     if sync_taxonomy_pages_v1(db):
         db.commit()
-    active_organization = exists(
-        select(1).select_from(Job).where(
-            func.lower(func.trim(Job.source))
-            == func.lower(func.trim(Page.taxonomy_value))
-        )
-    )
-    active_newspaper = exists(
-        select(1).select_from(Job).where(
-            func.lower(func.trim(Job.newspaper))
-            == func.lower(func.trim(Page.taxonomy_value))
-        )
-    )
     rows = db.execute(
         select(
             Page.id,
@@ -102,14 +94,28 @@ def list_directory_page_links(db: Session = Depends(get_db)):
             Page.page_type != "standard",
             Page.taxonomy_value.is_not(None),
             Page.is_published.is_(True),
-            or_(
-                Page.page_type.notin_({"organization", "newspaper"}),
-                and_(Page.page_type == "organization", active_organization),
-                and_(Page.page_type == "newspaper", active_newspaper),
-            ),
         )
         .order_by(Page.page_type.asc(), Page.title.asc())
     ).all()
+    jobs = db.execute(select(Job.source, Job.newspaper, Job.tags)).all()
+    active_keys = {
+        "category": {
+            key
+            for job in jobs
+            for value in job.tags or []
+            if (key := directory_taxonomy_key("category", value))
+        },
+        "organization": {
+            directory_taxonomy_key("organization", source)
+            for source, _newspaper, _tags in jobs
+            if source and str(source).strip()
+        },
+        "newspaper": {
+            directory_taxonomy_key("newspaper", newspaper)
+            for _source, newspaper, _tags in jobs
+            if newspaper and str(newspaper).strip()
+        },
+    }
     return [
         DirectoryPageLinkOut(
             id=row.id,
@@ -118,7 +124,7 @@ def list_directory_page_links(db: Session = Depends(get_db)):
             page_type=row.page_type,
             taxonomy_value=row.taxonomy_value,
         )
-        for row in rows
+        for row in canonical_directory_pages(rows, active_keys=active_keys)
     ]
 
 
@@ -159,6 +165,14 @@ def get_directory_page(page_type: str, slug: str, db: Session = Depends(get_db))
             Page.is_published.is_(True),
         )
     ).scalar_one_or_none()
+    if not page and normalized_type == "category" and slug == "accounting":
+        page = db.execute(
+            select(Page).where(
+                Page.page_type == "category",
+                Page.slug == "accounting-finance",
+                Page.is_published.is_(True),
+            )
+        ).scalar_one_or_none()
     if not page and normalized_type == "organization":
         canonical_slug = organization_aliases(db).get(slug.casefold())
         if canonical_slug:
@@ -169,6 +183,25 @@ def get_directory_page(page_type: str, slug: str, db: Session = Depends(get_db))
                     Page.is_published.is_(True),
                 )
             ).scalar_one_or_none()
+    if page and normalized_type == "category" and page.taxonomy_value:
+        # Older taxonomy migrations created duplicate Pages such as
+        # "PPSC Jobs" beside the canonical "PPSC" category.
+        category_pages = db.execute(
+            select(Page).where(
+                Page.page_type == "category",
+                Page.is_published.is_(True),
+            )
+        ).scalars()
+        canonical = canonical_directory_pages(
+            [page, *category_pages],
+            active_keys={
+                "category": {
+                    directory_taxonomy_key("category", page.taxonomy_value)
+                }
+            },
+        )
+        if canonical:
+            page = canonical[0]
     if not page:
         raise HTTPException(status_code=404, detail="Directory page not found")
     return page
