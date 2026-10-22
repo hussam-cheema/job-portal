@@ -73,6 +73,9 @@ def empty_stats() -> dict:
     return {
         "total_jobs": 0,
         "open_for_apply": 0,
+        "archived_jobs": 0,
+        "active_government_jobs": 0,
+        "active_private_jobs": 0,
         "by_source_type": {},
         "by_category": {},
         "by_city": {},

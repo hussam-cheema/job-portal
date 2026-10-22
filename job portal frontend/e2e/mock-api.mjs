@@ -13,6 +13,12 @@ const directoryPageValues = {
 };
 
 const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const indexableDirectoryValue = (pageType, value) =>
+  (pageType === "category" && value === "Software Engineering") ||
+  (pageType === "city" && value === "Lahore") ||
+  (pageType === "province" && value === "Punjab") ||
+  (pageType === "organization" && value === "FPSC") ||
+  (pageType === "newspaper" && value === "Dawn");
 const directoryPages = Object.entries(directoryPageValues).flatMap(([pageType, values]) =>
   values.map((taxonomyValue) => {
     const slug = slugify(taxonomyValue);
@@ -27,6 +33,7 @@ const directoryPages = Object.entries(directoryPageValues).flatMap(([pageType, v
       page_type: pageType,
       taxonomy_value: taxonomyValue,
       is_published: true,
+      indexable: indexableDirectoryValue(pageType, taxonomyValue),
     };
   }),
 );
@@ -284,8 +291,10 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       urls: [
         { loc: `${mockSiteOrigin}/dashboard/2026-09`, changefreq: "monthly", priority: 0.8 },
         { loc: `${mockSiteOrigin}/dashboard/2026-08`, changefreq: "monthly", priority: 0.8 },
+        { loc: `${mockSiteOrigin}/archive`, changefreq: "weekly", priority: 0.5 },
         { loc: `${mockSiteOrigin}/jobs/closed-role`, changefreq: "weekly", priority: 0.8 },
         { loc: `${mockSiteOrigin}/jobs/multi-location-role`, changefreq: "weekly", priority: 0.8 },
+        { loc: `${mockSiteOrigin}/editorial-policy`, changefreq: "monthly", priority: 0.5 },
         { loc: `${mockSiteOrigin}/blog/fpsc-preparation-guide`, changefreq: "weekly", priority: 0.7 },
         { loc: `${mockSiteOrigin}/p/custom-seo-page`, changefreq: "monthly", priority: 0.5 },
         { loc: `${mockSiteOrigin}/categories/software-engineering`, changefreq: "weekly", priority: 0.6 },
@@ -437,6 +446,8 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
       salary_min: null, salary_max: null, currency: "PKR", category: "Government",
       source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
+      updated_at: "2026-07-17T00:00:00Z", indexable: true,
+      indexing_reasons: [],
     }, {
       id: "multi-location-role", slug: "multi-location-role", title: "Multi Location Role",
       description: "A role available in more than one city.", published_date: "2026-07-02T00:00:00Z",
@@ -449,7 +460,17 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       employment_type: null, salary_min: null, salary_max: null, currency: "PKR",
       category: "Government", source_type: "govt", source_name: "FPSC",
       nationwide: false, applications_closed: false,
+      updated_at: "2026-10-20T00:00:00Z", indexable: true,
+      indexing_reasons: [],
     }];
+    const visibleItems =
+      requestUrl.searchParams.get("indexable_only") === "true"
+        ? items.filter((item) => item.indexable)
+        : requestUrl.searchParams.get("archive_only") === "true"
+          ? items.filter((item) => item.applications_closed)
+        : requestUrl.searchParams.get("open_only") === "true"
+          ? items.filter((item) => !item.applications_closed)
+          : items;
     if (requestUrl.searchParams.get("q") === "html-budget-fixture") {
       return json(response, {
         items: Array.from({ length: 30 }, (_, index) => ({
@@ -460,7 +481,13 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
         total: 60, page: 1, page_size: 30, pages: 2,
       });
     }
-    return json(response, { items, total: 2, page: 1, page_size: 30, pages: 1 });
+    return json(response, {
+      items: visibleItems,
+      total: visibleItems.length,
+      page: 1,
+      page_size: 30,
+      pages: visibleItems.length ? 1 : 0,
+    });
   }
   if (path === "/api/admin/jobs" && request.method === "GET") {
     const page = Math.max(1, Number(requestUrl.searchParams.get("page") || 1));
@@ -475,7 +502,18 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
     });
   }
   if (path === "/api/stats") {
-    return json(response, { total_jobs: 1, open_for_apply: 0, by_source_type: { govt: 1 }, by_category: { Government: 1 }, by_city: { Pakistan: 1 }, by_job_type: { government: 1 }, last_updated: new Date().toISOString() });
+    return json(response, {
+      total_jobs: 2,
+      open_for_apply: 1,
+      archived_jobs: 1,
+      active_government_jobs: 1,
+      active_private_jobs: 0,
+      by_source_type: { govt: 2 },
+      by_category: { Government: 2 },
+      by_city: { Pakistan: 1 },
+      by_job_type: { government: 2 },
+      last_updated: new Date().toISOString(),
+    });
   }
   if (path === "/api/admin/jobs/closed-role/fetch-qna" && request.method === "POST") {
     return json(response, {
@@ -515,6 +553,8 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       company: "FPSC", location: "Pakistan", city: "Pakistan", province: null, employment_type: null,
       salary_min: null, salary_max: null, currency: "PKR", category: "Government",
       source_type: "govt", source_name: "FPSC", nationwide: true, applications_closed: true,
+      updated_at: "2026-07-17T00:00:00Z", indexable: true,
+      indexing_reasons: [],
       application_email: null, source_url: null, attachments: [], qna: [], resources: [],
     });
   }
@@ -540,7 +580,9 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       location: "Sindh, Karachi, Lahore", city: "Karachi", province: "Sindh",
       employment_type: null, salary_min: null, salary_max: null, currency: "PKR",
       category: "Government", source_type: "govt", source_name: "FPSC",
-      nationwide: false, applications_closed: false, application_email: null,
+      nationwide: false, applications_closed: false,
+      updated_at: "2026-10-20T00:00:00Z", indexable: true, indexing_reasons: [],
+      application_email: null,
       source_url: null, attachments: [], qna: [], resources: [],
     });
   }
@@ -574,6 +616,7 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       { id: "contact", slug: "contact", title: "Contact Us", content: "<p>Contact</p>", page_type: "standard", taxonomy_value: null, is_published: true },
       { id: "privacy", slug: "privacy", title: "Privacy Policy", content: "<p>Privacy</p>", page_type: "standard", taxonomy_value: null, is_published: true },
       { id: "disclaimer", slug: "disclaimer", title: "Disclaimer", content: "<p>Disclaimer</p>", page_type: "standard", taxonomy_value: null, is_published: true },
+      { id: "editorial-policy", slug: "editorial-policy", title: "Editorial and Listing Maintenance Policy", content: "<p>Editorial standards and maintenance.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
       { id: "jobs-by-cities", slug: "jobs-by-cities", title: "Jobs by Cities", content: "<p>Browse jobs by city.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
       { id: "jobs-by-provinces", slug: "jobs-by-provinces", title: "Jobs by Provinces", content: "<p>Browse jobs by province.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
       { id: "jobs-by-categories", slug: "jobs-by-categories", title: "Jobs by Category", content: "<p>Browse jobs by category.</p>", page_type: "standard", taxonomy_value: null, is_published: true },
@@ -628,6 +671,19 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
       is_published: true,
       created_at: "2026-07-28T00:00:00Z",
       updated_at: "2026-07-28T00:00:00Z",
+    });
+  }
+  if (path === "/api/pages/editorial-policy") {
+    return json(response, {
+      id: "editorial-policy",
+      slug: "editorial-policy",
+      title: "Editorial and Listing Maintenance Policy",
+      content: "<p>We publish sourced listings, review deadlines and archive expired records.</p><h2>Search-quality standard</h2><p>Only open listings with a source link and substantial role information are included in the sitemap.</p>",
+      page_type: "standard",
+      taxonomy_value: null,
+      is_published: true,
+      created_at: "2026-10-22T00:00:00Z",
+      updated_at: "2026-10-22T00:00:00Z",
     });
   }
   if (path === "/api/seo/page/custom-seo-page-id") {

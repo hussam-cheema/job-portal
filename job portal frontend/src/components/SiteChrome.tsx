@@ -93,10 +93,12 @@ export function SiteChrome({ children, initialBranding }: Props) {
             </div>
             <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
               <Link href="/browse" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Browse all</Link>
+              <Link href="/archive" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Job archive</Link>
               <Link href="/about" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">About us</Link>
               <Link href="/contact" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Contact us</Link>
               <Link href="/privacy" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Privacy policy</Link>
               <Link href="/disclaimer" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Disclaimer</Link>
+              <Link href="/editorial-policy" className="text-[var(--navy-300)] hover:text-[var(--accent)] transition-colors">Editorial policy</Link>
             </nav>
           </div>
           <p className="mt-8 text-center text-xs text-[var(--navy-500)]">

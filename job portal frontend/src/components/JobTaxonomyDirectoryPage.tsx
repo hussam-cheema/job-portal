@@ -83,7 +83,7 @@ export async function JobTaxonomyDirectoryPage({ kind }: { kind: DirectoryKind }
   return (
     <main className="site-wrap py-8 sm:py-12">
       <Link href="/" className="inline-flex text-sm text-[var(--muted)] transition hover:text-[var(--blue)]">
-        ← Latest jobs
+        ← Active jobs
       </Link>
       <header className="relative mt-5 overflow-hidden rounded-[2rem] border border-[var(--border)] bg-[linear-gradient(135deg,var(--card),var(--navy-900))] px-5 py-8 shadow-[var(--shadow)] sm:px-9 sm:py-10">
         <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[var(--blue)]/15 blur-3xl" />

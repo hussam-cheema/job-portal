@@ -157,6 +157,9 @@ export type JobResource = {
 export type JobDetail = JobSummary & {
   application_email: string | null;
   source_url: string | null;
+  updated_at: string | null;
+  indexable: boolean;
+  indexing_reasons: string[];
   attachments: JobAttachment[];
   qna: JobQnA[];
   resources: JobResource[];
@@ -187,6 +190,9 @@ export type FiltersResponse = {
 export type StatsResponse = {
   total_jobs: number;
   open_for_apply?: number;
+  archived_jobs?: number;
+  active_government_jobs?: number;
+  active_private_jobs?: number;
   by_source_type: Record<string, number>;
   by_category: Record<string, number>;
   by_city: Record<string, number>;
@@ -210,6 +216,9 @@ export type JobQuery = {
   date?: string;
   date_from?: string;
   date_to?: string;
+  open_only?: boolean;
+  archive_only?: boolean;
+  indexable_only?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -256,6 +265,7 @@ export type PageItem = {
   page_type: PageType;
   taxonomy_value?: string | null;
   is_published: boolean;
+  indexable?: boolean;
   created_at?: string | null;
   updated_at?: string | null;
 };

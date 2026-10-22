@@ -24,13 +24,15 @@ export const metadata: Metadata = {
 };
 
 const corePages = [
-  { href: "/", label: "Latest jobs" },
+  { href: "/", label: "Active jobs" },
   { href: "/browse", label: "Browse All" },
   { href: "/blog", label: "Career guides" },
   { href: "/about", label: "About us" },
   { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy policy" },
   { href: "/disclaimer", label: "Disclaimer" },
+  { href: "/editorial-policy", label: "Editorial and maintenance policy" },
+  { href: "/archive", label: "Expired job archive" },
   { href: "/dashboard", label: "Job market dashboard" },
   { href: "/tools", label: "All career tools" },
   { href: "/jobs-by-cities", label: "Jobs by Cities" },
@@ -284,8 +286,8 @@ export default async function BrowsePage() {
           <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] px-5 py-6 sm:px-7">
             <div>
               <p className="eyebrow">Opportunities</p>
-              <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">All job posts</h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">Every permanent canonical link is included. Scroll within the list to keep this page compact.</p>
+              <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">Complete job inventory</h2>
+              <p className="mt-2 text-sm text-[var(--muted)]">Active and archived records are linked here. For expired jobs alone, open the <Link href="/archive" className="text-[var(--accent)] hover:underline">job archive</Link>.</p>
             </div>
             <span className="font-mono text-xs text-[var(--navy-300)]">
               {countLabel(directory.jobs.length, "job")}

@@ -42,7 +42,7 @@ export async function directoryPageMetadata(
     description,
     keywords: seo?.meta_keywords?.split(",").map((value) => value.trim()).filter(Boolean),
     alternates: { canonical: path },
-    robots: { index: true, follow: true },
+    robots: { index: page.indexable !== false, follow: true },
     openGraph: {
       title: normalizeDirectoryTitle(seo?.og_title || title),
       description: decodeHtmlEntities(seo?.og_description || description),

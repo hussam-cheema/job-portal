@@ -71,6 +71,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     tag: first(raw.tag),
     job_type: first(raw.job_type),
     date: first(raw.date) || first(raw.date_from),
+    open_only: true,
     page,
     page_size: 30,
   };

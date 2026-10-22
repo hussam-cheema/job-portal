@@ -59,7 +59,7 @@ test("admin can access the blog list and rich editor with Yoast", async ({ page 
   });
   await page.goto("/admin/blog");
   await expect(page.getByText("FPSC Preparation Guide", { exact: true }).first()).toBeVisible();
-  await page.getByRole("link", { name: "Edit" }).click();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Edit blog post" })).toBeVisible();
   await expect(page.getByText("Yoast SEO", { exact: true })).toBeVisible();
   await expect(page.locator(".quill-wrap")).toBeVisible();

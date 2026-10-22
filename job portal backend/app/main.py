@@ -50,6 +50,7 @@ from app.seed import (
     seed_if_empty,
     sync_core_page_content_v2,
     sync_core_page_content_v3,
+    sync_editorial_listing_policy_v8,
     sync_editorial_page_refresh_v7,
     sync_expanded_tools_core_pages_v5,
     sync_student_api_core_pages_v6,
@@ -193,9 +194,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             expanded_tools_content_synced = sync_expanded_tools_core_pages_v5(db)
             student_api_content_synced = sync_student_api_core_pages_v6(db)
             editorial_content_synced = sync_editorial_page_refresh_v7(db)
+            editorial_policy_synced = sync_editorial_listing_policy_v8(db)
             # Keep the user-requested public page refresh even if an unrelated
             # legacy data repair later in startup has to roll back.
             if editorial_content_synced:
+                db.commit()
+            if editorial_policy_synced:
                 db.commit()
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
@@ -241,6 +245,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info(
                     "editorial core pages refreshed count=%s",
                     len(editorial_content_synced),
+                )
+            if editorial_policy_synced:
+                logger.info(
+                    "editorial listing policy published count=%s",
+                    len(editorial_policy_synced),
                 )
             if branding_synced:
                 logger.info("homepage branding and SEO upgraded count=%s", len(branding_synced))

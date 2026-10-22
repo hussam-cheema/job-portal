@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 from typing import Any, Optional
 from uuid import uuid4
@@ -54,6 +54,7 @@ from app.services.job_data_quality import (
     clean_optional_list,
     clean_optional_text,
 )
+from app.services.job_indexing import job_index_status
 from app.utils import as_list, experience_label, normalize_job_type, slugify
 
 router = APIRouter()
@@ -178,6 +179,7 @@ def _to_summary(job: Any) -> JobSummary:
 
 def _to_detail(job: Job, db: Session) -> JobDetail:
     summary = _to_summary(job)
+    index_status = job_index_status(job)
     try:
         attachments = (
             db.execute(
@@ -240,6 +242,9 @@ def _to_detail(job: Job, db: Session) -> JobDetail:
         **summary.model_dump(),
         application_email=None,
         source_url=job.reference_url or job.application_url or "",
+        updated_at=job.updated_at,
+        indexable=index_status.indexable,
+        indexing_reasons=list(index_status.reasons),
         attachments=attachments,
         qna=[JobQnAOut.model_validate(q) for q in qna],
         resources=resources,
@@ -362,6 +367,9 @@ def list_jobs(
     date: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    open_only: bool = Query(False),
+    archive_only: bool = Query(False),
+    indexable_only: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(30, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -513,14 +521,53 @@ def list_jobs(
         if dt:
             end = dt.replace(hour=23, minute=59, second=59)
             filters.append(Job.published_date <= end)
+        if open_only:
+            pakistan_today = datetime.now(ZoneInfo("Asia/Karachi")).date()
+            filters.append(
+                or_(
+                    Job.deadline_date
+                    >= datetime.combine(pakistan_today, time.min),
+                    Job.deadline_date.is_(None),
+                )
+            )
+        if archive_only:
+            pakistan_today = datetime.now(ZoneInfo("Asia/Karachi")).date()
+            filters.append(
+                Job.deadline_date < datetime.combine(pakistan_today, time.min)
+            )
 
         for f in filters:
             stmt = stmt.where(f)
             count_stmt = count_stmt.where(f)
 
+        offset = (page - 1) * page_size
+        if indexable_only:
+            matching_jobs = db.execute(
+                select(Job)
+                .where(*filters)
+                .order_by(
+                    Job.published_date.desc().nullslast(),
+                    Job.created_at.desc(),
+                )
+            ).scalars().all()
+            indexable_jobs = [
+                job for job in matching_jobs if job_index_status(job).indexable
+            ]
+            total = len(indexable_jobs)
+            pages = math.ceil(total / page_size) if total else 0
+            return JobListResponse(
+                items=[
+                    _to_summary(job)
+                    for job in indexable_jobs[offset : offset + page_size]
+                ],
+                total=total,
+                page=page,
+                page_size=page_size,
+                pages=pages,
+            )
+
         total = db.execute(count_stmt).scalar() or 0
         pages = max(1, math.ceil(total / page_size)) if total else 0
-        offset = (page - 1) * page_size
         rows = db.execute(
             stmt.order_by(Job.published_date.desc().nullslast(), Job.created_at.desc())
             .offset(offset)

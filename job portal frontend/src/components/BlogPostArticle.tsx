@@ -117,7 +117,7 @@ export function BlogPostArticle({ initialPost, initialRelated }: Props) {
               </ul>
             )}
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/" className="btn btn-ghost">Latest jobs</Link>
+              <Link href="/" className="btn btn-ghost">Active jobs</Link>
               <Link href="/tools/resume-builder" className="btn btn-ghost">ATS Resume Builder</Link>
               <Link href="/tools/cover-letter" className="btn btn-ghost">Cover Letter Builder</Link>
               <Link href="/browse" className="btn btn-ghost">Site directory</Link>

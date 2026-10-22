@@ -272,7 +272,7 @@ test("Resume Builder scores the current form and highlights ATS improvements", a
 test("job listings use the canonical deadline without shifting to the previous day", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/archive");
   const job = page.locator("article").filter({ hasText: "Nationwide Closed Role" });
   await job.hover();
   await expect(job.getByText("Deadline: Jul 17", { exact: true })).toBeVisible();

@@ -213,6 +213,11 @@ export default function JobFormPage() {
   const [draftRecovered, setDraftRecovered] = useState(false);
   const [draftUpdatedAt, setDraftUpdatedAt] = useState<string | null>(null);
   const [draftStorageError, setDraftStorageError] = useState<string | null>(null);
+  const [indexingStatus, setIndexingStatus] = useState<{
+    indexable: boolean;
+    archived: boolean;
+    reasons: string[];
+  } | null>(null);
   const draftRecordId = jobId || "new";
   const baselineDataRef = useRef<JobEditorSnapshot>(emptyJobSnapshot());
   const baselineSerializedRef = useRef(JSON.stringify(baselineDataRef.current));
@@ -245,6 +250,7 @@ export default function JobFormPage() {
     setFormReady(false);
     setDraftReady(false);
     setLoadError(null);
+    setIndexingStatus(null);
 
     async function hydrateEditor() {
       let baseline = emptyJobSnapshot();
@@ -313,6 +319,13 @@ export default function JobFormPage() {
         if (cancelled) return;
         setSavedId(asString(job.id));
         setQna(Array.isArray(job.qna) ? job.qna : []);
+        setIndexingStatus({
+          indexable: Boolean(job.indexable),
+          archived: Boolean(job.applications_closed),
+          reasons: Array.isArray(job.indexing_reasons)
+            ? job.indexing_reasons
+            : [],
+        });
       }
 
       if (cancelled) return;
@@ -477,6 +490,13 @@ export default function JobFormPage() {
       setDraftUpdatedAt(null);
       setDraftStorageError(null);
       setSavedId(job.id);
+      setIndexingStatus({
+        indexable: Boolean(job.indexable),
+        archived: Boolean(job.applications_closed),
+        reasons: Array.isArray(job.indexing_reasons)
+          ? job.indexing_reasons
+          : [],
+      });
       setSuccess(savedId ? "Job post updated successfully." : "Job post saved successfully.");
       if (!savedId) router.replace(`/admin/jobs/${job.id}`);
     } catch (err) {
@@ -601,6 +621,57 @@ export default function JobFormPage() {
           storageError={draftStorageError}
           onDiscard={discardDraft}
         />
+        {indexingStatus && (
+          <section
+            className={`rounded-xl border p-4 text-sm ${
+              indexingStatus.indexable && !indexingStatus.archived
+                ? "border-emerald-500/40 bg-emerald-500/10"
+                : "border-amber-500/40 bg-amber-500/10"
+            }`}
+            aria-label="Search indexing status"
+          >
+            <p className="font-semibold text-[var(--navy-100)]">
+              {indexingStatus.indexable
+                ? indexingStatus.archived
+                  ? "Archived listing included in sitemap"
+                  : "Search-ready active listing"
+                : "Incomplete / noindex listing"}
+            </p>
+            {indexingStatus.indexable ? (
+              <p className="mt-1 text-[var(--muted)]">
+                {indexingStatus.archived
+                  ? "The deadline has passed. This complete historical record is retained in the archive sitemap but will not emit active JobPosting schema."
+                  : "This record has an open deadline, a source link and enough role detail to be included in the active sitemap."}
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-[var(--muted)]">
+                  The public page will remain available, but search engines will be told
+                  not to index it until these requirements are fixed:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--muted)]">
+                  {indexingStatus.reasons.map((reason) => (
+                    <li key={reason}>
+                      {({
+                        missing_deadline:
+                          "Add a verified application deadline.",
+                        deadline_passed:
+                          "The deadline has passed; archive it instead of promoting it.",
+                        missing_source:
+                          "Record the recruiting organization.",
+                        missing_source_url:
+                          "Add an official reference or application URL.",
+                        thin_description:
+                          "Add at least 150 substantive words from the source advertisement.",
+                      } as Record<string, string>)[reason] ||
+                        "Complete the missing listing information."}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
 
         <div>
           <label className="field-label">Job title *</label>

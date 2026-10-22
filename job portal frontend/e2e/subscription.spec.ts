@@ -31,7 +31,7 @@ test("unsubscribe link removes a newsletter subscription", async ({ page }) => {
 });
 
 test("nationwide expired jobs show Pakistan and Applications Closed on list and detail", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/archive");
   const card = page.getByRole("article").filter({ hasText: "Nationwide Closed Role" });
   await expect(card.getByText(/FPSC · Pakistan/)).toBeVisible();
   await expect(card.getByText("Applications Closed", { exact: true })).toBeVisible();

@@ -415,6 +415,9 @@ class JobSummary(BaseModel):
 class JobDetail(JobSummary):
     application_email: Optional[str] = None
     source_url: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    indexable: bool = False
+    indexing_reasons: list[str] = Field(default_factory=list)
     attachments: list[JobAttachmentOut] = Field(default_factory=list)
     qna: list[JobQnAOut] = Field(default_factory=list)
     resources: list[dict[str, Any]] = Field(default_factory=list)
@@ -445,6 +448,9 @@ class FiltersResponse(BaseModel):
 class StatsResponse(BaseModel):
     total_jobs: int
     open_for_apply: int = 0  # deadline still in the future (or no deadline)
+    archived_jobs: int = 0
+    active_government_jobs: int = 0
+    active_private_jobs: int = 0
     by_source_type: dict[str, int]
     by_category: dict[str, int]
     by_city: dict[str, int]
@@ -482,6 +488,7 @@ class PageOut(BaseModel):
     page_type: str = "standard"
     taxonomy_value: Optional[str] = None
     is_published: bool
+    indexable: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

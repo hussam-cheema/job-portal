@@ -18,6 +18,7 @@ from app.services.directory_pages import (
     canonical_directory_pages,
     directory_taxonomy_key,
 )
+from app.services.seo_tools import build_indexable_directory_keys
 from app.services.seo import delete_seo, upsert_page_seo
 from app.services.job_data_quality import organization_aliases, organizations_equivalent
 from app.utils import slugify
@@ -204,7 +205,9 @@ def get_directory_page(page_type: str, slug: str, db: Session = Depends(get_db))
             page = canonical[0]
     if not page:
         raise HTTPException(status_code=404, detail="Directory page not found")
-    return page
+    key = directory_taxonomy_key(page.page_type, page.taxonomy_value)
+    indexable = key in build_indexable_directory_keys(db).get(page.page_type, set())
+    return PageOut.model_validate(page).model_copy(update={"indexable": indexable})
 
 
 @router.get("/admin/pages", response_model=list[PageOut])

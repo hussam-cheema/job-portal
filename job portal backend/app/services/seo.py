@@ -12,6 +12,7 @@ from app.constants import PAKISTAN_ALL_CITIES, PAKISTAN_PROVINCE_BY_CITY
 from app.logging_config import get_logger
 from app.models import BlogPost, Job, Page, SEOMeta, SEOMetric, ToolCategory, ToolPage
 from app.page_types import public_page_path
+from app.services.job_indexing import job_index_status
 from app.utils import strip_html
 
 logger = get_logger("jobportal.seo")
@@ -151,7 +152,17 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
             focus_keyword=focus,
             slug=job.slug,
         )
-        structured = build_job_structured_data(job)
+        index_status = job_index_status(job)
+        structured = (
+            build_job_structured_data(job)
+            if index_status.indexable and not index_status.archived
+            else {}
+        )
+        robots = (
+            str(cfg("seo", "default_robots", default="index,follow"))
+            if index_status.indexable
+            else "noindex,follow"
+        )
 
         if existing:
             existing.slug = job.slug
@@ -165,7 +176,7 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
             existing.og_title = title
             existing.og_description = desc
             existing.canonical_url = _canonical(path)
-            existing.robots = str(cfg("seo", "default_robots", default="index,follow"))
+            existing.robots = robots
             existing.structured_data = structured
             existing.h1 = job.title[:300]
             existing.updated_at = datetime.utcnow()
@@ -188,7 +199,7 @@ def upsert_job_seo(db: Session, job: Job, seo_override: dict | None = None) -> S
             og_description=desc,
             og_image=None,
             canonical_url=_canonical(path),
-            robots=str(cfg("seo", "default_robots", default="index,follow")),
+            robots=robots,
             structured_data=structured,
             h1=job.title[:300],
             created_at=datetime.utcnow(),

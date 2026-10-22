@@ -53,6 +53,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     category,
     city,
     date,
+    open_only: true,
     page,
     page_size: 30,
   });

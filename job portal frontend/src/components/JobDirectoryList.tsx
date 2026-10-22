@@ -22,7 +22,7 @@ export async function JobDirectoryList({
   content?: string;
 }) {
   const [data, directoryPages] = await Promise.all([
-    fetchJobs({ ...query, page, page_size: 30 }),
+    fetchJobs({ ...query, open_only: true, page, page_size: 30 }),
     fetchDirectoryPages(),
   ]);
   if (page > 1 && (!data.pages || page > data.pages)) {
@@ -51,6 +51,12 @@ export async function JobDirectoryList({
           />
         )}
         <p className="mt-2 text-[var(--muted)]">{data.total} related opening{data.total === 1 ? "" : "s"}</p>
+        <Link
+          href="/archive"
+          className="mt-3 inline-flex text-sm font-medium text-[var(--accent)] hover:underline"
+        >
+          Looking for a closed job? Browse the archive →
+        </Link>
       </header>
       <section className="card-panel">
         {data.items.length ? <div className="job-list">{data.items.map((job) => <JobCard key={job.id} job={job} directoryPages={directoryPages} />)}</div> : <p className="p-10 text-center text-[var(--muted)]">No matching jobs are published yet.</p>}

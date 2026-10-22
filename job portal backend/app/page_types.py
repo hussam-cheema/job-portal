@@ -5,6 +5,7 @@ DIRECT_PAGE_SLUGS = {
     "contact",
     "privacy",
     "disclaimer",
+    "editorial-policy",
     "jobs-by-cities",
     "jobs-by-provinces",
     "jobs-by-categories",

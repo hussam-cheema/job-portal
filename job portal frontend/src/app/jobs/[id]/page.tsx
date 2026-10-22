@@ -76,7 +76,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       .map((keyword) => keyword.trim())
       .filter(Boolean),
     alternates: { canonical: canonicalPath },
-    robots: { index: true, follow: true },
+    robots: { index: job.indexable, follow: true },
     openGraph: {
       title: socialTitle,
       description: compactSocialDescription(seo?.og_description || "") || description,
@@ -103,8 +103,8 @@ export default async function JobDetailPage({ params }: Props) {
 
   const discoveryTerm = job.category || job.tags?.[0] || job.cities?.[0];
   const [relatedResult, companyResult, articleResult, directoryPages] = await Promise.all([
-    fetchJobs({ tag: discoveryTerm, page: 1, page_size: 6 }),
-    job.source ? fetchJobs({ company: job.source, page: 1, page_size: 6 }) : Promise.resolve({ items: [], total: 0, page: 1, page_size: 6, pages: 0 }),
+    fetchJobs({ tag: discoveryTerm, open_only: true, page: 1, page_size: 6 }),
+    job.source ? fetchJobs({ company: job.source, open_only: true, page: 1, page_size: 6 }) : Promise.resolve({ items: [], total: 0, page: 1, page_size: 6, pages: 0 }),
     fetchBlogPosts({ q: discoveryTerm || job.title.split(" ").slice(0, 2).join(" "), page: 1, page_size: 4 }),
     fetchDirectoryPages(),
   ]);
@@ -140,20 +140,36 @@ export default async function JobDetailPage({ params }: Props) {
     job.applications_closed || isDeadlinePast(job.deadline_date || job.application_deadline);
   const jobUrl = `${canonicalSiteUrl()}/jobs/${job.slug || job.id}`;
   const structuredData = buildJobPostingStructuredData(job, jobUrl);
+  const maintenanceReasons = (job.indexing_reasons || []).map((reason) => {
+    switch (reason) {
+      case "missing_deadline":
+        return "A verified application deadline is not available.";
+      case "missing_source":
+        return "The recruiting organization is not recorded.";
+      case "missing_source_url":
+        return "A source or application link is not available.";
+      case "thin_description":
+        return "The source provides too little role information.";
+      default:
+        return "The record does not yet meet the publishing standard.";
+    }
+  });
 
   return (
     <div className="site-wrap py-10">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
-        }}
-      />
+      {job.indexable && !applicationsClosed && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+          }}
+        />
+      )}
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--navy-200)] mb-8 transition-colors"
       >
-        ← All jobs
+        ← Active jobs
       </Link>
 
       <article className="card-panel">
@@ -232,6 +248,9 @@ export default async function JobDetailPage({ params }: Props) {
               <Meta label="Source Organization" value={job.source_name || job.source || ""} />
             )}
             {job.newspaper && <Meta label="Newspaper" value={job.newspaper} />}
+            {job.updated_at && (
+              <Meta label="Record updated" value={formatDate(job.updated_at)} />
+            )}
           </div>
           {(referenceUrl || (!applicationsClosed && job.application_url)) && (
             <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
@@ -285,6 +304,116 @@ export default async function JobDetailPage({ params }: Props) {
               ),
             }}
           />
+
+          <section
+            className={`mt-8 rounded-2xl border p-5 ${
+              job.indexable && !applicationsClosed
+                ? "border-[var(--border)] bg-[var(--navy-850)]"
+                : "border-amber-500/40 bg-amber-500/10"
+            }`}
+            aria-labelledby="listing-maintenance"
+          >
+            <h2
+              id="listing-maintenance"
+              className="text-lg font-semibold text-[var(--navy-100)]"
+            >
+              {job.indexable
+                ? applicationsClosed
+                  ? "Archived job record"
+                  : "Listing source and maintenance"
+                : "Incomplete listing excluded from search"}
+            </h2>
+            {job.indexable ? (
+              <>
+                <p className="mt-2 text-sm leading-6 text-[var(--navy-200)]">
+                  {applicationsClosed
+                    ? "This vacancy is closed, but its complete historical record is retained in the job archive and included in the sitemap for reference. It is not presented as an active JobPosting."
+                    : "This record is open and complete enough to appear in active search. We link to the recruiting or advertisement source supplied with the listing."}
+                </p>
+                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="font-semibold text-[var(--navy-200)]">Source record</dt>
+                    <dd className="mt-1 text-[var(--muted)]">
+                      {decodeHtmlEntities(job.source || "Not recorded")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-[var(--navy-200)]">
+                      Application deadline
+                    </dt>
+                    <dd className="mt-1 text-[var(--muted)]">
+                      {formatDate(job.deadline_date || job.application_deadline)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-[var(--navy-200)]">
+                      {applicationsClosed ? "Archive status" : "Record updated"}
+                    </dt>
+                    <dd className="mt-1 text-[var(--muted)]">
+                      {applicationsClosed
+                        ? "Closed and retained for reference"
+                        : formatDate(job.updated_at || job.created_at)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-[var(--navy-200)]">
+                      Correction process
+                    </dt>
+                    <dd className="mt-1 text-[var(--muted)]">
+                      <Link
+                        href="/contact"
+                        className="text-[var(--accent)] hover:underline"
+                      >
+                        Report a change or correction
+                      </Link>
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-4 text-xs leading-5 text-[var(--muted)]">
+                  Read our{" "}
+                  <Link
+                    href="/editorial-policy"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    editorial and maintenance policy
+                  </Link>
+                  .
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm leading-6 text-[var(--navy-200)]">
+                  This page remains available for people who already have the link, but
+                  it is excluded from the sitemap and marked noindex because the source
+                  record is too incomplete to present responsibly.
+                </p>
+                {maintenanceReasons.length > 0 && (
+                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[var(--muted)]">
+                    {maintenanceReasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  Confirm current opportunities through the recruiting organization.{" "}
+                  <Link
+                    href="/archive"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    Browse archived jobs
+                  </Link>{" "}
+                  or{" "}
+                  <Link
+                    href="/contact"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    Report a correction
+                  </Link>
+                  .
+                </p>
+              </>
+            )}
+          </section>
 
           {attachments.length > 0 && (
             <div className="mt-8">

@@ -8,10 +8,12 @@ test("public pages expose self-canonicals and private pages are noindex", async 
     "/contact",
     "/privacy",
     "/disclaimer",
+    "/editorial-policy",
     "/blog",
     "/tools/cover-letter",
     "/tools/resume-builder",
     "/jobs/closed-role",
+    "/jobs/multi-location-role",
     "/tags/government",
     "/categories/software-engineering",
     "/jobs-by-cities",
@@ -30,6 +32,30 @@ test("public pages expose self-canonicals and private pages are noindex", async 
       /^index,\s*follow/i
     );
   }
+
+  await page.goto("/jobs/closed-role");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    /\/jobs\/closed-role$/
+  );
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    /^index,\s*follow/i
+  );
+  await expect(
+    page.getByRole("heading", { name: "Archived job record" })
+  ).toBeVisible();
+
+  await page.goto("/archive");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    /\/archive$/
+  );
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    /^index,\s*follow/i
+  );
+  await expect(page.getByRole("heading", { name: "Archive" })).toBeVisible();
 
   await page.goto("/admin");
   await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
@@ -105,7 +131,7 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
   const html = await response.text();
 
   for (const expected of [
-    "All job posts",
+    "Complete job inventory",
     "All career guides",
     "Job categories",
     "Cities",
@@ -260,16 +286,19 @@ test("homepage exposes complete job listings in initial HTML without JavaScript"
   const normalizedHtml = html.replace(/<!--[\s\S]*?-->/g, "");
 
   for (const expected of [
-    'href="/jobs/closed-role"',
-    "Nationwide Closed Role",
-    "Deadline:",
-    "Required Education:",
-    "Required Experience:",
+    'href="/jobs/multi-location-role"',
+    "Multi Location Role",
+    'href="/archive"',
+    "Total active jobs",
+    "Government jobs",
+    "Private jobs",
+    "Archived jobs",
     '"@type":"ItemList"',
     '"@type":"ListItem"',
   ]) {
     expect(normalizedHtml).toContain(expected);
   }
+  expect(normalizedHtml).not.toContain('href="/jobs/closed-role"');
   expect(normalizedHtml).not.toContain("h-96 animate-pulse");
   expect(normalizedHtml).not.toContain('"@type":"JobPosting"');
 });
@@ -279,9 +308,22 @@ test("homepage hover excludes descriptions and shows four optional facts in orde
 }) => {
   await page.goto("/");
 
-  await expect(page.locator(".stat-card")).toHaveCount(5);
-  await expect(page.locator(".stat-card").nth(2)).toContainText("1");
-  await expect(page.locator(".stat-card").nth(2)).toContainText("Closed jobs");
+  await expect(page.locator(".stat-card")).toHaveCount(4);
+  await expect(page.locator(".stat-card").nth(0)).toContainText("1");
+  await expect(page.locator(".stat-card").nth(0)).toContainText("Total active jobs");
+  await expect(page.locator(".stat-card").nth(3)).toContainText("1");
+  await expect(page.locator(".stat-card").nth(3)).toContainText("Archived jobs");
+  await expect(page.locator(".stat-card").nth(3)).toHaveAttribute("href", "/archive");
+
+  await expect(page.locator("article.job-card").filter({
+    hasText: "Nationwide Closed Role",
+  })).toHaveCount(0);
+  await page.getByRole("link", { name: "Archive", exact: true }).click();
+  await expect(page).toHaveURL(/\/archive$/);
+  await expect(page.getByRole("heading", { name: "Archive" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Active Jobs", exact: true })
+  ).toBeVisible();
 
   const completeCard = page.locator("article.job-card").filter({
     hasText: "Nationwide Closed Role",
@@ -306,9 +348,14 @@ test("homepage hover excludes descriptions and shows four optional facts in orde
   await expect(overview).not.toContainText("Apply here");
 
   const optionalCard = page.locator("article.job-card").filter({ hasText: "Multi Location Role" });
-  await optionalCard.hover();
-  await expect(optionalCard).not.toContainText("A role available in more than one city.");
-  await expect(optionalCard.locator(".job-card-expand")).toHaveCount(0);
+  await expect(optionalCard).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Active Jobs", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const activeCard = page.locator("article.job-card").filter({
+    hasText: "Multi Location Role",
+  });
+  await expect(activeCard).toBeVisible();
 });
 
 test("job listing cards stay metadata-only across every public directory", async ({ page }) => {
@@ -326,27 +373,14 @@ test("job listing cards stay metadata-only across every public directory", async
   for (const route of listingRoutes) {
     await page.goto(route);
     const card = page.locator("article.job-card").filter({
-      hasText: "Nationwide Closed Role",
+      hasText: "Multi Location Role",
     });
     await expect(card, route).toBeVisible();
-    // Move away first because consecutive directory pages place the first card
-    // at the same coordinates; otherwise the browser may not emit mouseenter
-    // for the newly rendered card beneath an unchanged pointer.
-    await page.locator("h1").hover();
-    await card.hover();
-
-    const overview = card.locator(".job-card-expand");
-    await expect(overview, route).toBeVisible();
     await expect(card, route).not.toContainText(
-      "A nationwide job with a passed deadline.",
+      "A role available in more than one city.",
     );
     await expect(card.locator(".job-card-overview-description"), route).toHaveCount(0);
-    await expect(overview.locator(".job-card-overview-detail"), route).toHaveText([
-      "Newspaper: Dawn",
-      "Required Education: Bachelor's degree",
-      "Required Experience: Two years",
-      "Deadline: Jul 17",
-    ]);
+    await expect(card.locator(".job-card-expand"), route).toHaveCount(0);
   }
 });
 
@@ -403,7 +437,7 @@ test("JobPosting schema omits intentional blanks and never invents address or sa
   expect(JSON.stringify(multiLocation)).not.toContain("postalCode");
 
   await page.goto("/jobs/closed-role");
-  const nationwide = await page.evaluate(() => {
+  const closedSchema = await page.evaluate(() => {
     const scripts = Array.from(
       document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')
     );
@@ -412,13 +446,7 @@ test("JobPosting schema omits intentional blanks and never invents address or sa
       .find((value) => value["@type"] === "JobPosting");
   });
 
-  expect(nationwide.jobLocation).toEqual([
-    {
-      "@type": "Place",
-      address: { "@type": "PostalAddress", addressCountry: "PK" },
-    },
-  ]);
-  expect(nationwide).not.toHaveProperty("baseSalary");
+  expect(closedSchema).toBeUndefined();
 });
 
 test("double-encoded entities render as readable text in rich content", async ({ page }) => {
@@ -485,8 +513,11 @@ test("sitemap advertises canonical content URLs and the legacy favicon resolves"
   const xml = await sitemap.text();
 
   expect(xml).toContain("<loc>http://localhost:3000/disclaimer</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/editorial-policy</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/tools/cover-letter</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/jobs/multi-location-role</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/jobs/closed-role</loc>");
+  expect(xml).toContain("<loc>http://localhost:3000/archive</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/blog/fpsc-preparation-guide</loc>");
   expect(xml).toContain("<loc>http://localhost:3000/p/custom-seo-page</loc>");
   const locations = Array.from(xml.matchAll(/<loc>([^<]+)<\/loc>/g), (match) => match[1]);

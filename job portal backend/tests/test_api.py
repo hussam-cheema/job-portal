@@ -39,7 +39,18 @@ from app.exceptions import unhandled_exception_handler  # noqa: E402
 from app.models import Job  # noqa: E402
 from app.services.seo import build_job_structured_data  # noqa: E402
 from app.services.job_data_quality import organizations_equivalent  # noqa: E402
+from app.services.job_indexing import job_index_status  # noqa: E402
 from app.utils import strip_html  # noqa: E402
+
+
+def substantive_job_description(label: str = "Verified role") -> str:
+    return f"<p>{label}. </p><p>{'Detailed responsibilities and eligibility information from the source advertisement. ' * 20}</p>"
+
+
+def future_job_deadline(days: int = 30) -> str:
+    from datetime import datetime, timedelta
+
+    return (datetime.utcnow() + timedelta(days=days)).isoformat()
 
 
 @pytest.fixture()
@@ -140,6 +151,49 @@ def test_job_structured_data_omits_unknown_optional_fields():
         assert optional_field not in structured
     assert "streetAddress" not in structured["jobLocation"][0]["address"]
     assert "postalCode" not in structured["jobLocation"][0]["address"]
+
+
+def test_job_indexing_requires_an_open_complete_and_substantive_record():
+    from datetime import timedelta
+
+    from app.services.job_indexing import PAKISTAN_TIMEZONE
+
+    now = datetime(2026, 10, 22, 12, tzinfo=PAKISTAN_TIMEZONE)
+    base = {
+        "description": substantive_job_description(),
+        "deadline_date": now + timedelta(days=10),
+        "source": "Example Recruiting Authority",
+        "reference_url": "https://example.gov.pk/advertisement",
+        "application_url": None,
+    }
+
+    assert job_index_status(Job(**base), now=now).indexable is True
+
+    closed = job_index_status(
+        Job(**{**base, "deadline_date": now - timedelta(days=1)}),
+        now=now,
+    )
+    assert closed.indexable is True
+    assert closed.archived is True
+    assert closed.reasons == ()
+
+    incomplete = job_index_status(
+        Job(
+            description="<p>Too brief.</p>",
+            deadline_date=None,
+            source=None,
+            reference_url=None,
+            application_url=None,
+        ),
+        now=now,
+    )
+    assert incomplete.indexable is False
+    assert set(incomplete.reasons) == {
+        "missing_deadline",
+        "missing_source",
+        "missing_source_url",
+        "thin_description",
+    }
 
 
 def test_organization_matching_merges_only_safe_identity_variants():
@@ -675,11 +729,14 @@ def test_job_canonical_slug_stays_permanent_and_directory_is_complete(client: Te
         headers=headers,
         json={
             "title": "Ministry of Defence Jobs 2026",
-            "description": "<p>Permanent public opportunity.</p>",
+            "description": substantive_job_description(
+                "Permanent public opportunity"
+            ),
             "published_date": "2026-08-01T00:00:00",
-            "deadline_date": "2026-08-31T00:00:00",
+            "deadline_date": future_job_deadline(),
             "source": "Ministry of Defence",
             "newspaper": "Daily Jang",
+            "reference_url": "https://mod.gov.pk/careers/ministerial-opportunity",
             "salary_range": "PKR 120,000–160,000",
             "education_required": "Bachelors",
             "experience_required": "3 years",
@@ -1096,10 +1153,12 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         ABOUT_HTML,
         DEFAULT_PAGE_SEO,
         DISCLAIMER_HTML,
+        EDITORIAL_POLICY_HTML,
         HOMEPAGE_BRANDING,
         PRIVACY_HTML,
         sync_core_page_content_v2,
         sync_core_page_content_v3,
+        sync_editorial_listing_policy_v8,
         sync_editorial_page_refresh_v7,
         sync_expanded_tools_core_pages_v5,
         sync_privacy_adsense_disclosures_v4,
@@ -1118,6 +1177,10 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
             ("about", "About Us"),
             ("privacy", "Privacy Policy"),
             ("disclaimer", "Disclaimer"),
+            (
+                "editorial-policy",
+                "Editorial and Listing Maintenance Policy",
+            ),
         ):
             session.add(
                 Page(
@@ -1144,6 +1207,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
         assert len(sync_privacy_adsense_disclosures_v4(session)) == 1
         assert len(sync_expanded_tools_core_pages_v5(session)) == 3
         assert len(sync_editorial_page_refresh_v7(session)) == 3
+        assert len(sync_editorial_listing_policy_v8(session)) == 1
         assert len(sync_homepage_branding_seo_v1(session)) == len(HOMEPAGE_BRANDING)
         session.commit()
 
@@ -1151,6 +1215,7 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
             "about": ABOUT_HTML,
             "privacy": PRIVACY_HTML,
             "disclaimer": DISCLAIMER_HTML,
+            "editorial-policy": EDITORIAL_POLICY_HTML,
         }
         for page in session.query(Page).all():
             assert page.content == expected_content[page.slug]
@@ -1168,6 +1233,9 @@ def test_core_page_and_homepage_seo_defaults_sync_once():
                 assert "https://adssettings.google.com/" in page.content
                 assert "https://www.aboutads.info/choices/" in page.content
                 assert "Google-certified consent-management controls" in page.content
+            elif page.slug == "editorial-policy":
+                assert "Search-quality standard" in page.content
+                assert "at least 150 words" in page.content
             elif page.slug == "disclaimer":
                 assert "does not guarantee parsing" in page.content
                 assert "Calculator results are informational estimates" in page.content
@@ -1789,6 +1857,16 @@ def test_stats_open_for_apply(client: TestClient):
     data = r.json()
     assert "open_for_apply" in data
     assert data["open_for_apply"] >= 1
+    assert data["archived_jobs"] >= 1
+    assert (
+        data["active_government_jobs"] + data["active_private_jobs"]
+        == data["open_for_apply"]
+    )
+
+    active = client.get("/api/jobs", params={"open_only": "true"}).json()
+    archived = client.get("/api/jobs", params={"archive_only": "true"}).json()
+    assert [item["title"] for item in active["items"]] == ["Open Role"]
+    assert [item["title"] for item in archived["items"]] == ["Closed Role"]
 
 
 def test_nationwide_and_closed_listing_flags(client: TestClient):
@@ -1847,8 +1925,13 @@ def test_taxonomy_controls_job_categories(client: TestClient):
         headers=auth,
         json={
             "title": "Data Scientist",
-            "description": "<p>Analyze data and build production models.</p>",
+            "description": substantive_job_description(
+                "Analyze data and build production models"
+            ),
             "published_date": "2026-07-16T00:00:00",
+            "deadline_date": future_job_deadline(),
+            "source": "Example Analytics Employer",
+            "reference_url": "https://example.gov.pk/data-scientist",
             "tags": ["data-science"],
             "skills": ["Python"],
             "cities": ["Lahore"],
@@ -1948,9 +2031,11 @@ def test_legacy_category_aliases_resolve_without_empty_soft_404_pages(
         headers=auth,
         json={
             "title": "PPSC Legacy Category Alias Role",
-            "description": "<p>A current PPSC vacancy.</p>",
+            "description": substantive_job_description("A current PPSC vacancy"),
             "published_date": "2026-10-21T00:00:00",
+            "deadline_date": future_job_deadline(),
             "source": "PPSC",
+            "reference_url": "https://ppsc.gop.pk/current-advertisements",
             "job_type": "government",
             "cities": ["Lahore"],
             "tags": ["PPSC"],
@@ -5019,12 +5104,16 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
         json={
             "title": "Fresh Sitemap Role",
-            "description": "A newly published role for sitemap verification.",
+            "description": substantive_job_description(
+                "A newly published role for sitemap verification"
+            ),
             "published_date": "2026-07-14T00:00:00",
+            "deadline_date": future_job_deadline(),
             "job_type": "private",
             "cities": ["Karachi"],
             "provinces": ["Sindh"],
             "source": "Acme Pvt Ltd",
+            "reference_url": "https://example.com/fresh-sitemap-role",
             "education_required": "BS Computer Science",
             "tags": ["Software Engineering"],
         },
@@ -5051,6 +5140,82 @@ def test_sitemap_data_includes_newly_created_job(client: TestClient):
         url.endswith("/cover-letter") and not url.endswith("/tools/cover-letter")
         for url in urls
     )
+
+
+def test_complete_archived_jobs_are_published_in_the_archive_sitemap(
+    client: TestClient,
+):
+    from datetime import datetime, timedelta
+
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin-password"}
+    )
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    closed = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Closed Legacy Recruitment",
+            "description": substantive_job_description(
+                "A complete but now-closed recruitment notice"
+            ),
+            "published_date": (datetime.utcnow() - timedelta(days=60)).isoformat(),
+            "deadline_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+            "source": "Closed Legacy Authority",
+            "reference_url": "https://example.gov.pk/closed-recruitment",
+            "job_type": "government",
+            "cities": ["Quetta"],
+            "provinces": ["Balochistan"],
+            "education_required": "Bachelors",
+            "tags": ["Education"],
+        },
+    )
+    assert closed.status_code == 200
+    slug = closed.json()["slug"]
+
+    detail = client.get(f"/api/jobs/{slug}").json()
+    assert detail["indexable"] is True
+    assert detail["applications_closed"] is True
+    assert detail["indexing_reasons"] == []
+
+    thin = client.post(
+        "/api/admin/jobs",
+        headers=auth,
+        json={
+            "title": "Thin Closed Recruitment",
+            "description": "<p>Too brief to publish as a useful archive record.</p>",
+            "published_date": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+            "deadline_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+            "source": "Thin Legacy Authority",
+            "reference_url": "https://example.gov.pk/thin-recruitment",
+            "job_type": "private",
+        },
+    )
+    assert thin.status_code == 200
+    thin_detail = client.get(f"/api/jobs/{thin.json()['id']}").json()
+    assert thin_detail["indexable"] is False
+    assert "thin_description" in thin_detail["indexing_reasons"]
+
+    urls = {
+        item["loc"] for item in client.get("/api/sitemap-data").json()["urls"]
+    }
+    assert any(url.endswith("/archive") for url in urls)
+    assert any(url.endswith(f"/jobs/{slug}") for url in urls)
+    assert not any(url.endswith(f"/jobs/{thin.json()['slug']}") for url in urls)
+    assert not any(url.endswith("/companies/closed-legacy-authority") for url in urls)
+    assert not any(url.endswith("/locations/quetta") for url in urls)
+    assert not any(url.endswith("/qualifications/bachelors") for url in urls)
+
+    directory_page = client.get(
+        "/api/pages/directory/organization/closed-legacy-authority"
+    )
+    assert directory_page.status_code == 200
+    assert directory_page.json()["indexable"] is False
+
+    indexable_jobs = client.get(
+        "/api/jobs", params={"indexable_only": "true"}
+    ).json()
+    assert indexable_jobs["total"] == 1
 
 
 def test_sitemap_data_only_includes_published_custom_pages(client: TestClient):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -25,8 +26,11 @@ def get_stats(db: Session = Depends(get_db)):
         by_city: dict[str, int] = {}
         by_category: dict[str, int] = {}
 
-        now = datetime.utcnow()
         open_for_apply = 0
+        archived_jobs = 0
+        active_government_jobs = 0
+        active_private_jobs = 0
+        pakistan_today = datetime.now(ZoneInfo("Asia/Karachi")).date()
 
         jobs = db.execute(
             select(
@@ -39,15 +43,23 @@ def get_stats(db: Session = Depends(get_db)):
         ).all()
         total = len(jobs)
         for j in jobs:
-            # Still open if no deadline, or deadline is in the future (end of day UTC)
-            if j.deadline_date is None or j.deadline_date >= now:
+            archived = bool(
+                j.deadline_date and j.deadline_date.date() < pakistan_today
+            )
+            if archived:
+                archived_jobs += 1
+            else:
                 open_for_apply += 1
 
             jt = (j.job_type or "private").lower()
             if jt in {"govt", "government", "gov"}:
                 key = "govt"
+                if not archived:
+                    active_government_jobs += 1
             else:
                 key = "private"
+                if not archived:
+                    active_private_jobs += 1
             by_job_type[jt if jt in {"government", "private"} else key] = (
                 by_job_type.get(jt if jt in {"government", "private"} else key, 0) + 1
             )
@@ -62,6 +74,9 @@ def get_stats(db: Session = Depends(get_db)):
         return StatsResponse(
             total_jobs=total,
             open_for_apply=open_for_apply,
+            archived_jobs=archived_jobs,
+            active_government_jobs=active_government_jobs,
+            active_private_jobs=active_private_jobs,
             by_source_type=by_source,
             by_category=dict(sorted(by_category.items(), key=lambda x: -x[1])[:15]),
             by_city=dict(sorted(by_city.items(), key=lambda x: -x[1])[:15]),

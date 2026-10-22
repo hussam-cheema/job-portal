@@ -23,12 +23,19 @@ function pick(sp: Record<string, string | string[] | undefined>, key: string) {
 
 export async function generateMetadata({ params }: Props) {
   const { tag } = await params;
-  const label = labelFromSlug(tag);
+  const filters = await fetchFilters();
+  const label =
+    filters.tags.find((item) => toSeoSlug(item) === tag) || labelFromSlug(tag);
+  const indexableJobs = await fetchJobs({
+    tag: label,
+    indexable_only: true,
+    page_size: 1,
+  });
   return {
     title: { absolute: `${label} Jobs in Pakistan | Pakistan Jobs Market` },
     description: `Browse Pakistan job openings tagged ${label}.`,
     alternates: { canonical: `/tags/${tag}` },
-    robots: { index: true, follow: true },
+    robots: { index: indexableJobs.total > 0, follow: true },
   };
 }
 
@@ -52,6 +59,7 @@ export default async function TagPage({ params, searchParams }: Props) {
       category,
       city,
       date,
+      open_only: true,
       page,
       page_size: 30,
     });

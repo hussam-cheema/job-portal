@@ -40,10 +40,104 @@ from app.services.directory_pages import (
     directory_taxonomy_key,
     normalize_directory_page_title,
 )
+from app.services.job_indexing import job_index_status
 
 logger = get_logger("jobportal.seo_tools")
 
 GSC_SEARCH_ANALYTICS_PAGE_SIZE = 25_000
+
+
+def _indexable_directory_state(db: Session):
+    """Return active directory keys and sitemap dates from search-ready jobs."""
+    all_indexable_jobs = [
+        job
+        for job in db.execute(select(Job)).scalars().all()
+        if job_index_status(job).indexable
+    ]
+    jobs = [
+        job for job in all_indexable_jobs if not job_index_status(job).archived
+    ]
+    dynamic_cities_by_province: dict[str, list[str]] = {}
+    for city_name, province_name in db.execute(
+        select(TaxonomyTerm.name, TaxonomyTerm.province).where(
+            TaxonomyTerm.kind == "city",
+            TaxonomyTerm.is_active.is_(True),
+            TaxonomyTerm.province.is_not(None),
+        )
+    ).all():
+        dynamic_cities_by_province.setdefault(province_name, []).append(city_name)
+
+    active_keys: dict[str, set[str]] = {
+        "category": set(),
+        "city": set(),
+        "province": set(),
+        "organization": set(),
+        "newspaper": set(),
+    }
+    active_dates: dict[str, dict[str, datetime]] = {
+        page_type: {} for page_type in active_keys
+    }
+    job_tags: dict[str, datetime | None] = {}
+    qualifications: dict[str, datetime | None] = {}
+
+    def track(page_type: str, value: Any) -> None:
+        key = directory_taxonomy_key(page_type, value)
+        if not key:
+            return
+        active_keys[page_type].add(key)
+
+    for job in jobs:
+        modified = job.updated_at or job.published_date or datetime.min
+        job_values = {
+            value.strip() for value in as_list(job.tags) if value and value.strip()
+        }
+        for value in job_values:
+            track("category", value)
+            previous = job_tags.get(value)
+            if previous is None or modified > previous:
+                job_tags[value] = modified
+        if job.source and job.source.strip():
+            track("organization", job.source)
+        if job.newspaper and job.newspaper.strip():
+            track("newspaper", job.newspaper)
+        expanded_cities, expanded_provinces = _expanded_job_locations(
+            job, dynamic_cities_by_province
+        )
+        for value in expanded_cities:
+            track("city", value)
+        for value in expanded_provinces:
+            track("province", value)
+        if job.education_required and job.education_required.strip():
+            previous = qualifications.get(job.education_required.strip())
+            if previous is None or modified > previous:
+                qualifications[job.education_required.strip()] = modified
+
+        for page_type, values in (
+            ("category", job_values),
+            ("organization", [job.source] if job.source else []),
+            ("newspaper", [job.newspaper] if job.newspaper else []),
+            ("city", expanded_cities),
+            ("province", expanded_provinces),
+        ):
+            for value in values:
+                key = directory_taxonomy_key(page_type, value)
+                if key:
+                    previous = active_dates[page_type].get(key)
+                    if previous is None or modified > previous:
+                        active_dates[page_type][key] = modified
+
+    return (
+        all_indexable_jobs,
+        active_keys,
+        active_dates,
+        job_tags,
+        qualifications,
+    )
+
+
+def build_indexable_directory_keys(db: Session) -> dict[str, set[str]]:
+    """Return directory keys backed by at least one search-ready active job."""
+    return _indexable_directory_state(db)[1]
 
 
 def gsc_credentials_configured() -> bool:
@@ -128,6 +222,8 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/contact", "changefreq": "monthly", "priority": 0.5},
         {"loc": f"{base}/privacy", "changefreq": "yearly", "priority": 0.3},
         {"loc": f"{base}/disclaimer", "changefreq": "yearly", "priority": 0.3},
+        {"loc": f"{base}/editorial-policy", "changefreq": "monthly", "priority": 0.5},
+        {"loc": f"{base}/archive", "changefreq": "weekly", "priority": 0.5},
         {"loc": f"{base}/blog", "changefreq": "daily", "priority": 0.8},
         {"loc": f"{base}/dashboard", "changefreq": "monthly", "priority": 0.9},
         {"loc": f"{base}/browse", "changefreq": "daily", "priority": 0.8},
@@ -141,38 +237,13 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
         {"loc": f"{base}/jobs-by-newspapers", "changefreq": "weekly", "priority": 0.7},
     ]
     try:
-        jobs = db.execute(
-            select(
-                Job.id,
-                Job.slug,
-                Job.updated_at,
-                Job.published_date,
-                Job.tags,
-                Job.cities,
-                Job.provinces,
-                Job.source,
-                Job.newspaper,
-                Job.education_required,
-            )
-        ).all()
-        job_tags: set[str] = set()
-        qualifications: set[str] = set()
-        active_keys: dict[str, set[str]] = {
-            "category": set(),
-            "city": set(),
-            "province": set(),
-            "organization": set(),
-            "newspaper": set(),
-        }
-        dynamic_cities_by_province: dict[str, list[str]] = {}
-        for city_name, province_name in db.execute(
-            select(TaxonomyTerm.name, TaxonomyTerm.province).where(
-                TaxonomyTerm.kind == "city",
-                TaxonomyTerm.is_active.is_(True),
-                TaxonomyTerm.province.is_not(None),
-            )
-        ).all():
-            dynamic_cities_by_province.setdefault(province_name, []).append(city_name)
+        (
+            jobs,
+            active_keys,
+            active_dates,
+            job_tags,
+            qualifications,
+        ) = _indexable_directory_state(db)
         for job in jobs:
             urls.append(
                 {
@@ -186,39 +257,12 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                     "priority": 0.8,
                 }
             )
-            job_values = {
-                value.strip() for value in as_list(job.tags) if value and value.strip()
-            }
-            job_tags.update(job_values)
-            active_keys["category"].update(
-                directory_taxonomy_key("category", value) for value in job_values
-            )
-            if job.source and job.source.strip():
-                active_keys["organization"].add(
-                    directory_taxonomy_key("organization", job.source)
-                )
-            if job.newspaper and job.newspaper.strip():
-                active_keys["newspaper"].add(
-                    directory_taxonomy_key("newspaper", job.newspaper)
-                )
-            expanded_cities, expanded_provinces = _expanded_job_locations(
-                job, dynamic_cities_by_province
-            )
-            active_keys["city"].update(
-                directory_taxonomy_key("city", value)
-                for value in expanded_cities
-            )
-            active_keys["province"].update(
-                directory_taxonomy_key("province", value)
-                for value in expanded_provinces
-            )
-            if job.education_required and job.education_required.strip():
-                qualifications.add(job.education_required.strip())
         for value in sorted(job_tags):
             if slugify(value):
                 urls.append(
                     {
                         "loc": f"{base}/tags/{slugify(value)}",
+                        "lastmod": job_tags[value].date().isoformat(),
                         "changefreq": "weekly",
                         "priority": 0.5,
                     }
@@ -228,6 +272,7 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
                 urls.append(
                     {
                         "loc": f"{base}/qualifications/{slugify(value)}",
+                        "lastmod": qualifications[value].date().isoformat(),
                         "changefreq": "weekly",
                         "priority": 0.5,
                     }
@@ -249,10 +294,16 @@ def build_sitemap_urls(db: Session) -> list[dict[str, Any]]:
             path = public_page_path(page.page_type, page.slug)
             if page.page_type == "standard" and page.slug in DIRECT_PAGE_SLUGS:
                 continue  # already added static
+            directory_key = directory_taxonomy_key(
+                page.page_type, page.taxonomy_value
+            )
+            modified = active_dates.get(page.page_type, {}).get(directory_key)
+            if page.page_type in active_keys and modified is None:
+                continue
             urls.append(
                 {
                     "loc": f"{base}{path}",
-                    "lastmod": (page.updated_at or datetime.utcnow())
+                    "lastmod": (modified or page.updated_at or datetime.utcnow())
                     .date()
                     .isoformat(),
                     "changefreq": "monthly",
