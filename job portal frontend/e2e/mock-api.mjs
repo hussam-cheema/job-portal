@@ -297,6 +297,18 @@ if (path === "/api/market-reports/site-statistics") return json(response, { brea
         { loc: `${mockSiteOrigin}/qualifications/bachelors`, changefreq: "weekly", priority: 0.5 },
         { loc: `${mockSiteOrigin}/blog/categories/career-advice`, changefreq: "weekly", priority: 0.5 },
         { loc: `${mockSiteOrigin}/blog/tags/fpsc`, changefreq: "weekly", priority: 0.4 },
+        { loc: `${mockSiteOrigin}/tools/categories/tax-salary-tools`, changefreq: "monthly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/tools/categories/tools-for-students`, changefreq: "monthly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/tools/categories/image-editing-tools`, changefreq: "monthly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/tools/categories/document-tools`, changefreq: "monthly", priority: 0.6 },
+        { loc: `${mockSiteOrigin}/tools/pakistan-tax-calculator`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/government-salary-calculator`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/cgpa-calculator`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/resume-builder`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/cover-letter`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/api`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/add-watermark`, changefreq: "monthly", priority: 0.7 },
+        { loc: `${mockSiteOrigin}/tools/docx-pdf-converter`, changefreq: "monthly", priority: 0.7 },
       ],
     });
   }

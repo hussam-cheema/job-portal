@@ -125,11 +125,41 @@ test("Browse All exposes every public content family in initial HTML", async ({ 
     'href="/p/custom-seo-page"',
     'href="/tools/resume-builder"',
     'href="/tools/cover-letter"',
+    'href="/tools/categories/tax-salary-tools"',
+    'href="/tools/pakistan-tax-calculator"',
+    'href="/dashboard/2026-09"',
   ]) {
     expect(html).toContain(expected);
   }
   expect(html).toContain("max-h-[48rem]");
   expect(html).toContain("max-h-[42rem]");
+});
+
+test("Browse All links every canonical URL advertised by the sitemap", async ({
+  request,
+}) => {
+  const [sitemapResponse, browseResponse] = await Promise.all([
+    request.get("/sitemap.xml"),
+    request.get("/browse"),
+  ]);
+  expect(sitemapResponse.ok()).toBeTruthy();
+  expect(browseResponse.ok()).toBeTruthy();
+
+  const sitemap = await sitemapResponse.text();
+  const browse = await browseResponse.text();
+  const sitemapPaths = new Set(
+    Array.from(sitemap.matchAll(/<loc>([^<]+)<\/loc>/g), (match) =>
+      new URL(match[1], "http://localhost").pathname.replace(/\/$/, "") || "/",
+    ),
+  );
+  const browsePaths = new Set(
+    Array.from(browse.matchAll(/href="([^"#]+)"/g), (match) =>
+      new URL(match[1], "http://localhost").pathname.replace(/\/$/, "") || "/",
+    ),
+  );
+
+  const missing = [...sitemapPaths].filter((path) => !browsePaths.has(path));
+  expect(missing, `Browse All is missing sitemap links:\n${missing.join("\n")}`).toEqual([]);
 });
 
 test("homepage discovery section and every directory link resolve", async ({ page, request }) => {

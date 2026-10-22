@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { JobCard } from "@/components/JobCard";
-import { fetchSiteDirectory } from "@/lib/api";
+import { fetchSiteDirectory, fetchTools } from "@/lib/api";
 import { decodeHtmlEntities } from "@/lib/format";
+import { fetchMarketReports, monthLabel } from "@/lib/marketReports";
 import type {
   DirectoryPageLink,
   DirectoryValue,
   JobSummary,
   SiteDirectory,
+  ToolCategory,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,8 @@ const corePages = [
   { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy policy" },
   { href: "/disclaimer", label: "Disclaimer" },
+  { href: "/dashboard", label: "Job market dashboard" },
+  { href: "/tools", label: "All career tools" },
   { href: "/jobs-by-cities", label: "Jobs by Cities" },
   { href: "/jobs-by-provinces", label: "Jobs by Provinces" },
   { href: "/jobs-by-categories", label: "Jobs by Category" },
@@ -47,19 +51,6 @@ const corePageSlugs = new Set([
   "jobs-by-organizations",
   "jobs-by-newspapers",
 ]);
-
-const careerTools = [
-  {
-    href: "/tools/resume-builder",
-    label: "ATS Resume Builder",
-    description: "Build and score an ATS-friendly resume.",
-  },
-  {
-    href: "/tools/cover-letter",
-    label: "Cover Letter Builder",
-    description: "Create a polished, editable cover letter.",
-  },
-];
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
@@ -159,8 +150,47 @@ function DirectoryLinks({
   );
 }
 
+function ToolDirectory({ categories }: { categories: ToolCategory[] }) {
+  if (!categories.length) {
+    return <p className="p-7 text-sm text-[var(--muted)]">No public tools are available yet.</p>;
+  }
+  return (
+    <div className="grid gap-px bg-[var(--border)] md:grid-cols-2">
+      {categories.map((category) => (
+        <article key={category.id} className="bg-[var(--card)] p-5 sm:p-7">
+          <Link
+            href={`/tools/categories/${category.slug}`}
+            className="font-semibold text-[var(--navy-100)] transition hover:text-[var(--blue)]"
+          >
+            {decodeHtmlEntities(category.title)}
+          </Link>
+          <ul className="mt-4 space-y-2">
+            {category.tools
+              .filter((tool) => tool.is_published)
+              .sort((left, right) => left.sort_order - right.sort_order)
+              .map((tool) => (
+                <li key={tool.id}>
+                  <Link
+                    href={`/tools/${tool.slug}`}
+                    className="block rounded-xl border border-[var(--border)] px-4 py-3 text-sm font-medium text-[var(--navy-200)] transition hover:border-[var(--blue)] hover:bg-[var(--blue-soft)] hover:text-[var(--blue)]"
+                  >
+                    {decodeHtmlEntities(tool.title)}
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export default async function BrowsePage() {
-  const directory = await fetchSiteDirectory();
+  const [directory, toolCategories, reports] = await Promise.all([
+    fetchSiteDirectory(),
+    fetchTools(),
+    fetchMarketReports().catch(() => []),
+  ]);
   const directoryPages: DirectoryPageLink[] = directory.pages.flatMap((page) =>
     page.page_type &&
     page.page_type !== "standard" &&
@@ -190,6 +220,14 @@ export default async function BrowsePage() {
     (total, values) => total + values.length,
     0
   );
+  const publishedToolCategories = toolCategories
+    .filter((category) => category.is_published)
+    .sort((left, right) => left.sort_order - right.sort_order);
+  const publishedToolCount = publishedToolCategories.reduce(
+    (total, category) =>
+      total + category.tools.filter((tool) => tool.is_published).length,
+    0,
+  );
 
   return (
     <main className="site-wrap py-8 sm:py-12">
@@ -203,11 +241,13 @@ export default async function BrowsePage() {
           <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--muted)] sm:text-lg">
             Every public job, guide, organization, location, topic and career tool is linked here in server-rendered HTML for people and search engines.
           </p>
-          <dl className="mt-8 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="mt-8 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
               [directory.jobs.length, "job"],
               [directory.blogs.length, "guide"],
               [taxonomyCount, "directory link"],
+              [publishedToolCount, "tool"],
+              [reports.length, "report"],
               [publicPages.length, "page"],
             ].map(([count, label]) => (
               <div key={String(label)} className="rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-4 backdrop-blur">
@@ -229,6 +269,8 @@ export default async function BrowsePage() {
           ["cities", "Cities"],
           ["provinces", "Provinces"],
           ["job-tags", "Job tags"],
+          ["tools", "Tools"],
+          ["reports", "Reports"],
           ["pages", "Pages & tools"],
         ].map(([id, label]) => (
           <a key={id} href={`#${id}`} className="tag tag-blue job-tag-link">
@@ -311,36 +353,68 @@ export default async function BrowsePage() {
           <DirectoryLinks id="blog-tags" title="Guide topics" eyebrow="Career library" values={directory.taxonomies.blog_tags} path="/blog/tags" />
         </div>
 
+        <section id="tools" className="card-panel scroll-mt-24 overflow-hidden">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] px-5 py-6 sm:px-7">
+            <div>
+              <p className="eyebrow">Utilities</p>
+              <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">Tools and calculators</h2>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Every published tool category and tool page is linked directly in this directory.
+              </p>
+            </div>
+            <span className="font-mono text-xs text-[var(--navy-300)]">
+              {publishedToolCategories.length} categories · {publishedToolCount} tools
+            </span>
+          </div>
+          <ToolDirectory categories={publishedToolCategories} />
+        </section>
+
+        <section id="reports" className="card-panel scroll-mt-24 overflow-hidden">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] px-5 py-6 sm:px-7">
+            <div>
+              <p className="eyebrow">Market research</p>
+              <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">Monthly report archive</h2>
+              <p className="mt-2 text-sm text-[var(--muted)]">Published Pakistan labour-market and website listing reports.</p>
+            </div>
+            <Link href="/dashboard" className="text-sm font-semibold text-[var(--blue)] hover:underline">
+              Current dashboard →
+            </Link>
+          </div>
+          {reports.length ? (
+            <ul className="grid gap-px bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-3">
+              {reports.map((report) => (
+                <li key={report.month} className="bg-[var(--card)]">
+                  <Link
+                    href={`/dashboard/${report.month}`}
+                    className="group block px-5 py-5 transition hover:bg-[var(--blue-soft)] sm:px-7"
+                  >
+                    <span className="block font-semibold text-[var(--navy-100)] group-hover:text-[var(--blue)]">
+                      {monthLabel(report.month)}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--muted)]">
+                      Published {new Date(report.published_at).toLocaleDateString("en-GB")}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-7 py-10 text-[var(--muted)]">No monthly reports are published yet.</p>
+          )}
+        </section>
+
         <section id="pages" className="card-panel scroll-mt-24 p-5 sm:p-7">
           <div className="border-b border-[var(--border)] pb-4">
             <p className="eyebrow">Website resources</p>
-            <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">Pages and career tools</h2>
+            <h2 className="mt-1 text-2xl font-semibold text-[var(--navy-100)]">Public pages</h2>
           </div>
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div>
-              <h3 className="font-semibold text-[var(--navy-200)]">Public pages</h3>
-              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                {publicPages.map((page) => (
-                  <li key={`${page.href}-${page.label}`}>
-                    <Link href={page.href} className="block rounded-xl border border-[var(--border)] px-4 py-3 font-medium text-[var(--navy-200)] transition hover:border-[var(--blue)] hover:bg-[var(--blue-soft)] hover:text-[var(--blue)]">{page.label}</Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold text-[var(--navy-200)]">Career tools</h3>
-              <ul className="mt-3 space-y-2">
-                {careerTools.map((tool) => (
-                  <li key={tool.href}>
-                    <Link href={tool.href} className="group block rounded-xl border border-[var(--border)] px-4 py-3 transition hover:border-[var(--blue)] hover:bg-[var(--blue-soft)]">
-                      <span className="font-semibold text-[var(--navy-100)] group-hover:text-[var(--blue)]">{tool.label}</span>
-                      <span className="mt-1 block text-sm text-[var(--muted)]">{tool.description}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {publicPages.map((page) => (
+              <li key={`${page.href}-${page.label}`}>
+                <Link href={page.href} className="block rounded-xl border border-[var(--border)] px-4 py-3 font-medium text-[var(--navy-200)] transition hover:border-[var(--blue)] hover:bg-[var(--blue-soft)] hover:text-[var(--blue)]">{page.label}</Link>
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
     </main>
