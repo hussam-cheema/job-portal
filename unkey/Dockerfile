@@ -45,13 +45,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=wheels /wheels /wheels
 RUN pip install --no-index --find-links=/wheels /wheels/* && rm -rf /wheels
 
+# Keep the large model in its own cacheable layer so ordinary application
+# commits do not download it again.
+RUN mkdir -p /models && python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen3-Embedding-0.6B-GGUF', filename='Qwen3-Embedding-0.6B-Q8_0.gguf', local_dir='/models')"
+
 COPY ["job portal backend/app", "./app"]
 COPY ["job portal backend/migration", "./migration"]
 COPY ["job portal backend/config.yaml", "./config.yaml"]
-
-# Keep the local embedding fallback inside the immutable image. Unkey instances
-# are ephemeral and only provide a small writable scratch filesystem.
-RUN python -m app.services.model_cache
 
 EXPOSE 8000
 

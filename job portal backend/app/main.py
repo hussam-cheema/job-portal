@@ -193,6 +193,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             expanded_tools_content_synced = sync_expanded_tools_core_pages_v5(db)
             student_api_content_synced = sync_student_api_core_pages_v6(db)
             editorial_content_synced = sync_editorial_page_refresh_v7(db)
+            # Keep the user-requested public page refresh even if an unrelated
+            # legacy data repair later in startup has to roll back.
+            if editorial_content_synced:
+                db.commit()
             branding_synced = sync_homepage_branding_seo_v1(db)
             taxonomy_created = ensure_default_taxonomy(db)
             data_quality_repairs = repair_job_data_quality(db)
@@ -493,8 +497,8 @@ def readiness(response: Response):
         finally:
             db.close()
         response.headers["X-App-Revision"] = os.getenv(
-            "RAILWAY_GIT_COMMIT_SHA",
-            "local",
+            "UNKEY_GIT_COMMIT_SHA",
+            os.getenv("RAILWAY_GIT_COMMIT_SHA", "local"),
         )
         return {"status": "ready", "database": "up"}
     except Exception as exc:
