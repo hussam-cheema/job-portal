@@ -1,0 +1,19 @@
+.git
+.github
+.DS_Store
+**/.DS_Store
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.venv
+**/venv
+**/node_modules
+**/.next
+**/test-results
+**/playwright-report
+job portal frontend
+job portal backend/.env
+job portal backend/.coverage
+job portal backend/htmlcov
+job portal backend/.model-cache
