@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
-COPY "job portal backend/requirements.txt" .
+COPY ["job portal backend/requirements.txt", "."]
 RUN pip install --upgrade pip && pip wheel --wheel-dir /wheels -r requirements.txt
 
 FROM python:3.12-slim
@@ -45,9 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=wheels /wheels /wheels
 RUN pip install --no-index --find-links=/wheels /wheels/* && rm -rf /wheels
 
-COPY "job portal backend/app" ./app
-COPY "job portal backend/migration" ./migration
-COPY "job portal backend/config.yaml" ./config.yaml
+COPY ["job portal backend/app", "./app"]
+COPY ["job portal backend/migration", "./migration"]
+COPY ["job portal backend/config.yaml", "./config.yaml"]
 
 # Keep the local embedding fallback inside the immutable image. Unkey instances
 # are ephemeral and only provide a small writable scratch filesystem.
